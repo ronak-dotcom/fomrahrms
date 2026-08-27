@@ -1460,7 +1460,7 @@ class _OnboardingFormPageState extends State<OnboardingFormPage> {
             value: _bloodGroupValue,
             label: 'Blood Group *',
             required: true,
-            items: const ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'],
+            items: const ['A+', 'A-', 'A1B+', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'],
             onChanged: (v) => setState(() => _bloodGroupValue = v),
             bottomPad: 12,
           ),
