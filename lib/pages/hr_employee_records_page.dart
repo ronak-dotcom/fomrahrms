@@ -482,7 +482,7 @@ class _HrEmployeeRecordsPageState extends State<HrEmployeeRecordsPage> {
                       FilterChipGroup<String>(
                         label: 'Work Location',
                         value: workLocationDraft,
-                        options: const ['Office', 'Onsite'],
+                        options: const ['Office', 'Onsite', 'Field'],
                         labelOf: (d) => d,
                         onChanged: (v) => setPanelState(() => workLocationDraft = v),
                       ),
@@ -2094,16 +2094,41 @@ class EmployeeProfileDialogState extends State<EmployeeProfileDialog> {
     ]);
   }
 
-  static MaterialColor _locationColor(String loc) =>
-      loc == 'Onsite' ? Colors.teal : Colors.indigo;
-  static IconData _locationIcon(String loc) =>
-      loc == 'Onsite' ? Icons.location_on_rounded : Icons.apartment_rounded;
+  // The "Unrestricted Check-in" attendance policy — no geofence, GPS still
+  // recorded. Field employees are pinned to it via a per-employee override so
+  // check-in stops requiring them to be within any office/site radius.
+  static const String _fieldPolicyId = 'a240ee6b-8b0a-4696-92f0-012a46062a0f';
+
+  static MaterialColor _locationColor(String loc) => switch (loc) {
+        'Onsite' => Colors.teal,
+        'Field' => Colors.orange,
+        _ => Colors.indigo,
+      };
+  static IconData _locationIcon(String loc) => switch (loc) {
+        'Onsite' => Icons.location_on_rounded,
+        'Field' => Icons.directions_walk_rounded,
+        _ => Icons.apartment_rounded,
+      };
+
+  // Keeps the employee's attendance-policy override in sync with their work
+  // location: moving TO Field lifts the geofence via the Unrestricted
+  // Check-in policy; moving AWAY from Field clears that override so the
+  // employee falls back to their department/location default again.
+  Future<void> _syncFieldPolicyOverride(String from, String to) async {
+    if (to == 'Field' && from != 'Field') {
+      await SupabaseService.setEmployeePolicyOverride(_user.employeeId, _fieldPolicyId);
+    } else if (from == 'Field' && to != 'Field') {
+      await SupabaseService.clearEmployeePolicyOverride(_user.employeeId);
+    }
+  }
 
   Future<void> _setWorkLocation(String loc) async {
     setState(() => _saving = true);
+    final previous = _user.workLocation;
     _user.workLocation = loc;
     try {
       await widget.onSave(_user);
+      await _syncFieldPolicyOverride(previous, loc);
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -2117,8 +2142,36 @@ class EmployeeProfileDialogState extends State<EmployeeProfileDialog> {
     }
   }
 
+  static const List<String> _workLocationChoices = ['Office', 'Onsite', 'Field'];
+
+  Future<String?> _pickWorkLocation({required String excluding, required String title}) {
+    final choices = _workLocationChoices.where((l) => l != excluding).toList();
+    return showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+        content: Column(mainAxisSize: MainAxisSize.min, children: choices
+            .map((loc) => ListTile(
+                  leading: Icon(_locationIcon(loc), color: _locationColor(loc).shade700),
+                  title: Text(loc),
+                  subtitle: loc == 'Field'
+                      ? const Text('No GPS/geofence restriction on check-in', style: TextStyle(fontSize: 11.5))
+                      : null,
+                  onTap: () => Navigator.pop(ctx, loc),
+                ))
+            .toList()),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+        ],
+      ),
+    );
+  }
+
   Future<void> _requestWorkLocationChange() async {
-    final target = _user.workLocation == 'Office' ? 'Onsite' : 'Office';
+    final target = await _pickWorkLocation(
+        excluding: _user.workLocation, title: 'Request Work Location Change');
+    if (target == null) return;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -2160,11 +2213,13 @@ class EmployeeProfileDialogState extends State<EmployeeProfileDialog> {
 
   Future<void> _decideWorkLocation(bool approve) async {
     setState(() => _saving = true);
+    final previous = _user.workLocation;
     if (approve) _user.workLocation = _user.workLocationPending;
     _user.workLocationPending = '';
     _user.workLocationRequestedAt = '';
     try {
       await widget.onSave(_user);
+      if (approve) await _syncFieldPolicyOverride(previous, _user.workLocation);
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -2179,13 +2234,17 @@ class EmployeeProfileDialogState extends State<EmployeeProfileDialog> {
   }
 
   Future<void> _changeWorkLocationDirect() async {
-    final target = _user.workLocation == 'Office' ? 'Onsite' : 'Office';
+    final target = await _pickWorkLocation(
+        excluding: _user.workLocation, title: 'Change Work Location');
+    if (target == null) return;
     setState(() => _saving = true);
+    final previous = _user.workLocation;
     _user.workLocation = target;
     _user.workLocationPending = '';
     _user.workLocationRequestedAt = '';
     try {
       await widget.onSave(_user);
+      await _syncFieldPolicyOverride(previous, target);
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -2430,6 +2489,20 @@ class EmployeeProfileDialogState extends State<EmployeeProfileDialog> {
             style: OutlinedButton.styleFrom(
               foregroundColor: Colors.teal.shade700,
               side: BorderSide(color: Colors.teal.shade300),
+              padding: const EdgeInsets.symmetric(vertical: 10),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+          ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: OutlinedButton.icon(
+            onPressed: _saving ? null : () => _setWorkLocation('Field'),
+            icon: const Icon(Icons.directions_walk_rounded, size: 16),
+            label: const Text('Field'),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: Colors.orange.shade700,
+              side: BorderSide(color: Colors.orange.shade300),
               padding: const EdgeInsets.symmetric(vertical: 10),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
             ),
