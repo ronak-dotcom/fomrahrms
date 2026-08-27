@@ -257,7 +257,7 @@ class _LoginPageState extends State<LoginPage> {
                     controller: emailCtrl,
                     keyboardType: TextInputType.emailAddress,
                     decoration: InputDecoration(
-                      labelText: 'Login Email, Company Mail or Employee ID',
+                      labelText: 'Email, Employee ID or Mobile Number',
                       border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
                     ),
                   ),

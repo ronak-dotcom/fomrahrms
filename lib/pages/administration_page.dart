@@ -339,6 +339,7 @@ class _UsersTab extends StatelessWidget {
   }
 
   static const _domain = '@fomrahousing.in';
+  static const _mobileLoginDomain = '@login.fomrahousing.internal';
 
   // Strip domain to get just the username prefix for editing
   static String _emailPrefix(String? email) {
@@ -351,10 +352,17 @@ class _UsersTab extends StatelessWidget {
   void _showUserDialog(BuildContext context, AppUser? existing) {
     final nameCtrl  = TextEditingController(text: existing?.name ?? '');
     final emailCtrl = TextEditingController(text: _emailPrefix(existing?.email));
+    final mobileCtrl = TextEditingController(text: existing?.mobile ?? '');
     final empIdCtrl = TextEditingController(text: existing?.employeeId ?? '');
     final desigCtrl = TextEditingController(text: existing?.designation ?? '');
     String selectedRole = existing?.role ?? 'Employee';
     String selectedManager = existing?.reportingManager ?? '';
+    // Staff without a real email — housekeeping, support — log in with just
+    // their mobile number and a password. The `email` column still needs
+    // SOME value (it's the primary key, and Supabase Auth session minting
+    // needs an email-shaped string), so a synthetic, never-shown address is
+    // generated from the mobile number instead; the person never sees it.
+    bool mobileOnlyLogin = existing != null && existing.email.endsWith(_mobileLoginDomain);
     final roleNames = ['Employee', 'Manager', 'HR', 'Management'];
     // This dialog is Management-only (route-gated) and Management is the
     // ultimate RM-change approver, so edits here save directly with no
@@ -373,28 +381,48 @@ class _UsersTab extends StatelessWidget {
             child: Column(mainAxisSize: MainAxisSize.min, children: [
               _DialogField(controller: nameCtrl, label: 'Full Name', icon: Icons.person_rounded),
               const SizedBox(height: 12),
-              // Email with fixed @fomrahousing.in domain
-              TextField(
-                controller: emailCtrl,
-                keyboardType: TextInputType.emailAddress,
-                decoration: InputDecoration(
-                  labelText: 'Username',
-                  prefixIcon: Icon(Icons.email_rounded, color: _mgmtColor, size: 20),
-                  suffix: Text('@fomrahousing.in',
-                      style: TextStyle(color: _mgmtColor, fontWeight: FontWeight.w600, fontSize: 13)),
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
-                    borderSide: const BorderSide(color: Color(0xFFE5E7EB)),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
-                    borderSide: BorderSide(color: _mgmtColor, width: 2),
-                  ),
-                  filled: true, fillColor: Colors.white,
-                  labelStyle: const TextStyle(color: Color(0xFF6B7280)),
-                ),
+              CheckboxListTile(
+                dense: true,
+                contentPadding: EdgeInsets.zero,
+                controlAffinity: ListTileControlAffinity.leading,
+                value: mobileOnlyLogin,
+                title: const Text('Mobile-only login (no email)',
+                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                subtitle: const Text('For housekeeping / support staff — they sign in with mobile number + password.',
+                    style: TextStyle(fontSize: 11)),
+                onChanged: (v) => setS(() => mobileOnlyLogin = v ?? false),
               ),
+              const SizedBox(height: 8),
+              if (mobileOnlyLogin)
+                _DialogField(controller: mobileCtrl, label: 'Mobile Number (used to log in)',
+                    icon: Icons.phone_android_rounded, keyboardType: TextInputType.phone)
+              else ...[
+                // Email with fixed @fomrahousing.in domain
+                TextField(
+                  controller: emailCtrl,
+                  keyboardType: TextInputType.emailAddress,
+                  decoration: InputDecoration(
+                    labelText: 'Username',
+                    prefixIcon: Icon(Icons.email_rounded, color: _mgmtColor, size: 20),
+                    suffix: Text('@fomrahousing.in',
+                        style: TextStyle(color: _mgmtColor, fontWeight: FontWeight.w600, fontSize: 13)),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide: const BorderSide(color: Color(0xFFE5E7EB)),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide: BorderSide(color: _mgmtColor, width: 2),
+                    ),
+                    filled: true, fillColor: Colors.white,
+                    labelStyle: const TextStyle(color: Color(0xFF6B7280)),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                _DialogField(controller: mobileCtrl, label: 'Mobile Number (optional)',
+                    icon: Icons.phone_android_rounded, keyboardType: TextInputType.phone),
+              ],
               const SizedBox(height: 12),
               _DialogField(controller: empIdCtrl, label: 'Employee ID (e.g. EMP001)', icon: Icons.badge_rounded),
               const SizedBox(height: 12),
@@ -473,8 +501,11 @@ class _UsersTab extends StatelessWidget {
             ElevatedButton(
               onPressed: () {
                 final prefix = emailCtrl.text.trim();
-                if (nameCtrl.text.trim().isEmpty || prefix.isEmpty) return;
-                final fullEmail = '$prefix$_domain';
+                final mobile = mobileCtrl.text.trim();
+                if (nameCtrl.text.trim().isEmpty) return;
+                if (mobileOnlyLogin && mobile.isEmpty) return;
+                if (!mobileOnlyLogin && prefix.isEmpty) return;
+                final fullEmail = mobileOnlyLogin ? '$mobile$_mobileLoginDomain' : '$prefix$_domain';
                 final AppUser target;
                 final now = DateTime.now();
                 final todayStr =
@@ -484,6 +515,7 @@ class _UsersTab extends StatelessWidget {
                   target = AppUser(
                     name:             nameCtrl.text.trim(),
                     email:            fullEmail,
+                    mobile:           mobile,
                     employeeId:       empIdCtrl.text.trim(),
                     designation:      desigCtrl.text.trim(),
                     role:             selectedRole,
@@ -505,6 +537,7 @@ class _UsersTab extends StatelessWidget {
                 } else {
                   existing.name             = nameCtrl.text.trim();
                   existing.email            = fullEmail;
+                  existing.mobile           = mobile;
                   existing.employeeId       = empIdCtrl.text.trim();
                   existing.designation      = desigCtrl.text.trim();
                   existing.role             = selectedRole;
@@ -1191,11 +1224,13 @@ class _DialogField extends StatelessWidget {
   final String label;
   final IconData icon;
   final int maxLines;
+  final TextInputType? keyboardType;
   const _DialogField({
     required this.controller,
     required this.label,
     required this.icon,
     this.maxLines = 1,
+    this.keyboardType,
   });
 
   @override
@@ -1203,6 +1238,7 @@ class _DialogField extends StatelessWidget {
     return TextField(
       controller: controller,
       maxLines: maxLines,
+      keyboardType: keyboardType,
       decoration: InputDecoration(
         labelText: label,
         prefixIcon: Icon(icon, color: _mgmtColor, size: 20),

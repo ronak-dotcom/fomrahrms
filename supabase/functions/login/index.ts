@@ -157,7 +157,7 @@ export async function findAppUserByLoginIdentifier(
     "exempt_from_timing",
   ].join(", ");
 
-  const columns = ["email", "company_email", "employee_id"] as const;
+  const columns = ["email", "company_email", "employee_id", "mobile"] as const;
   for (const column of columns) {
     const { data, error } = await supabaseClient
       .from("app_users")
