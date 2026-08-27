@@ -27,6 +27,28 @@ class OnboardingFormPage extends StatefulWidget {
   final String? token;
   const OnboardingFormPage({super.key, this.token});
 
+  // Human labels for form_data keys — shared with the HR-side "Request
+  // Correction" picker in employee_onboarding_page.dart so both sides of
+  // the flow agree on the same key→label mapping.
+  static const Map<String, String> fieldLabels = {
+    'name': 'Name', 'phone_number': 'Phone Number', 'father_name': "Father's Name",
+    'mother_name': "Mother's Name", 'designation': 'Designation',
+    'date_of_joining': 'Date of Joining', 'full_name': 'Full Name',
+    'date_of_birth': 'Date of Birth', 'postal_address': 'Postal Address',
+    'permanent_address': 'Permanent Address', 'family_details': 'Family Details',
+    'education': 'Education', 'experience': 'Experience',
+    'last_reporting_name': 'Last Reporting Officer', 'last_reporting_designation': 'Last Reporting Designation',
+    'last_company': 'Last Company', 'reference1': 'Reference 1', 'reference2': 'Reference 2',
+    'esi_number': 'ESI Number', 'pf_number': 'PF Number', 'languages_known': 'Languages Known',
+    'hobbies': 'Hobbies', 'interests': 'Interests', 'related_to_employee': 'Related to Employee',
+    'professional_membership': 'Professional Membership', 'specialized_training': 'Specialized Training',
+    'other_information': 'Other Information', 'blood_group': 'Blood Group', 'allergic_to': 'Allergic To',
+    'major_illness': 'Major Illness', 'emergency_contact_name': 'Emergency Contact Name',
+    'emergency_contact_number': 'Emergency Contact Number', 'emergency_contact_address': 'Emergency Contact Address',
+    'declaration_date': 'Declaration Date', 'declaration_place': 'Declaration Place',
+    'attachments': 'Attachments',
+  };
+
   @override
   State<OnboardingFormPage> createState() => _OnboardingFormPageState();
 }
@@ -121,6 +143,13 @@ class _OnboardingFormPageState extends State<OnboardingFormPage> {
   // Resolved from widget.token, if present — see _resolveCandidateToken().
   String? _candidateApplicationId;
 
+  // Set when this visit is a candidate returning to fix a HR-flagged
+  // correction rather than a first-time fill. _submit() then UPDATEs this
+  // row instead of inserting a new one, so the rest of what they already
+  // entered is never lost.
+  String? _editingOnboardingFormId;
+  List<String> _flaggedFields = [];
+
   // ── Config (loaded from Supabase) ─────────────────────────────────────────
   List<Map<String, dynamic>> _configSections = [];
   final _customTextControllers = <String, TextEditingController>{};
@@ -148,13 +177,29 @@ class _OnboardingFormPageState extends State<OnboardingFormPage> {
       if (candidate == null || !mounted) return;
       _candidateApplicationId = candidate['id']?.toString();
 
-      // Block resubmission — a candidate revisiting (or resubmitting) the
-      // same link should see "already submitted", not create another row.
-      final alreadySubmitted = await SupabaseService
-          .hasOnboardingFormForCandidate(_candidateApplicationId ?? '');
+      // A candidate revisiting the same link either hasn't submitted yet,
+      // has fully submitted (show "already submitted"), or HR sent their
+      // submission back for a correction — in which case we reload what
+      // they already entered instead of either blocking them or starting
+      // them over from a blank form.
+      final existing = await SupabaseService
+          .fetchOnboardingFormForCandidate(_candidateApplicationId ?? '');
       if (!mounted) return;
-      if (alreadySubmitted) {
+
+      if (existing != null && existing['needs_correction'] != true) {
         setState(() => _submitted = true);
+        return;
+      }
+
+      if (existing != null && existing['needs_correction'] == true) {
+        final formData = existing['form_data'] is Map
+            ? Map<String, dynamic>.from(existing['form_data'] as Map)
+            : <String, dynamic>{};
+        setState(() {
+          _editingOnboardingFormId = existing['id']?.toString();
+          _flaggedFields = List<String>.from((existing['fields_to_correct'] as List?) ?? []);
+          _prefillFromFormData(formData);
+        });
         return;
       }
 
@@ -281,6 +326,124 @@ class _OnboardingFormPageState extends State<OnboardingFormPage> {
   String _fmt(DateTime? d) => d == null
       ? ''
       : '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}';
+
+  // Reverses _fmt() — parses the dd/MM/yyyy strings form_data stores back
+  // into a DateTime for prefill. Anything unparsable is left blank rather
+  // than crashing the page over one bad legacy value.
+  DateTime? _parseFmt(String? s) {
+    if (s == null || s.trim().isEmpty) return null;
+    final parts = s.trim().split('/');
+    if (parts.length != 3) return null;
+    final day = int.tryParse(parts[0]);
+    final month = int.tryParse(parts[1]);
+    final year = int.tryParse(parts[2]);
+    if (day == null || month == null || year == null) return null;
+    try {
+      return DateTime(year, month, day);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  // Rebuilds every controller/list from a previous submission's form_data —
+  // the single JSONB blob _submit() already stores everything into. Used
+  // when a candidate reopens their link after HR sent it back for a
+  // correction, so they see what they entered before instead of a blank
+  // form.
+  void _prefillFromFormData(Map<String, dynamic> d) {
+    String s(String key) => (d[key] as String?) ?? '';
+    _name.text = s('name');
+    _phone.text = s('phone_number');
+    _fatherName.text = s('father_name');
+    _motherName.text = s('mother_name');
+    _designation.text = s('designation');
+    _dateJoiningDate = _parseFmt(d['date_of_joining'] as String?);
+    _fullName.text = s('full_name');
+    _dobDate = _parseFmt(d['date_of_birth'] as String?);
+    _postalAddress.text = s('postal_address');
+    _permanentAddress.text = s('permanent_address');
+
+    final family = (d['family_details'] as List?) ?? [];
+    if (family.isNotEmpty) {
+      for (final row in _familyRows) { for (final c in row.values) c.dispose(); }
+      _familyRows = []; _familyGenders = []; _familyRelations = []; _familyAadhars = [];
+      for (final raw in family) {
+        final row = Map<String, dynamic>.from(raw as Map);
+        _familyRows.add({
+          'name': TextEditingController(text: (row['name'] as String?) ?? ''),
+          'age': TextEditingController(text: (row['age'] as String?) ?? ''),
+          'occupation': TextEditingController(text: (row['occupation'] as String?) ?? ''),
+        });
+        _familyGenders.add((row['gender'] as String?)?.isEmpty ?? true ? null : row['gender'] as String?);
+        _familyRelations.add((row['relation'] as String?)?.isEmpty ?? true ? null : row['relation'] as String?);
+        _familyAadhars.add(null); // Previously uploaded aadhar files aren't re-attached to a picker; the URL stays in the row's saved data unless re-uploaded.
+      }
+    }
+
+    final education = (d['education'] as List?) ?? [];
+    if (education.isNotEmpty) {
+      for (final row in _educationRows) { for (final c in row.values) c.dispose(); }
+      _educationRows = [];
+      for (final raw in education) {
+        final row = Map<String, dynamic>.from(raw as Map);
+        _educationRows.add({
+          'qualification': TextEditingController(text: (row['qualification'] as String?) ?? ''),
+          'university': TextEditingController(text: (row['university'] as String?) ?? ''),
+          'year': TextEditingController(text: (row['year'] as String?) ?? ''),
+          'marks': TextEditingController(text: (row['marks'] as String?) ?? ''),
+          'subject': TextEditingController(text: (row['subject'] as String?) ?? ''),
+        });
+      }
+    }
+
+    final experience = (d['experience'] as List?) ?? [];
+    if (experience.isNotEmpty) {
+      for (final row in _experienceRows) { for (final c in row.values) c.dispose(); }
+      _experienceRows = [];
+      for (final raw in experience) {
+        final row = Map<String, dynamic>.from(raw as Map);
+        _experienceRows.add({
+          'organisation': TextEditingController(text: (row['organisation'] as String?) ?? ''),
+          'from': TextEditingController(text: (row['from'] as String?) ?? ''),
+          'to': TextEditingController(text: (row['to'] as String?) ?? ''),
+          'desig_joining': TextEditingController(text: (row['desig_joining'] as String?) ?? ''),
+          'desig_relieving': TextEditingController(text: (row['desig_relieving'] as String?) ?? ''),
+          'job_resp': TextEditingController(text: (row['job_resp'] as String?) ?? ''),
+          'superior': TextEditingController(text: (row['superior'] as String?) ?? ''),
+          'salary': TextEditingController(text: (row['salary'] as String?) ?? ''),
+          'reason': TextEditingController(text: (row['reason'] as String?) ?? ''),
+        });
+      }
+    }
+
+    _lastReportingName.text = s('last_reporting_name');
+    _lastReportingDesig.text = s('last_reporting_designation');
+    _lastCompany.text = s('last_company');
+    _ref1.text = s('reference1');
+    _ref2.text = s('reference2');
+    _esiNumber.text = s('esi_number');
+    _pfNumber.text = s('pf_number');
+    _languages.text = s('languages_known');
+    _hobbies.text = s('hobbies');
+    _interests.text = s('interests');
+    _relatedToEmployee.text = s('related_to_employee');
+    _professionalMember.text = s('professional_membership');
+    _specializedTraining.text = s('specialized_training');
+    _otherInfo.text = s('other_information');
+    final bg = s('blood_group');
+    _bloodGroupValue = bg.isEmpty ? null : bg;
+    _allergicTo.text = s('allergic_to');
+    _majorIllness.text = s('major_illness');
+    _emergencyName.text = s('emergency_contact_name');
+    _emergencyNumber.text = s('emergency_contact_number');
+    _emergencyAddress.text = s('emergency_contact_address');
+    _declarationDateVal = _parseFmt(d['declaration_date'] as String?);
+    _declarationPlace.text = s('declaration_place');
+    // Attachments/custom fields are left for the candidate to re-attach if
+    // flagged — file bytes from a prior session aren't retrievable client
+    // side, only their stored URLs, which _docLabels' UI doesn't currently
+    // render as "already uploaded, keep as is".
+  }
 
   Future<DateTime?> _pickDate({
     DateTime? initial,
@@ -904,13 +1067,28 @@ class _OnboardingFormPageState extends State<OnboardingFormPage> {
     try {
       // Store the entire payload as a single JSONB column so new fields
       // added via the form editor never require a SQL migration.
-      await Supabase.instance.client.from('onboarding_forms').insert({
-        'name':        payload['name'],
-        'phone_number': payload['phone_number'],
-        'designation': payload['designation'],
-        'form_data':   payload,
-        if (_candidateApplicationId != null) 'candidate_application_id': _candidateApplicationId,
-      });
+      final editingId = _editingOnboardingFormId;
+      if (editingId != null) {
+        // Correction resubmission — update the same row rather than insert
+        // a new one, and clear the correction flags now that it's back in
+        // HR's hands.
+        await Supabase.instance.client.from('onboarding_forms').update({
+          'name':        payload['name'],
+          'phone_number': payload['phone_number'],
+          'designation': payload['designation'],
+          'form_data':   payload,
+          'needs_correction': false,
+          'fields_to_correct': <String>[],
+        }).eq('id', editingId);
+      } else {
+        await Supabase.instance.client.from('onboarding_forms').insert({
+          'name':        payload['name'],
+          'phone_number': payload['phone_number'],
+          'designation': payload['designation'],
+          'form_data':   payload,
+          if (_candidateApplicationId != null) 'candidate_application_id': _candidateApplicationId,
+        });
+      }
       final candidateId = _candidateApplicationId;
       if (candidateId != null) {
         // Reflects "Onboarding Completed" live in the HR portal via the
@@ -975,6 +1153,10 @@ class _OnboardingFormPageState extends State<OnboardingFormPage> {
               key: _formKey,
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 _buildHeader(),
+                if (_flaggedFields.isNotEmpty) ...[
+                  const SizedBox(height: 16),
+                  _buildCorrectionBanner(),
+                ],
                 const SizedBox(height: 24),
                 ..._orderedSectionWidgets(),
                 const SizedBox(height: 28),
@@ -987,6 +1169,34 @@ class _OnboardingFormPageState extends State<OnboardingFormPage> {
       ),
     ),   // Scaffold
     );   // Theme
+  }
+
+  // Shown when this is a correction revisit — everything already entered
+  // is prefilled below, this just tells the candidate which parts HR wants
+  // them to look at again.
+  Widget _buildCorrectionBanner() {
+    final labels = _flaggedFields.map((k) => OnboardingFormPage.fieldLabels[k] ?? k).join(', ');
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.orange.shade50,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: Colors.orange.shade200),
+      ),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Icon(Icons.error_outline_rounded, size: 18, color: Colors.orange.shade800),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Text(
+            'Your earlier answers are already filled in below. HR asked you to '
+            'recheck: $labels. Update those and resubmit — everything else is '
+            'kept as you entered it.',
+            style: TextStyle(fontSize: 12.5, color: Colors.orange.shade900, height: 1.4),
+          ),
+        ),
+      ]),
+    );
   }
 
   // Returns section widgets in config order, skipping disabled sections.
@@ -2102,5 +2312,3 @@ class _SectionLabel extends StatelessWidget {
           fontWeight: FontWeight.w700,
           color: Color(0xFF6B7280)));
 }
-
-// vercel connection test 2026-08-27T11:59:21Z

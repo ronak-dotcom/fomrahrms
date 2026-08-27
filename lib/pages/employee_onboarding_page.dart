@@ -7,6 +7,7 @@ import '../models/app_user.dart';
 import '../models/appraisal_store.dart' show visibleManagersForPicker;
 import '../models/onboarding_form_config.dart';
 import '../models/user_session.dart';
+import 'onboarding_form_page.dart' show OnboardingFormPage;
 import '../services/notification_service.dart';
 import '../services/supabase_service.dart';
 import '../services/user_store.dart';
@@ -1622,6 +1623,87 @@ class _SubmissionCardState extends State<_SubmissionCard> {
     }
   }
 
+  // Sends the submission back to the candidate for a partial fix — the
+  // opposite of Deny. Only the fields HR picks are flagged; the row and
+  // every other field are left as the candidate entered them, and
+  // OnboardingFormPage reloads and prefills all of it on their next visit
+  // to the same link.
+  Future<void> _requestCorrection(BuildContext context) async {
+    final d = widget.data;
+    final selected = <String>{};
+    final picked = await showDialog<Set<String>>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: const Text('Request Correction',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+          content: SizedBox(
+            width: 380,
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              const Text(
+                'Pick what to send back. Everything already entered stays saved — the '
+                'candidate only needs to fix what you select here.',
+                style: TextStyle(fontSize: 12.5),
+              ),
+              const SizedBox(height: 12),
+              SizedBox(
+                height: 320,
+                child: ListView(
+                  shrinkWrap: true,
+                  children: OnboardingFormPage.fieldLabels.entries.map((e) {
+                    return CheckboxListTile(
+                      dense: true,
+                      value: selected.contains(e.key),
+                      title: Text(e.value, style: const TextStyle(fontSize: 13)),
+                      onChanged: (v) => setDialogState(() {
+                        if (v == true) selected.add(e.key); else selected.remove(e.key);
+                      }),
+                    );
+                  }).toList(),
+                ),
+              ),
+            ]),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+            ElevatedButton(
+              onPressed: selected.isEmpty ? null : () => Navigator.pop(ctx, selected),
+              style: ElevatedButton.styleFrom(
+                  backgroundColor: AppTheme.primaryBlue, foregroundColor: Colors.white),
+              child: const Text('Send Back'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (picked == null || picked.isEmpty || !context.mounted) return;
+    setState(() => _acting = true);
+    try {
+      await SupabaseService.requestOnboardingCorrection(
+        widget.data['id'].toString(),
+        picked.toList(),
+        requestedBy: UserSession.email,
+      );
+      NotificationService.onboardingFormSentBack(name: (d['name'] as String?) ?? '');
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Sent back to the candidate to fix ${picked.length} field(s).'),
+          backgroundColor: Colors.green.shade700,
+        ));
+      }
+      widget.onRefresh();
+    } catch (e) {
+      setState(() => _acting = false);
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Failed to send back: $e'),
+          backgroundColor: Colors.red.shade700,
+        ));
+      }
+    }
+  }
+
   // Shared with the Activate User toggle in administration_page.dart — see
   // EmailService.sendEmployeeActivation.
   Future<String?> _sendActivationEmail(AppUser user, {String? personalEmail}) =>
@@ -1886,6 +1968,20 @@ class _SubmissionCardState extends State<_SubmissionCard> {
                     ),
                   ),
                 ]),
+                const SizedBox(height: 8),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    icon: const Icon(Icons.reply_rounded, size: 16),
+                    label: const Text('Request Correction (send back specific fields)'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Colors.orange.shade800,
+                      side: BorderSide(color: Colors.orange.shade300),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    ),
+                    onPressed: _acting ? null : () => _requestCorrection(context),
+                  ),
+                ),
               ],
               // Show assigned details once forwarded — stays visible through
               // every later stage since assigned_* fields never change again.

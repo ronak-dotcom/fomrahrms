@@ -3375,6 +3375,38 @@ class SupabaseService {
     return data == true;
   }
 
+  // Returns the existing submission (if any) for this candidate — used to
+  // tell a fresh candidate ("nothing submitted yet") apart from one who is
+  // revisiting the link after HR sent it back for a correction (data already
+  // there, prefill instead of blanking).
+  static Future<Map<String, dynamic>?> fetchOnboardingFormForCandidate(String candidateId) async {
+    if (candidateId.isEmpty) return null;
+    final data = await _db
+        ?.from('onboarding_forms')
+        .select('id, form_data, needs_correction, fields_to_correct')
+        .eq('candidate_application_id', candidateId)
+        .maybeSingle();
+    return data == null ? null : Map<String, dynamic>.from(data as Map);
+  }
+
+  // HR flags specific fields as wrong and sends the submission back to the
+  // candidate. The row (and every other field's data) is left untouched —
+  // only these two flags change — so the candidate's next visit to the same
+  // link can prefill everything and highlight just what needs fixing.
+  static Future<void> requestOnboardingCorrection(
+    String onboardingFormId,
+    List<String> fieldKeys, {
+    required String requestedBy,
+  }) async {
+    await _db?.from('onboarding_forms').update({
+      'needs_correction': true,
+      'fields_to_correct': fieldKeys,
+      'correction_requested_at': DateTime.now().toUtc().toIso8601String(),
+      'correction_requested_by': requestedBy,
+      'status': 'pending',
+    }).eq('id', onboardingFormId);
+  }
+
   // ── Email Logs ───────────────────────────────────────────────────────
 
   static Future<String?> insertEmailLog(Map<String, dynamic> fields) async {
