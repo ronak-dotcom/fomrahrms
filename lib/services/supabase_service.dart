@@ -3471,15 +3471,41 @@ class SupabaseService {
   /// Computed in the database rather than the client so the export cannot
   /// disagree with what the screens show — the same rules for lateness,
   /// exemptions and non-working days apply in one place.
-  static Future<List<Map<String, dynamic>>> fetchCycleReport(DateTime cycleEnd) async {
+  static Future<List<Map<String, dynamic>>> fetchCycleReport(
+      DateTime cycleEnd, {List<String>? employeeIds}) async {
     try {
       final iso = '${cycleEnd.year.toString().padLeft(4, '0')}-'
           '${cycleEnd.month.toString().padLeft(2, '0')}-'
           '${cycleEnd.day.toString().padLeft(2, '0')}';
-      final rows = await _db?.rpc('attendance_cycle_report', params: {'p_cycle_end': iso});
+      final rows = await _db?.rpc('attendance_cycle_report', params: {
+        'p_cycle_end': iso,
+        if (employeeIds != null && employeeIds.isNotEmpty) 'p_employee_ids': employeeIds,
+      });
       return List<Map<String, dynamic>>.from(rows ?? []);
     } catch (e) {
       _writeFailed('fetchCycleReport', e);
+      return [];
+    }
+  }
+
+  /// Day-level late-arrival detail for a chosen set of employees over one
+  /// pay cycle — date, check-in time, minutes late, grace vs severe. Used
+  /// for a punctuality review during payroll where a per-employee count
+  /// isn't enough detail.
+  static Future<List<Map<String, dynamic>>> fetchPunctualityDetail(
+      DateTime cycleEnd, List<String> employeeIds) async {
+    if (employeeIds.isEmpty) return [];
+    try {
+      final iso = '${cycleEnd.year.toString().padLeft(4, '0')}-'
+          '${cycleEnd.month.toString().padLeft(2, '0')}-'
+          '${cycleEnd.day.toString().padLeft(2, '0')}';
+      final rows = await _db?.rpc('attendance_punctuality_detail', params: {
+        'p_cycle_end': iso,
+        'p_employee_ids': employeeIds,
+      });
+      return List<Map<String, dynamic>>.from(rows ?? []);
+    } catch (e) {
+      _writeFailed('fetchPunctualityDetail', e);
       return [];
     }
   }

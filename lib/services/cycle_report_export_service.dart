@@ -136,4 +136,103 @@ class CycleReportExportService {
     await Printing.sharePdf(bytes: await buildPdf(rows, cycleEnd), filename: filename);
     return filename;
   }
+
+  // ── Punctuality detail (selected employees only) ──────────────────────
+  // Day-level late-arrival rows for a payroll punctuality review — every
+  // instance with date, time, minutes late, and grace vs severe, rather
+  // than just the per-employee count the main sheet above gives.
+
+  static const _punctualityColumns = <String, String>{
+    'employee_name': 'EMPLOYEE NAME',
+    'employee_code': 'EMPLOYEE CODE',
+    'date': 'DATE',
+    'check_in_time': 'CHECK-IN',
+    'scheduled_start': 'SCHEDULED START',
+    'minutes_late': 'MINUTES LATE',
+    'severity': 'SEVERITY',
+  };
+
+  static String _punctualityFileStem(DateTime cycleEnd) =>
+      'Punctuality_${_months[cycleEnd.month - 1]}_${cycleEnd.year}';
+
+  static String buildPunctualityCsv(List<Map<String, dynamic>> rows, DateTime cycleEnd) {
+    final b = StringBuffer();
+    b.writeln('FOMRA HOUSING - PUNCTUALITY DETAIL');
+    b.writeln('Pay cycle,${attendanceCycleRange(cycleEnd)} ${cycleEnd.year}');
+    b.writeln();
+    b.writeln(_punctualityColumns.values.map(_csvCell).join(','));
+    for (final r in rows) {
+      b.writeln(_punctualityColumns.keys.map((k) => _csvCell(r[k])).join(','));
+    }
+    return b.toString();
+  }
+
+  static Future<String> downloadPunctualityCsv(
+      List<Map<String, dynamic>> rows, DateTime cycleEnd) async {
+    final filename = '${_punctualityFileStem(cycleEnd)}.csv';
+    await Printing.sharePdf(
+      bytes: Uint8List.fromList(utf8.encode(buildPunctualityCsv(rows, cycleEnd))),
+      filename: filename,
+    );
+    return filename;
+  }
+
+  static Future<Uint8List> buildPunctualityPdf(
+      List<Map<String, dynamic>> rows, DateTime cycleEnd) async {
+    final doc = pw.Document();
+    final headers = _punctualityColumns.values.toList();
+
+    doc.addPage(
+      pw.MultiPage(
+        pageFormat: PdfPageFormat.a4,
+        margin: const pw.EdgeInsets.all(24),
+        header: (_) => pw.Column(
+          crossAxisAlignment: pw.CrossAxisAlignment.start,
+          children: [
+            pw.Text('FOMRA HOUSING & INFRASTRUCTURE PVT LTD',
+                style: pw.TextStyle(fontSize: 13, fontWeight: pw.FontWeight.bold)),
+            pw.SizedBox(height: 2),
+            pw.Text(
+              'Punctuality Detail — ${attendanceCycleRange(cycleEnd)} ${cycleEnd.year}',
+              style: const pw.TextStyle(fontSize: 10, color: PdfColors.grey700),
+            ),
+            pw.SizedBox(height: 8),
+          ],
+        ),
+        footer: (ctx) => pw.Align(
+          alignment: pw.Alignment.centerRight,
+          child: pw.Text('Page ${ctx.pageNumber} of ${ctx.pagesCount}',
+              style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey600)),
+        ),
+        build: (_) => [
+          if (rows.isEmpty)
+            pw.Text('No late check-ins for the selected employees this cycle.',
+                style: const pw.TextStyle(fontSize: 10)),
+          if (rows.isNotEmpty)
+            pw.TableHelper.fromTextArray(
+              headers: headers,
+              data: rows
+                  .map((r) => _punctualityColumns.keys.map((k) => (r[k] ?? '').toString()).toList())
+                  .toList(),
+              headerStyle: pw.TextStyle(fontSize: 8, fontWeight: pw.FontWeight.bold),
+              cellStyle: const pw.TextStyle(fontSize: 8),
+              headerDecoration: const pw.BoxDecoration(color: PdfColors.grey300),
+              cellHeight: 16,
+              cellAlignments: {
+                for (var i = 0; i < headers.length; i++)
+                  i: i < 2 ? pw.Alignment.centerLeft : pw.Alignment.center,
+              },
+            ),
+        ],
+      ),
+    );
+    return doc.save();
+  }
+
+  static Future<String> downloadPunctualityPdf(
+      List<Map<String, dynamic>> rows, DateTime cycleEnd) async {
+    final filename = '${_punctualityFileStem(cycleEnd)}.pdf';
+    await Printing.sharePdf(bytes: await buildPunctualityPdf(rows, cycleEnd), filename: filename);
+    return filename;
+  }
 }

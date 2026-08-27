@@ -76,6 +76,9 @@ class ReportsHeader extends StatelessWidget {
   final VoidCallback onExport;
   final VoidCallback? onExportCycleCsv;
   final VoidCallback? onExportCyclePdf;
+  final VoidCallback? onExportPunctualityCsv;
+  final VoidCallback? onExportPunctualityPdf;
+  final bool punctualityEnabled;
   final bool exporting;
 
   const ReportsHeader({
@@ -103,6 +106,9 @@ class ReportsHeader extends StatelessWidget {
     required this.onExport,
     this.onExportCycleCsv,
     this.onExportCyclePdf,
+    this.onExportPunctualityCsv,
+    this.onExportPunctualityPdf,
+    this.punctualityEnabled = false,
     required this.exporting,
   });
 
@@ -277,17 +283,23 @@ class ReportsHeader extends StatelessWidget {
               onExportCycleCsv?.call();
             case 'sheet_pdf':
               onExportCyclePdf?.call();
+            case 'punctuality_csv':
+              onExportPunctualityCsv?.call();
+            case 'punctuality_pdf':
+              onExportPunctualityPdf?.call();
           }
         },
-        itemBuilder: (_) => const [
+        itemBuilder: (_) => [
           PopupMenuItem(
             value: 'sheet_csv',
             child: ListTile(
               dense: true,
               contentPadding: EdgeInsets.zero,
-              leading: Icon(Icons.table_chart_outlined, size: 18),
-              title: Text('Attendance sheet (Excel/CSV)'),
-              subtitle: Text('Pay cycle, all employees'),
+              leading: const Icon(Icons.table_chart_outlined, size: 18),
+              title: const Text('Attendance sheet (Excel/CSV)'),
+              subtitle: Text(employees.isEmpty
+                  ? 'Pay cycle, all employees'
+                  : 'Pay cycle, ${employees.length} selected'),
             ),
           ),
           PopupMenuItem(
@@ -295,12 +307,44 @@ class ReportsHeader extends StatelessWidget {
             child: ListTile(
               dense: true,
               contentPadding: EdgeInsets.zero,
-              leading: Icon(Icons.picture_as_pdf_outlined, size: 18),
-              title: Text('Attendance sheet (PDF)'),
-              subtitle: Text('Pay cycle, all employees'),
+              leading: const Icon(Icons.picture_as_pdf_outlined, size: 18),
+              title: const Text('Attendance sheet (PDF)'),
+              subtitle: Text(employees.isEmpty
+                  ? 'Pay cycle, all employees'
+                  : 'Pay cycle, ${employees.length} selected'),
+            ),
+          ),
+          const PopupMenuDivider(),
+          PopupMenuItem(
+            value: 'punctuality_csv',
+            enabled: punctualityEnabled,
+            child: ListTile(
+              dense: true,
+              contentPadding: EdgeInsets.zero,
+              leading: Icon(Icons.schedule_rounded, size: 18,
+                  color: punctualityEnabled ? null : AppTheme.textSecondary.withValues(alpha: 0.4)),
+              title: const Text('Punctuality detail (CSV)'),
+              subtitle: Text(punctualityEnabled
+                  ? 'Every late check-in, ${employees.length} selected'
+                  : 'Select employees above first'),
             ),
           ),
           PopupMenuItem(
+            value: 'punctuality_pdf',
+            enabled: punctualityEnabled,
+            child: ListTile(
+              dense: true,
+              contentPadding: EdgeInsets.zero,
+              leading: Icon(Icons.schedule_rounded, size: 18,
+                  color: punctualityEnabled ? null : AppTheme.textSecondary.withValues(alpha: 0.4)),
+              title: const Text('Punctuality detail (PDF)'),
+              subtitle: Text(punctualityEnabled
+                  ? 'Every late check-in, ${employees.length} selected'
+                  : 'Select employees above first'),
+            ),
+          ),
+          const PopupMenuDivider(),
+          const PopupMenuItem(
             value: 'summary',
             child: ListTile(
               dense: true,

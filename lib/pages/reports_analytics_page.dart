@@ -608,13 +608,20 @@ class _ReportsAnalyticsPageState extends State<ReportsAnalyticsPage> {
   /// Offered as CSV as well as PDF: the existing sheet is a spreadsheet, and a
   /// PDF cannot be pasted into next month's workbook or reconciled against
   /// payroll.
+  ///
+  /// Scoped to the employees currently selected in the header filter, same
+  /// as the on-screen figures — an empty selection means everyone, matching
+  /// how every other filter on this page behaves.
   Future<void> _exportCycleSheet({required bool asCsv}) async {
     setState(() => _exporting = true);
     try {
       // Anchored on the range END, so exporting while inside a cycle gives the
       // cycle you are currently in rather than the previous one.
       final cycleEnd = attendanceCycleEnd(_range.end);
-      final rows = await SupabaseService.fetchCycleReport(cycleEnd);
+      final employeeIds = _employeeNames.isEmpty
+          ? null
+          : _users.where((u) => _employeeNames.contains(u.name)).map((u) => u.employeeId).toList();
+      final rows = await SupabaseService.fetchCycleReport(cycleEnd, employeeIds: employeeIds);
       if (!mounted) return;
       if (rows.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
@@ -629,6 +636,53 @@ class _ReportsAnalyticsPageState extends State<ReportsAnalyticsPage> {
       if (!mounted) return;
       setState(() => _recentReports
           .insert(0, (filename: filename, generatedAt: DateTime.now())));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('Could not export: $e'),
+        backgroundColor: Colors.red.shade700,
+        behavior: SnackBarBehavior.floating,
+      ));
+    } finally {
+      if (mounted) setState(() => _exporting = false);
+    }
+  }
+
+  /// Day-level late-arrival detail for the selected employees — every
+  /// instance with date, time, and how far past the schedule, for a
+  /// punctuality review during pay calculation. Requires at least one
+  /// employee selected (unlike the cycle sheet above, this has no
+  /// "everyone" mode — a company-wide log of every late check-in isn't a
+  /// useful export).
+  Future<void> _exportPunctualityDetail({required bool asCsv}) async {
+    if (_employeeNames.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Select one or more employees first.'),
+        behavior: SnackBarBehavior.floating,
+      ));
+      return;
+    }
+    setState(() => _exporting = true);
+    try {
+      final cycleEnd = attendanceCycleEnd(_range.end);
+      final employeeIds = _users
+          .where((u) => _employeeNames.contains(u.name))
+          .map((u) => u.employeeId)
+          .toList();
+      final rows = await SupabaseService.fetchPunctualityDetail(cycleEnd, employeeIds);
+      if (!mounted) return;
+      final filename = asCsv
+          ? await CycleReportExportService.downloadPunctualityCsv(rows, cycleEnd)
+          : await CycleReportExportService.downloadPunctualityPdf(rows, cycleEnd);
+      if (!mounted) return;
+      setState(() => _recentReports
+          .insert(0, (filename: filename, generatedAt: DateTime.now())));
+      if (rows.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('No late check-ins for the selected employees this cycle.'),
+          behavior: SnackBarBehavior.floating,
+        ));
+      }
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -705,6 +759,9 @@ class _ReportsAnalyticsPageState extends State<ReportsAnalyticsPage> {
             onExport: _export,
             onExportCycleCsv: () => _exportCycleSheet(asCsv: true),
             onExportCyclePdf: () => _exportCycleSheet(asCsv: false),
+            onExportPunctualityCsv: () => _exportPunctualityDetail(asCsv: true),
+            onExportPunctualityPdf: () => _exportPunctualityDetail(asCsv: false),
+            punctualityEnabled: _employeeNames.isNotEmpty,
             exporting: _exporting,
           ),
           const SizedBox(height: 24),
