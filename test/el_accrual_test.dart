@@ -5,6 +5,9 @@ import 'package:fomra_hrms/utils/el_accrual.dart';
 AppUser _eligibleFrom(String isoOrSlashDate, {String lastAvailed = ''}) => AppUser(
       name: 'Test',
       email: 'test@example.invalid',
+      employeeId: 'TEST001',
+      designation: 'Test Designation',
+      role: 'Employee',
       elEligibleAt: isoOrSlashDate,
       elLastAvailedAt: lastAvailed,
       onrollConfirmedAt: '2020-01-01',
