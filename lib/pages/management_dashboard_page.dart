@@ -54,6 +54,11 @@ class _ManagementDashboardPageState extends State<ManagementDashboardPage> {
   String _totalEmployees = '—';
   String _present = '—';
   String _absent  = '—';
+  // route → number of items waiting on a decision, shown as a badge on the
+  // section card. The dashboard previously just repeated the sidebar's
+  // links, so it told you where things live but never that anything needed
+  // attention — you had to open each queue to find out it was empty.
+  Map<String, int> _pending = const {};
   List<AppUser> _users = [];
   List<AttendanceRecord> _records = [];
   List<LeaveApplication> _leaveApps = [];
@@ -97,6 +102,15 @@ class _ManagementDashboardPageState extends State<ManagementDashboardPage> {
             ).countsAsAbsent)
         .length;
 
+    // Counted here rather than inside the card so the card stays a dumb
+    // renderer and every count comes from the same already-fetched data.
+    final pendingLeaveCount = leaves
+        .where((a) => a.managerStatus == LeaveApprovalStatus.pending)
+        .length;
+    // Same criterion onroll_approvals_page.dart counts as pending, so the
+    // badge and the page can't disagree.
+    final pendingOnroll = users.where((u) => u.onrollAwaitingManagement).length;
+
     if (mounted) {
       setState(() {
         _totalEmployees = '${tracked.length}';
@@ -105,6 +119,10 @@ class _ManagementDashboardPageState extends State<ManagementDashboardPage> {
         _users = users;
         _records = records;
         _leaveApps = leaves;
+        _pending = {
+          '/management/leave/team-approvals': pendingLeaveCount,
+          '/management/onroll-approvals': pendingOnroll,
+        };
       });
     }
   }
@@ -174,7 +192,7 @@ class _ManagementDashboardPageState extends State<ManagementDashboardPage> {
 
                   _SectionLabel(icon: Icons.business_center_rounded, label: 'Management Overview'),
                   const SizedBox(height: 16),
-                  _SectionGrid(),
+                  _SectionGrid(pending: _pending),
                   SizedBox(height: narrow ? 24 : 32),
 
                   const SizedBox(height: 8),
@@ -404,6 +422,9 @@ class _MgmtStatStrip extends StatelessWidget {
 }
 
 class _SectionGrid extends StatelessWidget {
+  final Map<String, int> pending;
+  const _SectionGrid({required this.pending});
+
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(builder: (context, constraints) {
@@ -423,7 +444,7 @@ class _SectionGrid extends StatelessWidget {
                   right: (s == rowItems.last && missing == 0) ? 0 : 12,
                   bottom: 12,
                 ),
-                child: _SectionCard(section: s),
+                child: _SectionCard(section: s, pendingCount: pending[s.route] ?? 0),
               ),
             )),
             for (int j = 0; j < missing; j++)
@@ -443,7 +464,8 @@ class _SectionGrid extends StatelessWidget {
 
 class _SectionCard extends StatelessWidget {
   final _Section section;
-  const _SectionCard({required this.section});
+  final int pendingCount;
+  const _SectionCard({required this.section, this.pendingCount = 0});
 
   @override
   Widget build(BuildContext context) {
@@ -462,14 +484,33 @@ class _SectionCard extends StatelessWidget {
           child: Padding(
             padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 16),
             child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Container(
-                width: 40, height: 40,
-                decoration: BoxDecoration(
-                  color: section.color.withValues(alpha: 0.12),
-                  shape: BoxShape.circle,
+              Row(children: [
+                Container(
+                  width: 40, height: 40,
+                  decoration: BoxDecoration(
+                    color: section.color.withValues(alpha: 0.12),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(section.icon, color: section.color, size: 20),
                 ),
-                child: Icon(section.icon, color: section.color, size: 20),
-              ),
+                const Spacer(),
+                // Only drawn when something is actually waiting — a "0"
+                // badge on every card would be noise and would stop the
+                // real ones from standing out.
+                if (pendingCount > 0)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: AppTheme.warning,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Text('$pendingCount pending',
+                        style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 10.5,
+                            fontWeight: FontWeight.w700)),
+                  ),
+              ]),
               const SizedBox(height: 12),
               Text(section.title,
                   style: const TextStyle(

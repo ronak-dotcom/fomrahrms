@@ -20,45 +20,117 @@ class _NavItem {
 
 typedef _SubItem = ({String label, IconData icon, String route});
 
-const _editFormItems = <_SubItem>[
-  (label: 'Form Approvals',       icon: Icons.approval_rounded,         route: '/management/form-approvals'),
-  (label: 'Edit Leave Form',      icon: Icons.event_available_rounded,  route: '/management/edit-leave-form'),
-  (label: 'Edit Permission Form', icon: Icons.access_time_rounded,      route: '/management/edit-leave-form'),
-  (label: 'Edit Comp Off Form',   icon: Icons.swap_horiz_rounded,       route: '/management/edit-leave-form'),
-  (label: 'Edit Interview Form',  icon: Icons.assignment_rounded,       route: '/management/edit-form'),
-  (label: 'Edit Onboarding Form', icon: Icons.how_to_reg_rounded,       route: '/management/edit-onboarding-form'),
-  (label: 'Edit Maintenance Form', icon: Icons.build_rounded,          route: '/management/edit-maintenance-form'),
-  (label: 'Location Management',   icon: Icons.location_on_rounded,    route: '/management/location-management'),
-];
+class _NavGroup {
+  final String label;
+  final IconData icon;
+  final List<_SubItem> items;
+  const _NavGroup(this.label, this.icon, this.items);
+}
 
 Color get _mgmtColor => AppTheme.primaryBlueDark;
 
-const _navItems = [
-  _NavItem('Dashboard',              Icons.dashboard_rounded,              '/management/dashboard'),
-  _NavItem('Employee Management',    Icons.people_rounded,                 '/management/employee-management'),
-  _NavItem('Attendance Management',  Icons.access_time_rounded,            '/management/attendance-management'),
-  _NavItem('Leave Management',       Icons.event_available_rounded,        '/management/leave-management'),
-  _NavItem('Team Leave Approvals',   Icons.group_rounded,                  '/management/leave/team-approvals'),
-  _NavItem('Task Management',        Icons.task_alt_rounded,               '/management/task-management'),
-  _NavItem('KRA',                    Icons.flag_rounded,                   '/management/kra-management'),
-  _NavItem('KRA Approvals',          Icons.fact_check_rounded,             '/management/kra-approvals'),
-  _NavItem('Payroll Management',     Icons.account_balance_wallet_rounded, '/management/payroll-management'),
-  _NavItem('Interview Process',      Icons.record_voice_over_rounded,      '/management/interview-process'),
-  _NavItem('Interview Review',       Icons.admin_panel_settings_rounded,   '/management/interview-review'),
-  _NavItem('Appraisals',             Icons.fact_check_rounded,             '/management/appraisals'),
-  _NavItem('Employee Onboarding',    Icons.how_to_reg_rounded,             '/management/employee-onboarding'),
-  _NavItem('Lead Management',        Icons.leaderboard_rounded,            '/management/lead-management'),
-  _NavItem('Maintenance Management', Icons.build_rounded,                  '/management/maintenance-management'),
-  _NavItem('Approvals',              Icons.approval_rounded,               '/management/approvals'),
-  _NavItem('Notifications',          Icons.notifications_rounded,          '/management/notifications'),
-  _NavItem('Reports & Analytics',    Icons.bar_chart_rounded,              '/management/reports-analytics'),
-  _NavItem('Administration',         Icons.admin_panel_settings_rounded,   '/management/administration'),
-  _NavItem('Location History',       Icons.travel_explore_rounded,         '/management/location-history'),
-  _NavItem('Settings',               Icons.settings_rounded,               '/management/settings'),
+// Nav is grouped by what someone is trying to DO, rather than the flat
+// 21-item list this replaces. That list mixed everything at one level, so
+// attendance data sat in four unrelated places, the four kinds of approval
+// were scattered across the menu (one of them buried under "Edit Forms"),
+// and finding anything meant reading the whole list top to bottom.
+//
+// Dashboard stays pinned above the groups — it's the landing page and
+// shouldn't need a group opened to reach it.
+const _dashboardItem =
+    _NavItem('Dashboard', Icons.dashboard_rounded, '/management/dashboard');
+
+const _navGroups = <_NavGroup>[
+  _NavGroup('Approvals', Icons.approval_rounded, [
+    // All four approval queues in one place. Previously: Approvals and Team
+    // Leave Approvals were top-level, KRA Approvals was elsewhere in the
+    // list, and Form Approvals was hidden inside the Edit Forms submenu —
+    // so "what needs my decision?" meant checking four unrelated spots.
+    (label: 'All Approvals',       icon: Icons.inbox_rounded,         route: '/management/approvals'),
+    (label: 'Leave Approvals',     icon: Icons.event_available_rounded, route: '/management/leave/team-approvals'),
+    (label: 'KRA Approvals',       icon: Icons.flag_rounded,          route: '/management/kra-approvals'),
+    (label: 'Form Approvals',      icon: Icons.fact_check_rounded,    route: '/management/form-approvals'),
+  ]),
+  _NavGroup('People', Icons.people_rounded, [
+    (label: 'Employee Management', icon: Icons.badge_rounded,          route: '/management/employee-management'),
+    (label: 'Employee Onboarding', icon: Icons.how_to_reg_rounded,     route: '/management/employee-onboarding'),
+    (label: 'Interview Process',   icon: Icons.record_voice_over_rounded, route: '/management/interview-process'),
+    (label: 'Interview Review',    icon: Icons.rate_review_rounded,    route: '/management/interview-review'),
+    (label: 'Appraisals',          icon: Icons.workspace_premium_rounded, route: '/management/appraisals'),
+    (label: 'KRA',                 icon: Icons.flag_rounded,           route: '/management/kra-management'),
+  ]),
+  _NavGroup('Time & Attendance', Icons.access_time_rounded, [
+    // Late Coming and GPS Tracking are live routes that were missing from
+    // the nav entirely — reachable only by typing the URL.
+    (label: 'Attendance Records',  icon: Icons.fact_check_rounded,     route: '/management/attendance-management'),
+    (label: 'Late Coming',         icon: Icons.watch_later_rounded,    route: '/management/attendance/late-coming'),
+    (label: 'GPS Tracking',        icon: Icons.my_location_rounded,    route: '/management/attendance/gps-tracking'),
+    (label: 'Location History',    icon: Icons.travel_explore_rounded, route: '/management/location-history'),
+    (label: 'Leave Management',    icon: Icons.event_available_rounded, route: '/management/leave-management'),
+  ]),
+  _NavGroup('Operations', Icons.work_outline_rounded, [
+    (label: 'Task Management',     icon: Icons.task_alt_rounded,       route: '/management/task-management'),
+    (label: 'Lead Management',     icon: Icons.leaderboard_rounded,    route: '/management/lead-management'),
+    (label: 'Maintenance',         icon: Icons.build_rounded,          route: '/management/maintenance-management'),
+    (label: 'Payroll Management',  icon: Icons.account_balance_wallet_rounded, route: '/management/payroll-management'),
+  ]),
+  _NavGroup('Setup', Icons.settings_rounded, [
+    (label: 'Administration',      icon: Icons.admin_panel_settings_rounded, route: '/management/administration'),
+    (label: 'Location Management', icon: Icons.location_on_rounded,    route: '/management/location-management'),
+    (label: 'Settings',            icon: Icons.tune_rounded,           route: '/management/settings'),
+  ]),
+  _NavGroup('Edit Forms', Icons.edit_note_rounded, [
+    (label: 'Edit Leave Form',       icon: Icons.event_available_rounded, route: '/management/edit-leave-form'),
+    (label: 'Edit Permission Form',  icon: Icons.access_time_rounded,     route: '/management/edit-leave-form'),
+    (label: 'Edit Comp Off Form',    icon: Icons.swap_horiz_rounded,      route: '/management/edit-leave-form'),
+    (label: 'Edit Interview Form',   icon: Icons.assignment_rounded,      route: '/management/edit-form'),
+    (label: 'Edit Onboarding Form',  icon: Icons.how_to_reg_rounded,      route: '/management/edit-onboarding-form'),
+    (label: 'Edit Maintenance Form', icon: Icons.build_rounded,           route: '/management/edit-maintenance-form'),
+  ]),
 ];
 
-List<BreadcrumbSection> get _breadcrumbSections =>
-    _navItems.map((e) => (label: e.label, route: e.route)).toList();
+// Reports and Notifications stay flat: single destinations that don't
+// belong under any group, and both are frequent enough to want one click.
+const _flatTailItems = [
+  _NavItem('Reports & Analytics', Icons.bar_chart_rounded,     '/management/reports-analytics'),
+  _NavItem('Notifications',       Icons.notifications_rounded, '/management/notifications'),
+];
+
+// Breadcrumbs resolve a route to a label, so this has to stay a flat list
+// of every reachable destination regardless of how the sidebar groups them.
+List<BreadcrumbSection> get _breadcrumbSections => [
+      (label: _dashboardItem.label, route: _dashboardItem.route),
+      for (final g in _navGroups)
+        for (final i in g.items) (label: i.label, route: i.route),
+      for (final i in _flatTailItems) (label: i.label, route: i.route),
+    ];
+
+// Built once and shared by the wide sidebar and the narrow drawer so the two
+// can't drift apart — they previously repeated the same list construction.
+List<Widget> _buildNavChildren(String location, {required bool closeDrawer}) {
+  return [
+    _SidebarTile(
+      item: _dashboardItem,
+      selected: location == _dashboardItem.route,
+      closeDrawer: closeDrawer,
+    ),
+    for (final group in _navGroups)
+      _ExpandableNavGroup(
+        label: group.label,
+        icon: group.icon,
+        items: group.items,
+        location: location,
+        closeDrawer: closeDrawer,
+      ),
+    const _SectionDivider(label: 'Insights'),
+    for (final item in _flatTailItems)
+      _SidebarTile(
+        item: item,
+        selected: location == item.route || location.startsWith('${item.route}/'),
+        closeDrawer: closeDrawer,
+      ),
+  ];
+}
 
 class ManagementShell extends StatelessWidget {
   final Widget child;
@@ -195,8 +267,10 @@ class _NarrowLayout extends StatelessWidget {
   const _NarrowLayout({required this.child, required this.location});
 
   String get _currentTitle {
-    return _navItems.firstWhere((i) => i.route == location,
-        orElse: () => _navItems.first).label;
+    for (final s in _breadcrumbSections) {
+      if (s.route == location) return s.label;
+    }
+    return _dashboardItem.label;
   }
 
   @override
@@ -256,19 +330,7 @@ class _Sidebar extends StatelessWidget {
             Expanded(
               child: ListView(
                 padding: const EdgeInsets.symmetric(vertical: 8),
-                children: [
-                  ..._navItems.map((item) => _SidebarTile(
-                      item: item,
-                      selected: location == item.route ||
-                          location.startsWith('${item.route}/'))),
-                  const _SectionDivider(label: 'Edit Forms'),
-                  _ExpandableNavGroup(
-                    label: 'Edit Forms',
-                    icon: Icons.edit_note_rounded,
-                    items: _editFormItems,
-                    location: location,
-                  ),
-                ],
+                children: _buildNavChildren(location, closeDrawer: false),
               ),
             ),
             _SidebarFooter(),
@@ -449,18 +511,26 @@ class _ExpandableNavGroup extends StatefulWidget {
 class _ExpandableNavGroupState extends State<_ExpandableNavGroup> {
   late bool _expanded;
 
+  // Sub-pages (e.g. /management/employee-management/add) should still count
+  // as "inside this group", otherwise opening a detail page collapses the
+  // group and loses the sense of where you are.
+  static bool _matches(String location, String route) =>
+      location == route || location.startsWith('$route/');
+
+  bool get _hasActiveItem =>
+      widget.items.any((i) => _matches(widget.location, i.route));
+
   @override
   void initState() {
     super.initState();
-    _expanded = widget.items.any((i) => widget.location == i.route);
+    _expanded = _hasActiveItem;
   }
 
   @override
   void didUpdateWidget(_ExpandableNavGroup oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.location != widget.location) {
-      final active = widget.items.any((i) => widget.location == i.route);
-      if (active && !_expanded) setState(() => _expanded = true);
+      if (_hasActiveItem && !_expanded) setState(() => _expanded = true);
     }
   }
 
@@ -492,7 +562,7 @@ class _ExpandableNavGroupState extends State<_ExpandableNavGroup> {
       ),
       if (_expanded)
         ...widget.items.map((item) {
-          final selected = widget.location == item.route;
+          final selected = _matches(widget.location, item.route);
           return Container(
             margin: const EdgeInsets.only(left: 20, right: 8, bottom: 2),
             decoration: BoxDecoration(
@@ -536,20 +606,7 @@ class _DrawerContent extends StatelessWidget {
           Expanded(
             child: ListView(
               padding: const EdgeInsets.symmetric(vertical: 8),
-              children: [
-                ..._navItems.map((item) => _SidebarTile(
-                    item: item,
-                    selected: location == item.route,
-                    closeDrawer: true)),
-                const _SectionDivider(label: 'Edit Forms'),
-                _ExpandableNavGroup(
-                  label: 'Edit Forms',
-                  icon: Icons.edit_note_rounded,
-                  items: _editFormItems,
-                  location: location,
-                  closeDrawer: true,
-                ),
-              ],
+              children: _buildNavChildren(location, closeDrawer: true),
             ),
           ),
           _SidebarFooter(),
