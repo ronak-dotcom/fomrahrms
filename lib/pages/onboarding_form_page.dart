@@ -143,11 +143,10 @@ class _OnboardingFormPageState extends State<OnboardingFormPage> {
   // Resolved from widget.token, if present — see _resolveCandidateToken().
   String? _candidateApplicationId;
 
-  // Set when this visit is a candidate returning to fix a HR-flagged
-  // correction rather than a first-time fill. _submit() then UPDATEs this
-  // row instead of inserting a new one, so the rest of what they already
-  // entered is never lost.
-  String? _editingOnboardingFormId;
+  // Non-empty when this visit is a candidate returning to fix fields HR
+  // flagged, rather than a first-time fill. Drives the correction banner;
+  // the insert-vs-update decision itself is made server-side from the
+  // token in submit_onboarding_form().
   List<String> _flaggedFields = [];
 
   // ── Config (loaded from Supabase) ─────────────────────────────────────────
@@ -183,7 +182,7 @@ class _OnboardingFormPageState extends State<OnboardingFormPage> {
       // they already entered instead of either blocking them or starting
       // them over from a blank form.
       final existing = await SupabaseService
-          .fetchOnboardingFormForCandidate(_candidateApplicationId ?? '');
+          .fetchOnboardingFormForToken(widget.token ?? '');
       if (!mounted) return;
 
       if (existing != null && existing['needs_correction'] != true) {
@@ -196,7 +195,6 @@ class _OnboardingFormPageState extends State<OnboardingFormPage> {
             ? Map<String, dynamic>.from(existing['form_data'] as Map)
             : <String, dynamic>{};
         setState(() {
-          _editingOnboardingFormId = existing['id']?.toString();
           _flaggedFields = List<String>.from((existing['fields_to_correct'] as List?) ?? []);
           _prefillFromFormData(formData);
         });
@@ -1067,28 +1065,17 @@ class _OnboardingFormPageState extends State<OnboardingFormPage> {
     try {
       // Store the entire payload as a single JSONB column so new fields
       // added via the form editor never require a SQL migration.
-      final editingId = _editingOnboardingFormId;
-      if (editingId != null) {
-        // Correction resubmission — update the same row rather than insert
-        // a new one, and clear the correction flags now that it's back in
-        // HR's hands.
-        await Supabase.instance.client.from('onboarding_forms').update({
-          'name':        payload['name'],
-          'phone_number': payload['phone_number'],
-          'designation': payload['designation'],
-          'form_data':   payload,
-          'needs_correction': false,
-          'fields_to_correct': <String>[],
-        }).eq('id', editingId);
-      } else {
-        await Supabase.instance.client.from('onboarding_forms').insert({
-          'name':        payload['name'],
-          'phone_number': payload['phone_number'],
-          'designation': payload['designation'],
-          'form_data':   payload,
-          if (_candidateApplicationId != null) 'candidate_application_id': _candidateApplicationId,
-        });
-      }
+      // Insert-vs-update, and the guard against rewriting an already
+      // submitted form, are both decided server-side from the token —
+      // onboarding_forms is not writable by the anon role the candidate
+      // browses as.
+      await SupabaseService.submitOnboardingForm(
+        token: widget.token ?? '',
+        name: (payload['name'] as String?) ?? '',
+        phone: (payload['phone_number'] as String?) ?? '',
+        designation: (payload['designation'] as String?) ?? '',
+        formData: payload,
+      );
       final candidateId = _candidateApplicationId;
       if (candidateId != null) {
         // Reflects "Onboarding Completed" live in the HR portal via the

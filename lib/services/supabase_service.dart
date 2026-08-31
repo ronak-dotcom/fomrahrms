@@ -3375,18 +3375,38 @@ class SupabaseService {
     return data == true;
   }
 
-  // Returns the existing submission (if any) for this candidate — used to
-  // tell a fresh candidate ("nothing submitted yet") apart from one who is
-  // revisiting the link after HR sent it back for a correction (data already
-  // there, prefill instead of blanking).
-  static Future<Map<String, dynamic>?> fetchOnboardingFormForCandidate(String candidateId) async {
-    if (candidateId.isEmpty) return null;
-    final data = await _db
-        ?.from('onboarding_forms')
-        .select('id, form_data, needs_correction, fields_to_correct')
-        .eq('candidate_application_id', candidateId)
-        .maybeSingle();
-    return data == null ? null : Map<String, dynamic>.from(data as Map);
+  // Reads the candidate's own submission via their onboarding token rather
+  // than selecting from onboarding_forms directly. The table is closed to
+  // the anon role — a candidate has no login, so the token is the only
+  // thing establishing which row is theirs, and doing this in SQL keeps
+  // that check server-side.
+  static Future<Map<String, dynamic>?> fetchOnboardingFormForToken(String token) async {
+    if (token.isEmpty) return null;
+    final data = await _db?.rpc('onboarding_form_for_token', params: {'p_token': token});
+    if (data is List && data.isNotEmpty) {
+      return Map<String, dynamic>.from(data.first as Map);
+    }
+    return null;
+  }
+
+  /// Submits (or, for an HR-requested correction, resubmits) the joining
+  /// form. Insert-vs-update and the "already submitted" guard are decided
+  /// server-side from the token, so the client cannot aim a write at
+  /// another candidate's row.
+  static Future<void> submitOnboardingForm({
+    required String token,
+    required String name,
+    required String phone,
+    required String designation,
+    required Map<String, dynamic> formData,
+  }) async {
+    await _db?.rpc('submit_onboarding_form', params: {
+      'p_token': token,
+      'p_name': name,
+      'p_phone': phone,
+      'p_designation': designation,
+      'p_form_data': formData,
+    });
   }
 
   // HR flags specific fields as wrong and sends the submission back to the
