@@ -44,10 +44,7 @@ class _PreOfferAcceptPageState extends State<PreOfferAcceptPage> {
     setState(() => _accepting = true);
     final now = DateTime.now().toUtc().toIso8601String();
     try {
-      await SupabaseService.updateCandidateStatus(c['id'].toString(), {
-        'pre_offer_accepted': true,
-        'pre_offer_accepted_at': now,
-      });
+      await SupabaseService.acceptPreOffer(widget.token);
       NotificationService.preOfferAccepted(candidateName: (c['name'] as String?) ?? '');
       if (mounted) {
         setState(() {

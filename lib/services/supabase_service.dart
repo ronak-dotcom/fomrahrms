@@ -1123,10 +1123,26 @@ class SupabaseService {
 
   // ── Candidate Applications ────────────────────────────────────────────
 
+  // The public job application form runs unauthenticated, so this goes
+  // through a SECURITY DEFINER function with a fixed column list rather
+  // than inserting straight into the table: anything an applicant must not
+  // control (hr/manager/management status, pre-offer and onboarding
+  // tokens) is simply absent from that list, so a crafted payload cannot
+  // reach those columns however it is shaped.
   static Future<void> saveCandidateApplication(Map<String, dynamic> data) async {
     final db = _db;
     if (db == null) throw Exception('Database not initialized. Please refresh and try again.');
-    await db.from('candidate_applications').insert(data);
+    await db.rpc('submit_candidate_application', params: {'p_data': data});
+  }
+
+  /// Accepts a pre-offer from the public /pre-offer/{token} page. Keyed on
+  /// the token rather than a row id, and only ever sets the accepted flag
+  /// and timestamp — the page is unauthenticated, so it must not be able to
+  /// address an arbitrary candidate row or field. Returns false if the
+  /// offer had already been accepted.
+  static Future<bool> acceptPreOffer(String token) async {
+    final result = await _db?.rpc('accept_pre_offer', params: {'p_token': token});
+    return result == true;
   }
 
   static Future<List<Map<String, dynamic>>> fetchCandidateApplications() async {
