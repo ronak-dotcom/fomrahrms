@@ -48,6 +48,7 @@ const _navGroups = <_NavGroup>[
     // so "what needs my decision?" meant checking four unrelated spots.
     (label: 'All Approvals',       icon: Icons.inbox_rounded,         route: '/management/approvals'),
     (label: 'Leave Approvals',     icon: Icons.event_available_rounded, route: '/management/leave/team-approvals'),
+    (label: 'On-Roll Approvals',   icon: Icons.verified_user_rounded, route: '/management/onroll-approvals'),
     (label: 'KRA Approvals',       icon: Icons.flag_rounded,          route: '/management/kra-approvals'),
     (label: 'Form Approvals',      icon: Icons.fact_check_rounded,    route: '/management/form-approvals'),
   ]),

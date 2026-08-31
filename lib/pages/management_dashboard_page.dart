@@ -27,17 +27,62 @@ class _Section {
   const _Section(this.title, this.icon, this.color, this.route);
 }
 
+class _SectionGroup {
+  final String label;
+  final IconData icon;
+  final List<_Section> sections;
+  const _SectionGroup(this.label, this.icon, this.sections);
+}
+
 const _teal = Color(0xFF15803D);
 
-const _sections = [
-  _Section('Employee Summary',     Icons.people_rounded,          _teal, '/management/employee-management'),
-  _Section('Attendance Summary',   Icons.access_time_rounded,     _teal, '/management/attendance-management'),
-  _Section('Leave Management',     Icons.event_available_rounded, _teal, '/management/leave-management'),
-  _Section('Team Leave Approvals', Icons.group_rounded,           _teal, '/management/leave/team-approvals'),
-  _Section('On-Roll Approvals',    Icons.verified_user_rounded,   _teal, '/management/onroll-approvals'),
-  _Section('Maintenance Summary',  Icons.build_rounded,           _teal, '/management/maintenance-management'),
-  _Section('Interview Review',     Icons.rate_review_rounded,     _teal, '/management/interview-review'),
-  _Section('Approvals Summary',    Icons.approval_rounded,        _teal, '/management/approvals'),
+// Management works from the dashboard rather than the sidebar, so every
+// destination in the nav is reachable here — the previous 8-card
+// "Management Overview" grid covered less than a third of them, which meant
+// anything else could only be found by opening the sidebar.
+//
+// Grouped with the same labels and ordering as the sidebar so the two
+// describe the app the same way; Approvals leads because it is the thing
+// most likely to need same-day action.
+const _sectionGroups = <_SectionGroup>[
+  _SectionGroup('Approvals', Icons.approval_rounded, [
+    _Section('All Approvals',      Icons.inbox_rounded,           _teal, '/management/approvals'),
+    _Section('Leave Approvals',    Icons.event_available_rounded, _teal, '/management/leave/team-approvals'),
+    _Section('On-Roll Approvals',  Icons.verified_user_rounded,   _teal, '/management/onroll-approvals'),
+    _Section('KRA Approvals',      Icons.flag_rounded,            _teal, '/management/kra-approvals'),
+    _Section('Form Approvals',     Icons.fact_check_rounded,      _teal, '/management/form-approvals'),
+  ]),
+  _SectionGroup('People', Icons.people_rounded, [
+    _Section('Employee Management', Icons.badge_rounded,             _teal, '/management/employee-management'),
+    _Section('Employee Onboarding', Icons.how_to_reg_rounded,        _teal, '/management/employee-onboarding'),
+    _Section('Interview Process',   Icons.record_voice_over_rounded, _teal, '/management/interview-process'),
+    _Section('Interview Review',    Icons.rate_review_rounded,       _teal, '/management/interview-review'),
+    _Section('Appraisals',          Icons.workspace_premium_rounded, _teal, '/management/appraisals'),
+    _Section('KRA',                 Icons.flag_rounded,              _teal, '/management/kra-management'),
+  ]),
+  _SectionGroup('Time & Attendance', Icons.access_time_rounded, [
+    _Section('Attendance Records', Icons.fact_check_rounded,      _teal, '/management/attendance-management'),
+    _Section('Late Coming',        Icons.watch_later_rounded,     _teal, '/management/attendance/late-coming'),
+    _Section('GPS Tracking',       Icons.my_location_rounded,     _teal, '/management/attendance/gps-tracking'),
+    _Section('Location History',   Icons.travel_explore_rounded,  _teal, '/management/location-history'),
+    _Section('Leave Management',   Icons.event_available_rounded, _teal, '/management/leave-management'),
+  ]),
+  _SectionGroup('Operations', Icons.work_outline_rounded, [
+    _Section('Task Management',    Icons.task_alt_rounded,        _teal, '/management/task-management'),
+    _Section('Lead Management',    Icons.leaderboard_rounded,     _teal, '/management/lead-management'),
+    _Section('Maintenance',        Icons.build_rounded,           _teal, '/management/maintenance-management'),
+    _Section('Payroll Management', Icons.account_balance_wallet_rounded, _teal, '/management/payroll-management'),
+  ]),
+  _SectionGroup('Insights', Icons.bar_chart_rounded, [
+    _Section('Reports & Analytics', Icons.bar_chart_rounded,      _teal, '/management/reports-analytics'),
+    _Section('Notifications',       Icons.notifications_rounded,  _teal, '/management/notifications'),
+  ]),
+  _SectionGroup('Setup', Icons.settings_rounded, [
+    _Section('Administration',      Icons.admin_panel_settings_rounded, _teal, '/management/administration'),
+    _Section('Location Management', Icons.location_on_rounded,    _teal, '/management/location-management'),
+    _Section('Settings',            Icons.tune_rounded,           _teal, '/management/settings'),
+    _Section('Edit Forms',          Icons.edit_note_rounded,      _teal, '/management/form-approvals'),
+  ]),
 ];
 
 
@@ -111,6 +156,19 @@ class _ManagementDashboardPageState extends State<ManagementDashboardPage> {
     // badge and the page can't disagree.
     final pendingOnroll = users.where((u) => u.onrollAwaitingManagement).length;
 
+    // The same hasPending* getters approvals_page.dart uses for its own
+    // counts, so the badge and the page can't disagree. Leave/permission/
+    // comp-off and the form-version queues are counted on their own cards
+    // rather than folded in here.
+    final pendingInbox = users.where((u) =>
+        u.hasPendingGrossPayChange ||
+        u.hasPendingPermissionQuotaChange ||
+        u.hasPendingWorkLocationChange ||
+        u.hasPendingBusinessUnitChange ||
+        u.hasPendingReportingManagerChange ||
+        u.hasPendingRmFlagChange ||
+        u.onrollAwaitingManagement).length;
+
     if (mounted) {
       setState(() {
         _totalEmployees = '${tracked.length}';
@@ -120,6 +178,7 @@ class _ManagementDashboardPageState extends State<ManagementDashboardPage> {
         _records = records;
         _leaveApps = leaves;
         _pending = {
+          '/management/approvals': pendingInbox,
           '/management/leave/team-approvals': pendingLeaveCount,
           '/management/onroll-approvals': pendingOnroll,
         };
@@ -190,10 +249,15 @@ class _ManagementDashboardPageState extends State<ManagementDashboardPage> {
                   // opening the app, above the operational content.
                   SizedBox(height: narrow ? 24 : 32),
 
-                  _SectionLabel(icon: Icons.business_center_rounded, label: 'Management Overview'),
-                  const SizedBox(height: 16),
-                  _SectionGrid(pending: _pending),
-                  SizedBox(height: narrow ? 24 : 32),
+                  // Every nav destination, grouped. Management works from
+                  // this page rather than the sidebar, so anything missing
+                  // here is effectively missing from the app for them.
+                  for (final group in _sectionGroups) ...[
+                    _SectionLabel(icon: group.icon, label: group.label),
+                    const SizedBox(height: 16),
+                    _SectionGrid(sections: group.sections, pending: _pending),
+                    SizedBox(height: narrow ? 24 : 32),
+                  ],
 
                   const SizedBox(height: 8),
                 ],
@@ -422,8 +486,9 @@ class _MgmtStatStrip extends StatelessWidget {
 }
 
 class _SectionGrid extends StatelessWidget {
+  final List<_Section> sections;
   final Map<String, int> pending;
-  const _SectionGrid({required this.pending});
+  const _SectionGrid({required this.sections, required this.pending});
 
   @override
   Widget build(BuildContext context) {
@@ -431,9 +496,9 @@ class _SectionGrid extends StatelessWidget {
       final wide = constraints.maxWidth > 600;
       final cols = wide ? 4 : 2;
       final rows = <Widget>[];
-      for (int i = 0; i < _sections.length; i += cols) {
-        final end = (i + cols) > _sections.length ? _sections.length : i + cols;
-        final rowItems = _sections.sublist(i, end);
+      for (int i = 0; i < sections.length; i += cols) {
+        final end = (i + cols) > sections.length ? sections.length : i + cols;
+        final rowItems = sections.sublist(i, end);
         final missing = cols - rowItems.length;
         rows.add(Row(
           crossAxisAlignment: CrossAxisAlignment.start,
