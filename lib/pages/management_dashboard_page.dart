@@ -169,6 +169,31 @@ class _ManagementDashboardPageState extends State<ManagementDashboardPage> {
         u.hasPendingRmFlagChange ||
         u.onrollAwaitingManagement).length;
 
+    // KRA and form-version queues live in their own tables rather than on
+    // app_users, so they need their own fetches. Wrapped so that a failure
+    // to load one count just hides that badge rather than stopping the
+    // whole dashboard from rendering.
+    int pendingKra = 0;
+    int pendingForms = 0;
+    try {
+      final kraDocs = await SupabaseService.fetchKraDocuments()
+          .timeout(const Duration(seconds: 8));
+      pendingKra = kraDocs.where((d) => d.isPending).length;
+    } catch (_) {/* leave at 0 — badge hidden */}
+    try {
+      final versionLists = await Future.wait([
+        SupabaseService.fetchLeaveFormVersions(),
+        SupabaseService.fetchFormVersions(),
+        SupabaseService.fetchOnboardingFormVersions(),
+        SupabaseService.fetchHRPolicyVersions(),
+        SupabaseService.fetchMaintenanceFormVersions(),
+      ]).timeout(const Duration(seconds: 10));
+      pendingForms = versionLists
+          .expand((l) => l)
+          .where((v) => (v['status'] as String?) == 'pending')
+          .length;
+    } catch (_) {/* leave at 0 — badge hidden */}
+
     if (mounted) {
       setState(() {
         _totalEmployees = '${tracked.length}';
@@ -181,6 +206,8 @@ class _ManagementDashboardPageState extends State<ManagementDashboardPage> {
           '/management/approvals': pendingInbox,
           '/management/leave/team-approvals': pendingLeaveCount,
           '/management/onroll-approvals': pendingOnroll,
+          '/management/kra-approvals': pendingKra,
+          '/management/form-approvals': pendingForms,
         };
       });
     }
