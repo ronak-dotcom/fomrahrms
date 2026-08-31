@@ -5,6 +5,7 @@ import '../widgets/attendance_shortcut_card.dart';
 import '../widgets/dashboard_info_blocks.dart';
 import '../widgets/fade_in.dart';
 import '../widgets/milestone_confetti.dart';
+import '../widgets/my_cycle_blocks.dart';
 import '../widgets/my_space_blocks.dart';
 import '../widgets/my_team_block.dart';
 import '../widgets/task_analytics_block.dart';
@@ -70,6 +71,17 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage> {
                     MyLeaveBlock(applyRoute: '/employee/leave-management', compact: true),
                     MyAttendanceSummaryBlock(viewRoute: '/employee/attendance-management', compact: true),
                     MyPayslipBlock(viewRoute: '/employee/payslips', compact: true),
+                  ]),
+                  const SizedBox(height: 16),
+                  // The figures that decide this month's pay, plus what
+                  // leave is actually left by type — both were computed by
+                  // the app already but only ever shown to management, so
+                  // employees had to ask someone to find out where they
+                  // stood.
+                  _MySpaceRow(children: const [
+                    MyCycleSummaryBlock(viewRoute: '/employee/attendance-management', compact: true),
+                    MyLeaveBalanceBlock(viewRoute: '/employee/leave-management', compact: true),
+                    UpcomingHolidaysBlock(compact: true),
                   ]),
                   const SizedBox(height: 16),
 

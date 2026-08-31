@@ -22,8 +22,16 @@ const _baseEmpNavItems = [
   _NavItem('Dashboard',            Icons.dashboard_rounded,               '/employee/dashboard'),
   _NavItem('My Profile',           Icons.person_rounded,                  '/employee/profile'),
   _NavItem('My Attendance and Leaves', Icons.event_note_rounded,          '/employee/attendance-leaves'),
+  // Leave Balance, Permission and Comp Off were all live routes with no
+  // nav entry — reachable only by typing the URL, despite "how much leave
+  // do I have left?" being the most common reason to open the app at all.
+  _NavItem('My Leave Balance',     Icons.account_balance_wallet_rounded,  '/employee/leave/balance'),
+  _NavItem('Apply Permission',     Icons.schedule_rounded,                '/employee/leave/permission'),
+  _NavItem('Apply Comp Off',       Icons.swap_horiz_rounded,              '/employee/leave/compoff'),
+  _NavItem('My Payslips',          Icons.receipt_long_rounded,            '/employee/payslips'),
   _NavItem('My Tasks',             Icons.task_alt_rounded,                '/employee/tasks'),
   _NavItem('Appraisal',            Icons.fact_check_rounded,              '/employee/appraisal'),
+  _NavItem('My Journey',           Icons.timeline_rounded,                '/employee/my-journey'),
   _NavItem('Maintenance',          Icons.build_rounded,                   '/employee/maintenance-management'),
   _NavItem('My Notifications',     Icons.notifications_rounded,           '/employee/notifications'),
 ];
