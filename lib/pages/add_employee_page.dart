@@ -48,7 +48,7 @@ class _AddEmployeePageState extends State<AddEmployeePage> {
     super.dispose();
   }
 
-  void _onSave() {
+  Future<void> _onSave() async {
     if (_formKey.currentState?.validate() ?? false) {
       final emp = Employee(
         id:             _employeeIdCtrl.text.trim(),
@@ -68,8 +68,20 @@ class _AddEmployeePageState extends State<AddEmployeePage> {
         bankAccount:    _bankAccountCtrl.text.trim(),
         ifsc:           _ifscCtrl.text.trim(),
       );
+      final error = await SupabaseService.saveEmployee(emp);
+      if (!context.mounted) return;
+      if (error != null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Could not save employee: $error'),
+            backgroundColor: Colors.red.shade700,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+          ),
+        );
+        return;
+      }
       EmployeeStore.employees.add(emp);
-      SupabaseService.saveEmployee(emp);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: const Text('Employee added successfully'),

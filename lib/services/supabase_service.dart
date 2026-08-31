@@ -451,7 +451,14 @@ import '../models/user_session.dart';
     platform text not null, -- 'android' | 'web'
     updated_at timestamptz default now()
   );
-  alter table device_tokens disable row level security;
+  -- RLS stays ON: this table maps device tokens to staff email addresses,
+  -- so it must not be readable with just the public anon key. It previously
+  -- had RLS enabled with no policy at all, which denied every registration
+  -- (403) and silently killed push notifications.
+  alter table device_tokens enable row level security;
+  drop policy if exists "authenticated_full_access" on device_tokens;
+  create policy "authenticated_full_access" on device_tokens
+    for all to authenticated using (true) with check (true);
 
   -- Fires the send-push Edge Function on every new notification row, so
   -- every existing NotificationService._create() call site gets push for
@@ -951,26 +958,41 @@ class SupabaseService {
 
   // ── Employees ─────────────────────────────────────────────────────────
 
-  static Future<void> saveEmployee(Employee emp) async {
+  // Writes to app_users, not a separate `employees` table. The original
+  // target table never existed, so every Add Employee submission 404'd,
+  // was swallowed below, and the page still said "added successfully" —
+  // the record lived only in memory and disappeared on refresh.
+  //
+  // app_users is keyed on email and is what the rest of the app reads, so
+  // an employee added here now shows up in attendance, payroll and the
+  // employee list like any other. Fields the form does not collect are
+  // left to their column defaults rather than being overwritten.
+  // Returns null on success, or the error message — the Add Employee page
+  // reports it instead of claiming success, which is how the missing-table
+  // failure went unnoticed.
+  static Future<String?> saveEmployee(Employee emp) async {
     try {
-      await _db?.from('employees').upsert({
-        'id':              emp.id,
-        'name':            emp.name,
-        'department':      emp.department,
-        'designation':     emp.designation,
-        'mobile':          emp.mobile,
-        'email':           emp.email,
-        'address':         emp.address,
-        'blood_group':     emp.bloodGroup,
-        'manager':         emp.manager,
-        'joining_date':    emp.joiningDate,
-        'salary':          emp.salary,
-        'emergency_name':  emp.emergencyName,
-        'emergency_phone': emp.emergencyPhone,
-        'bank_account':    emp.bankAccount,
-        'ifsc':            emp.ifsc,
-      });
-    } catch (e) { _writeFailed('saveEmployee', e); }
+      await _db?.from('app_users').upsert({
+        'email':             emp.email,
+        'employee_id':       emp.id,
+        'name':              emp.name,
+        'department':        emp.department,
+        'designation':       emp.designation,
+        'mobile':            emp.mobile,
+        'address':           emp.address,
+        'blood_group':       emp.bloodGroup,
+        'reporting_manager': emp.manager,
+        'date_of_joining':   emp.joiningDate,
+        'emergency_name':    emp.emergencyName,
+        'emergency_phone':   emp.emergencyPhone,
+        'bank_account':      emp.bankAccount,
+        'ifsc':              emp.ifsc,
+      }, onConflict: 'email');
+      return null;
+    } catch (e) {
+      _writeFailed('saveEmployee', e);
+      return e.toString();
+    }
   }
 
   static Future<List<Employee>> fetchEmployees() async {
@@ -3957,8 +3979,10 @@ class SupabaseService {
     await Future.wait([
       _loadLeave(),
       _loadMaintenance(),
-      _loadProfiles(),
-      _loadEmployees(),
+      // _loadProfiles() and _loadEmployees() removed: both queried tables
+      // (employee_profiles, employees) that do not exist, 404ing on every
+      // app start — ~50 failed requests a day — and returning empty lists
+      // that nothing depended on. app_users is the real source for people.
       _loadTasks(),
       _loadNotifications(),
       _loadNotificationPreferences(),
@@ -4027,20 +4051,6 @@ class SupabaseService {
       ..clear()
       ..addAll(list);
     MaintenanceStore.syncCounter();
-  }
-
-  static Future<void> _loadProfiles() async {
-    final list = await fetchProfiles();
-    for (final p in list) {
-      ProfileStore.saveByHr(p);
-    }
-  }
-
-  static Future<void> _loadEmployees() async {
-    final list = await fetchEmployees();
-    EmployeeStore.employees
-      ..clear()
-      ..addAll(list);
   }
 
   static Future<void> _loadTasks() async {
