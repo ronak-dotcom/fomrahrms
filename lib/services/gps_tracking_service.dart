@@ -149,6 +149,11 @@ class GpsTrackingService {
       final pos = await getCurrentLocation();
       if (pos != null) _recordPoint(pos);
     });
+
+    // Sends whatever has accumulated since the last flush. Kept separate
+    // from the sampling timer above so recording resolution and write
+    // frequency can be tuned independently.
+    _flushTimer = Timer.periodic(_flushInterval, (_) => _flush());
   }
 
   static LocationSettings _platformLocationSettings() {
@@ -167,28 +172,51 @@ class GpsTrackingService {
     return const LocationSettings(accuracy: LocationAccuracy.high, distanceFilter: 10);
   }
 
+  // Points are recorded in memory on every movement, but only written to
+  // the database on this interval. Previously every 10-metre step triggered
+  // two writes, and the route write re-sent the ENTIRE day's point array
+  // each time — so by evening each step was rewriting hundreds of points
+  // the database already had. Two field employees were generating over 200
+  // writes a day each that way, growing heavier as the day went on.
+  //
+  // Batching changes none of the recorded detail: the same points are
+  // captured at the same 10-metre resolution, they are just flushed
+  // together rather than one at a time.
+  static const _flushInterval = Duration(minutes: 2);
+  static Timer? _flushTimer;
+  static bool _dirty = false;
+
   static void _recordPoint(Position pos) {
     latestLat = pos.latitude;
     latestLng = pos.longitude;
+    routePoints.add([pos.latitude, pos.longitude]);
+    // Marks that there is something new to send; the flush timer does the
+    // actual write.
+    _dirty = true;
+  }
+
+  /// Writes the accumulated route if anything changed since the last flush.
+  /// Safe to call when idle — it no-ops rather than issuing an empty write.
+  static Future<void> _flush() async {
+    if (!_dirty) return;
+    if (UserSession.employeeId.isEmpty) return;
+    if (latestLat == null || latestLng == null) return;
+
+    _dirty = false;
     final now = DateTime.now();
     final dateStr =
         '${now.day.toString().padLeft(2, '0')}/${now.month.toString().padLeft(2, '0')}/${now.year}';
 
-    routePoints.add([pos.latitude, pos.longitude]);
-
-    if (UserSession.employeeId.isNotEmpty) {
-      // Save both the latest single point and the full route
-      SupabaseService.updateLocation(
-        employeeId: UserSession.employeeId,
-        date: dateStr,
-        location: '${pos.latitude},${pos.longitude}',
-      );
-      SupabaseService.updateGpsPoints(
-        employeeId: UserSession.employeeId,
-        date: dateStr,
-        points: List.from(routePoints),
-      );
-    }
+    await SupabaseService.updateLocation(
+      employeeId: UserSession.employeeId,
+      date: dateStr,
+      location: '$latestLat,$latestLng',
+    );
+    await SupabaseService.updateGpsPoints(
+      employeeId: UserSession.employeeId,
+      date: dateStr,
+      points: List.from(routePoints),
+    );
   }
 
   static Future<void> stop() async {
@@ -196,6 +224,13 @@ class GpsTrackingService {
     _subscription = null;
     _fallbackTimer?.cancel();
     _fallbackTimer = null;
+    _flushTimer?.cancel();
+    _flushTimer = null;
+    // Flush BEFORE clearing the latest position: points recorded since the
+    // last flush are still only in memory, and check-out is exactly when
+    // the final stretch of the route matters. _flush() reads latestLat/Lng,
+    // so nulling them first would silently drop this write.
+    await _flush();
     latestLat = null;
     latestLng = null;
     // Don't clear routePoints — HR can still fetch the saved route from Supabase
