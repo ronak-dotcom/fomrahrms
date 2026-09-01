@@ -319,6 +319,12 @@ class _CheckOutPageState extends State<CheckOutPage> {
                     return Column(children: [
                       TextField(
                         controller: _timeController,
+                        // System clock only — see the same note on
+                        // check_in_page.dart. An editable check-out time
+                        // lets someone record leaving later than they did,
+                        // and free text breaks the HH:MM parsing the
+                        // payroll and punctuality reports rely on.
+                        readOnly: true,
                         decoration: InputDecoration(
                           labelText: 'Check-Out Time',
                           prefixIcon: Icon(Icons.access_time_rounded, color: _color, size: 20),

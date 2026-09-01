@@ -548,6 +548,14 @@ class _CheckInForm extends StatelessWidget {
               return Column(children: [
                 TextField(
                   controller: timeController,
+                  // The recorded time must be the system clock, not
+                  // whatever someone types. This was an editable field:
+                  // an employee arriving at 10:30 could type 09:00 and the
+                  // lateness calculation would believe it, and free text
+                  // like "12 pm" reached production and cannot be parsed
+                  // by the punctuality report, which reads HH:MM by
+                  // character position.
+                  readOnly: true,
                   decoration: InputDecoration(
                     labelText: 'Check-In Time',
                     prefixIcon: Icon(Icons.access_time_rounded, color: color, size: 20),

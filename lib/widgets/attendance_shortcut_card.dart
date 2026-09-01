@@ -1217,7 +1217,12 @@ class _AttendanceSheetState extends State<_AttendanceSheet> {
               return Column(children: [
                 TextField(
                   controller: _timeCtrl,
-                  keyboardType: TextInputType.datetime,
+                  // System clock only. This field previously opened a
+                  // datetime keyboard, actively inviting the employee to
+                  // type a time — which is how unparseable values like
+                  // "12 pm" reached the attendance table and, from there,
+                  // the lateness maths behind payroll.
+                  readOnly: true,
                   decoration: InputDecoration(
                     labelText: isCheckedIn ? 'Check-Out Time' : 'Check-In Time',
                     prefixIcon: Icon(

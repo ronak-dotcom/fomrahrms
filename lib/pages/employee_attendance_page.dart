@@ -562,6 +562,10 @@ class _TimeField extends StatelessWidget {
         padding: const EdgeInsets.all(16),
         child: TextField(
           controller: controller,
+          // System clock only — this widget renders both the check-in and
+          // check-out time on the attendance page. See check_in_page.dart
+          // for why these must not be typeable.
+          readOnly: true,
           decoration: InputDecoration(
             labelText: label,
             prefixIcon: Icon(icon, color: color, size: 20),
