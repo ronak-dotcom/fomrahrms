@@ -28,6 +28,7 @@ const _baseEmpNavItems = [
   _NavItem('My Leave Balance',     Icons.account_balance_wallet_rounded,  '/employee/leave/balance'),
   _NavItem('Apply Permission',     Icons.schedule_rounded,                '/employee/leave/permission'),
   _NavItem('Apply Comp Off',       Icons.swap_horiz_rounded,              '/employee/leave/compoff'),
+  _NavItem('Apply On Duty',        Icons.work_history_rounded,            '/employee/on-duty'),
   _NavItem('My Payslips',          Icons.receipt_long_rounded,            '/employee/payslips'),
   _NavItem('My Tasks',             Icons.task_alt_rounded,                '/employee/tasks'),
   _NavItem('Appraisal',            Icons.fact_check_rounded,              '/employee/appraisal'),

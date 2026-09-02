@@ -3617,6 +3617,70 @@ class SupabaseService {
     }
   }
 
+  /// Employee raises an On Duty request for a date — night or BTL work they
+  /// know is coming. Approval applies the flag to the attendance record
+  /// whichever order the two arrive in (see the triggers on
+  /// on_duty_requests), so it works whether they request before or after
+  /// checking in.
+  static Future<String?> requestOnDuty({
+    required String employeeId,
+    required String employeeName,
+    required DateTime date,
+    required String reason,
+  }) async {
+    try {
+      final iso = '${date.year.toString().padLeft(4, '0')}-'
+          '${date.month.toString().padLeft(2, '0')}-'
+          '${date.day.toString().padLeft(2, '0')}';
+      await _db?.from('on_duty_requests').upsert({
+        'employee_id': employeeId,
+        'employee_name': employeeName,
+        'date_iso': iso,
+        'reason': reason,
+        // Re-raising a previously denied day starts over as pending rather
+        // than silently keeping the old decision.
+        'status': 'pending',
+        'requested_at': DateTime.now().toUtc().toIso8601String(),
+        'decided_by': '',
+        'decided_at': null,
+      }, onConflict: 'employee_id,date_iso');
+      return null;
+    } catch (e) {
+      _writeFailed('requestOnDuty', e);
+      return e.toString();
+    }
+  }
+
+  /// Pending On Duty requests visible to the caller — RLS already limits
+  /// this to their own, their reports', or everything for HR/Management.
+  static Future<List<Map<String, dynamic>>> fetchOnDutyRequests({String? status}) async {
+    try {
+      var q = _db?.from('on_duty_requests').select();
+      if (q == null) return [];
+      if ((status ?? '').isNotEmpty) q = q.eq('status', status!);
+      final rows = await q.order('date_iso', ascending: false);
+      return List<Map<String, dynamic>>.from(rows);
+    } catch (e) {
+      _writeFailed('fetchOnDutyRequests', e);
+      return [];
+    }
+  }
+
+  static Future<String?> decideOnDutyRequest(
+      String requestId, bool approve, {String decidedBy = ''}) async {
+    try {
+      await _db?.from('on_duty_requests').update({
+        'status': approve ? 'approved' : 'denied',
+        'decided_by': decidedBy,
+        'decided_at': DateTime.now().toUtc().toIso8601String(),
+      }).eq('id', requestId);
+      return null;
+    } catch (e) {
+      _writeFailed('decideOnDutyRequest', e);
+      return e.toString();
+    }
+  }
+
   /// Marks (or clears) a day as worked on duty — business work outside
   /// normal hours, such as BTL activity or site work. Set by HR or the
   /// reporting manager on an existing attendance record; the recorded

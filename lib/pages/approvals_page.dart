@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 import '../models/app_user.dart';
 import '../models/kra_store.dart';
 import '../models/leave_store.dart';
+import '../models/user_session.dart';
 import '../services/supabase_service.dart';
 import '../services/user_store.dart';
 import '../utils/month_picker.dart';
@@ -45,6 +46,41 @@ class _ApprovalsPageState extends State<ApprovalsPage> with SingleTickerProvider
     super.dispose();
   }
 
+  // Employee-raised On Duty requests awaiting a decision. RLS already
+  // narrows this to the caller's own reports, or everything for HR and
+  // Management, so no extra filtering is needed here.
+  List<Map<String, dynamic>> _onDutyRequests = const [];
+
+  Future<void> _decideOnDuty(Map<String, dynamic> r, bool approve) async {
+    await SupabaseService.decideOnDutyRequest(
+        r['id'].toString(), approve, decidedBy: UserSession.email);
+    await _load();
+  }
+
+  _CategoryInfo get _onDutyCategory => _CategoryInfo(
+        icon: Icons.work_history_rounded,
+        color: Colors.orange.shade700,
+        label: 'On Duty Requests',
+        pending: _onDutyRequests.length,
+        approved: 0,
+        rejected: 0,
+        total: _onDutyRequests.length,
+        onViewAll: () => _showPendingSheet(
+          label: 'On Duty Requests',
+          color: Colors.orange.shade700,
+          buildCards: (refresh) => _onDutyRequests
+              .map((r) => _ApprovalCard(
+                    title: (r['employee_name'] ?? '').toString(),
+                    subtitle: (r['date_iso'] ?? '').toString(),
+                    details: [(r['reason'] ?? '').toString()],
+                    meta: _fmtIso((r['requested_at'] ?? '').toString()),
+                    onApprove: () async { await _decideOnDuty(r, true); refresh(); },
+                    onDeny: () async { await _decideOnDuty(r, false); refresh(); },
+                  ))
+              .toList(),
+        ),
+      );
+
   Future<void> _load() async {
     if (mounted) setState(() => _loading = true);
     try {
@@ -57,6 +93,7 @@ class _ApprovalsPageState extends State<ApprovalsPage> with SingleTickerProvider
         SupabaseService.fetchHRPolicyVersions(),
         SupabaseService.fetchMaintenanceFormVersions(),
         SupabaseService.fetchKraDocuments(),
+        SupabaseService.fetchOnDutyRequests(status: 'pending'),
       ]);
       final leaves = results[0] as List<LeaveApplication>;
       if (leaves.isNotEmpty) {
@@ -74,6 +111,7 @@ class _ApprovalsPageState extends State<ApprovalsPage> with SingleTickerProvider
         _policyVersions = results[5] as List<Map<String, dynamic>>;
         _maintenanceVersions = results[6] as List<Map<String, dynamic>>;
         _kraDocs = results[7] as List<KraDocument>;
+        _onDutyRequests = results[8] as List<Map<String, dynamic>>;
         _loading = false;
       });
     } catch (_) {
@@ -433,7 +471,7 @@ class _ApprovalsPageState extends State<ApprovalsPage> with SingleTickerProvider
   _CategoryInfo get _maintenanceFormCategory => _formCategory('Maintenance Form Approvals', _maintenanceVersions);
 
   List<_CategoryInfo> get _allCategories => [
-        _leaveCategory, _permissionCategory, _compOffCategory,
+        _leaveCategory, _permissionCategory, _compOffCategory, _onDutyCategory,
         _onrollCategory, _grossPayCategory, _permissionQuotaCategory, _workLocationCategory,
         _businessUnitCategory,
         _reportingManagerCategory, _rmFlagCategory, _kraCategory,
@@ -611,7 +649,7 @@ class _ApprovalsPageState extends State<ApprovalsPage> with SingleTickerProvider
             : switch (_tabs.index) {
                 0 => _tabView(categories),
                 1 => _tabView(categories, pendingOnly: true),
-                2 => _tabView([_leaveCategory, _permissionCategory, _compOffCategory]),
+                2 => _tabView([_leaveCategory, _permissionCategory, _compOffCategory, _onDutyCategory]),
                 3 => _tabView([_grossPayCategory]),
                 4 => _tabView([_onrollCategory]),
                 5 => _tabView([_permissionQuotaCategory, _workLocationCategory, _businessUnitCategory, _reportingManagerCategory, _rmFlagCategory, _kraCategory]),
