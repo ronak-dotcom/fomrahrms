@@ -55,11 +55,22 @@ GeofenceResult evaluateGeofence({
   required double? lng,
 }) {
   if (!policy.requiresLocation) return GeofenceResult.unrestricted;
-  if (lat == null || lng == null || locations.isEmpty) {
-    return GeofenceResult(
+
+  // No assigned locations at all is a setup gap, not a violation. This used
+  // to fall through to "outside allowed location", which permanently
+  // flagged the employee as off-site wherever they stood and demanded a
+  // mandatory explanation note on every single check-in — an employee who
+  // was never assigned a location on their first day simply could not check
+  // in, with nothing on screen explaining why.
+  //
+  // Treating it as unrestricted lets them work while HR assigns a location;
+  // an employee who has one is still held to it exactly as before.
+  if (locations.isEmpty) return GeofenceResult.unrestricted;
+
+  if (lat == null || lng == null) {
+    return const GeofenceResult(
       requiresLocation: true,
       isWithinAnyLocation: false,
-      nearestLocation: locations.isEmpty ? null : locations.first,
     );
   }
 
