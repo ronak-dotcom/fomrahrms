@@ -34,6 +34,34 @@ String _nextEmpId(List<AppUser> users) {
   return 'EMP${next.toString().padLeft(3, '0')}';
 }
 
+// Employee ID and email are both unique in app_users, so approving an
+// onboarding with either already taken failed at the database with a raw
+// PostgrestException ("duplicate key value violates unique constraint
+// app_users_employee_id_uidx") shown to HR after they had filled in the
+// whole form. These report the clash on the field instead, naming who
+// holds it, so it can be corrected before submitting.
+String? _empIdClash(String empId, List<AppUser> users) {
+  final id = empId.trim();
+  if (id.isEmpty) return null;
+  for (final u in users) {
+    if (u.employeeId.trim().toLowerCase() == id.toLowerCase()) {
+      return 'Already used by ${u.name}';
+    }
+  }
+  return null;
+}
+
+String? _emailClash(String email, List<AppUser> users) {
+  final e = email.trim().toLowerCase();
+  if (e.isEmpty) return null;
+  for (final u in users) {
+    if (u.email.trim().toLowerCase() == e) {
+      return 'Already used by ${u.name}';
+    }
+  }
+  return null;
+}
+
 // Status helpers
 Color _statusColor(String s) {
   if (s == 'hr_approved')       return const Color(0xFF3B82F6);
@@ -1405,8 +1433,13 @@ class _SubmissionCardState extends State<_SubmissionCard> {
               const SizedBox(height: 16),
               TextField(
                 controller: emailCtrl,
+                onChanged: (_) => setS(() {}),
                 decoration: InputDecoration(
                   labelText: 'Username',
+                  // Field holds only the prefix, so the domain is appended
+                  // before checking — the stored email is the full address.
+                  errorText: _emailClash(
+                      '${emailCtrl.text.trim()}@fomrahousing.in', allUsers),
                   prefixIcon: Icon(Icons.email_rounded, color: _blue, size: 20),
                   suffix: Text('@fomrahousing.in',
                       style: TextStyle(color: _blue, fontWeight: FontWeight.w600, fontSize: 13)),
@@ -1418,8 +1451,12 @@ class _SubmissionCardState extends State<_SubmissionCard> {
               const SizedBox(height: 12),
               TextField(
                 controller: empIdCtrl,
+                // Rebuild on every keystroke so the clash shows as it is
+                // typed, rather than after the whole form is submitted.
+                onChanged: (_) => setS(() {}),
                 decoration: InputDecoration(
                   labelText: 'Employee ID',
+                  errorText: _empIdClash(empIdCtrl.text, allUsers),
                   prefixIcon: Icon(Icons.badge_rounded, color: _blue, size: 20),
                   border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
                   filled: true, fillColor: Colors.white,
@@ -1491,7 +1528,15 @@ class _SubmissionCardState extends State<_SubmissionCard> {
                 backgroundColor: AppTheme.accentBlue, foregroundColor: Colors.white,
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
               ),
-              onPressed: () async {
+              // Blocked while either identifier is taken. Forwarding with a
+              // clash used to succeed here and only fail later, when
+              // Management pressed Approve and account creation hit the
+              // unique constraint — so the person who could fix it was not
+              // the person who saw the error.
+              onPressed: (_empIdClash(empIdCtrl.text, allUsers) != null ||
+                          _emailClash('${emailCtrl.text.trim()}@fomrahousing.in', allUsers) != null)
+                  ? null
+                  : () async {
                 Navigator.pop(ctx);
                 setState(() => _acting = true);
                 try {
@@ -1553,6 +1598,25 @@ class _SubmissionCardState extends State<_SubmissionCard> {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
         content: Text('No email assigned. Ask HR to re-forward this submission.'),
         backgroundColor: Colors.orange,
+      ));
+      return;
+    }
+
+    // Checked before attempting creation because the alternative is a raw
+    // PostgrestException about a unique constraint, which does not say
+    // which field clashed or who holds it. Submissions forwarded before
+    // this check existed on the HR side can still carry a taken ID.
+    final existing = await _loadAllUsers();
+    final clash = _empIdClash(empId, existing) ?? _emailClash(email, existing);
+    if (clash != null && context.mounted) {
+      final which = _empIdClash(empId, existing) != null
+          ? 'Employee ID "$empId"'
+          : 'Email "$email"';
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('$which is already taken — $clash. '
+            'Ask HR to re-forward this submission with a different one.'),
+        backgroundColor: Colors.orange.shade800,
+        duration: const Duration(seconds: 8),
       ));
       return;
     }
