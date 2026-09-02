@@ -61,6 +61,11 @@ class AttendanceRecord {
   /// deliberately left alone; this flag sits alongside it.
   final bool lateWaived;
   final String lateWaiverReason;
+  /// Day worked outside normal hours for business reasons (BTL activity,
+  /// site or project work). Presence, not absence — the timing rules are
+  /// skipped and the day is shown in its own colour. No hours accounting.
+  final bool onDuty;
+  final String onDutyReason;
   final double? checkOutLat;
   final double? checkOutLng;
   final bool? checkOutWithinRadius;
@@ -84,6 +89,8 @@ class AttendanceRecord {
     this.checkInWithinRadius,
     this.lateWaived = false,
     this.lateWaiverReason = '',
+    this.onDuty = false,
+    this.onDutyReason = '',
     this.checkOutLat,
     this.checkOutLng,
     this.checkOutWithinRadius,

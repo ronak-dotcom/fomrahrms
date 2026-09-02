@@ -328,7 +328,7 @@ class _EmployeeAttendanceCalendarPageState
     final r = _attendance[day];
     if (r == null) return const CheckInRowStatus(CheckInStatus.none, 0);
     final date = DateTime(_month.year, _month.month, day);
-    return checkInStatusFor(r.checkInTime, date, widget.employeeName, _leaveApps, _schedule, lateWaived: r.lateWaived);
+    return checkInStatusFor(r.checkInTime, date, widget.employeeName, _leaveApps, _schedule, lateWaived: r.lateWaived, onDuty: r.onDuty);
   }
 
   // True when a day has no check-in, no approved leave/permission/comp-off,
@@ -356,7 +356,12 @@ class _EmployeeAttendanceCalendarPageState
   Color? _statusColor(int day) {
     final r = _attendance[day];
     if (r != null && r.checkInTime.isNotEmpty) {
-      return _status(day).status == CheckInStatus.late ? _purple : _green;
+      final st = _status(day).status;
+      // On-duty days get their own colour so a night/BTL day is visible at a
+      // glance on the calendar rather than blending into an ordinary present
+      // day — management asked to be able to see which days these were.
+      if (st == CheckInStatus.onDuty) return Colors.orange.shade700;
+      return st == CheckInStatus.late ? _purple : _green;
     }
     if (_holidayDays.contains(day)) return _yellow;
     if (_leaveDays.contains(day)) return _magenta;
@@ -761,8 +766,16 @@ class _DaySheet extends StatelessWidget {
     final String statusLabel;
     final Color  statusColor;
     if (hasAttendance) {
-      statusLabel = status.status == CheckInStatus.late ? 'Late Coming' : 'Present';
-      statusColor = status.status == CheckInStatus.late ? _purple : _green;
+      statusLabel = switch (status.status) {
+        CheckInStatus.onDuty => 'On Duty',
+        CheckInStatus.late   => 'Late Coming',
+        _                    => 'Present',
+      };
+      statusColor = switch (status.status) {
+        CheckInStatus.onDuty => Colors.orange.shade700,
+        CheckInStatus.late   => _purple,
+        _                    => _green,
+      };
     } else if (isLeave) {
       statusLabel = 'Leave Applied';
       statusColor = _magenta;

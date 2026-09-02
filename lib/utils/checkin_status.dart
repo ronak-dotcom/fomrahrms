@@ -1,7 +1,12 @@
 import '../models/leave_store.dart';
 import '../models/office_timing.dart';
 
-enum CheckInStatus { none, onTime, permission, late }
+// onDuty sits alongside the timing outcomes rather than among them: a day
+// worked outside normal hours for business reasons (BTL, site/project work)
+// is presence, and the late/early rules simply do not apply to it. It takes
+// precedence over `late` so an 8pm BTL start is not reported as a late
+// arrival, while still being visibly distinct from an ordinary on-time day.
+enum CheckInStatus { none, onTime, permission, late, onDuty }
 
 class CheckInRowStatus {
   final CheckInStatus status;
@@ -39,7 +44,14 @@ int? _minutesOf(String time) {
 /// office timing), checking [leaveApps] for a same-day approved Permission.
 CheckInRowStatus checkInStatusFor(String checkInTime, DateTime date, String employeeName,
     List<LeaveApplication> leaveApps, OfficeTiming schedule,
-    {bool lateWaived = false}) {
+    {bool lateWaived = false, bool onDuty = false}) {
+  // Business work outside normal hours — the timing rules do not apply, but
+  // the day stays visibly distinct rather than being folded into "on time",
+  // so management can still see it was an on-duty day on the calendar.
+  // Checked before lateWaived because on duty is a property of the day
+  // itself, not an excused exception to it.
+  if (onDuty) return const CheckInRowStatus(CheckInStatus.onDuty, 0);
+
   // Management has excused this arrival — normally because the app itself
   // prevented a timely check-in. Handled here, at the single point every
   // screen goes through, rather than at each of the eight call sites: the

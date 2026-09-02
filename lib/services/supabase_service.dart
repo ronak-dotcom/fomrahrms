@@ -2412,6 +2412,8 @@ class SupabaseService {
         checkInLng:          (row['check_in_lng']  as num?)?.toDouble(),
         checkInWithinRadius: row['check_in_within_radius']  as bool?,
         lateWaived:          (row['late_waived'] as bool?) ?? false,
+        onDuty:              (row['on_duty'] as bool?) ?? false,
+        onDutyReason:        (row['on_duty_reason'] as String?) ?? '',
         lateWaiverReason:    (row['late_waiver_reason'] as String?) ?? '',
         checkOutLat:          (row['check_out_lat'] as num?)?.toDouble(),
         checkOutLng:          (row['check_out_lng'] as num?)?.toDouble(),
@@ -2451,6 +2453,8 @@ class SupabaseService {
         checkInLng:          (row['check_in_lng']  as num?)?.toDouble(),
         checkInWithinRadius: row['check_in_within_radius']  as bool?,
         lateWaived:          (row['late_waived'] as bool?) ?? false,
+        onDuty:              (row['on_duty'] as bool?) ?? false,
+        onDutyReason:        (row['on_duty_reason'] as String?) ?? '',
         lateWaiverReason:    (row['late_waiver_reason'] as String?) ?? '',
         checkOutLat:          (row['check_out_lat'] as num?)?.toDouble(),
         checkOutLng:          (row['check_out_lng'] as num?)?.toDouble(),
@@ -2491,6 +2495,8 @@ class SupabaseService {
         checkInLng:          (row['check_in_lng']  as num?)?.toDouble(),
         checkInWithinRadius: row['check_in_within_radius']  as bool?,
         lateWaived:          (row['late_waived'] as bool?) ?? false,
+        onDuty:              (row['on_duty'] as bool?) ?? false,
+        onDutyReason:        (row['on_duty_reason'] as String?) ?? '',
         lateWaiverReason:    (row['late_waiver_reason'] as String?) ?? '',
         checkOutLat:          (row['check_out_lat'] as num?)?.toDouble(),
         checkOutLng:          (row['check_out_lng'] as num?)?.toDouble(),
@@ -2532,6 +2538,8 @@ class SupabaseService {
         checkInLng:          (row['check_in_lng']  as num?)?.toDouble(),
         checkInWithinRadius: row['check_in_within_radius']  as bool?,
         lateWaived:          (row['late_waived'] as bool?) ?? false,
+        onDuty:              (row['on_duty'] as bool?) ?? false,
+        onDutyReason:        (row['on_duty_reason'] as String?) ?? '',
         lateWaiverReason:    (row['late_waiver_reason'] as String?) ?? '',
         checkOutLat:          (row['check_out_lat'] as num?)?.toDouble(),
         checkOutLng:          (row['check_out_lng'] as num?)?.toDouble(),
@@ -2592,6 +2600,8 @@ class SupabaseService {
           checkInLng:          (row['check_in_lng']  as num?)?.toDouble(),
           checkInWithinRadius: row['check_in_within_radius']  as bool?,
           lateWaived:          (row['late_waived'] as bool?) ?? false,
+        onDuty:              (row['on_duty'] as bool?) ?? false,
+        onDutyReason:        (row['on_duty_reason'] as String?) ?? '',
           lateWaiverReason:    (row['late_waiver_reason'] as String?) ?? '',
           checkOutLat:          (row['check_out_lat'] as num?)?.toDouble(),
           checkOutLng:          (row['check_out_lng'] as num?)?.toDouble(),
@@ -2628,6 +2638,8 @@ class SupabaseService {
         checkInLng:          (row['check_in_lng']  as num?)?.toDouble(),
         checkInWithinRadius: row['check_in_within_radius']  as bool?,
         lateWaived:          (row['late_waived'] as bool?) ?? false,
+        onDuty:              (row['on_duty'] as bool?) ?? false,
+        onDutyReason:        (row['on_duty_reason'] as String?) ?? '',
         lateWaiverReason:    (row['late_waiver_reason'] as String?) ?? '',
         checkOutLat:          (row['check_out_lat'] as num?)?.toDouble(),
         checkOutLng:          (row['check_out_lng'] as num?)?.toDouble(),
@@ -3602,6 +3614,27 @@ class SupabaseService {
     } catch (e) {
       _writeFailed('fetchLocationHistory', e);
       return [];
+    }
+  }
+
+  /// Marks (or clears) a day as worked on duty — business work outside
+  /// normal hours, such as BTL activity or site work. Set by HR or the
+  /// reporting manager on an existing attendance record; the recorded
+  /// times are left untouched, only the flag changes.
+  static Future<String?> setOnDuty(String recordId, bool onDuty,
+      {String reason = '', String setBy = ''}) async {
+    try {
+      await _db?.from('attendance_records').update({
+        'on_duty': onDuty,
+        'on_duty_reason': onDuty ? reason : '',
+        'on_duty_set_by': onDuty ? setBy : '',
+      }).eq('id', recordId);
+      logAuditEvent(onDuty ? 'on_duty_set' : 'on_duty_cleared',
+          targetType: 'attendance_records', targetId: recordId);
+      return null;
+    } catch (e) {
+      _writeFailed('setOnDuty', e);
+      return e.toString();
     }
   }
 
