@@ -54,7 +54,7 @@ class EmployeeReportCard extends StatelessWidget {
       if (rec != null && rec.checkInTime.isNotEmpty) {
         final st = checkInStatusFor(
             rec.checkInTime, d, employee.name, leaveApps, schedule,
-            lateWaived: rec.lateWaived);
+            lateWaived: rec.lateWaived, onDuty: rec.onDuty);
         final late = st.status == CheckInStatus.late;
         out.add(_Day(
           date: d,

@@ -270,7 +270,7 @@ class _MyAttendancePageState extends State<MyAttendancePage> {
         if (d == null) return false;
         return checkInStatusFor(r.checkInTime, d, UserSession.name, _leaveApps,
                 OfficeTimingStore.scheduleForCurrentUser(),
-                lateWaived: r.lateWaived)
+                lateWaived: r.lateWaived, onDuty: r.onDuty)
             .status == CheckInStatus.late;
       }).length;
 

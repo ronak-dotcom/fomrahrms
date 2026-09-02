@@ -30,7 +30,7 @@ CheckInRowStatus _rowStatus(AttendanceRecord r, List<LeaveApplication> leaveApps
   if (date == null) return const CheckInRowStatus(CheckInStatus.none, 0);
   return checkInStatusFor(r.checkInTime, date, r.employeeName, leaveApps,
       _scheduleForEmployee(r.employeeName, users),
-      lateWaived: r.lateWaived);
+      lateWaived: r.lateWaived, onDuty: r.onDuty);
 }
 
 /// Formats the gap between "HH:mm" check-in/check-out times as "Xh Ym".
@@ -240,6 +240,7 @@ class _HrAttendanceRecordsPageState extends State<HrAttendanceRecordsPage> {
       final status = r.checkInTime.isEmpty
           ? 'Absent'
           : switch (rowStatus.status) {
+              CheckInStatus.onDuty => 'On Duty',
               CheckInStatus.late => 'Late',
               CheckInStatus.permission => 'Permission (${permLabel(rowStatus.permMinutes)})',
               _ => 'Present',
@@ -1114,6 +1115,12 @@ class _AttendanceTableState extends State<_AttendanceTable> {
       };
     } else {
       switch (rs.status) {
+        case CheckInStatus.onDuty:
+          // Business work outside normal hours — presence, and deliberately
+          // not folded into 'Present' so HR can see which days these were.
+          label = 'On Duty';
+          chipColor = Colors.orange.shade700;
+          break;
         case CheckInStatus.permission:
           label = 'Permission (${permLabel(rs.permMinutes)})';
           chipColor = AppTheme.accentBlue;

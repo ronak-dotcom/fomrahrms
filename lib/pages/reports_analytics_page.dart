@@ -384,7 +384,7 @@ class _ReportsAnalyticsPageState extends State<ReportsAnalyticsPage> {
     if (date == null) return false;
     return checkInStatusFor(r.checkInTime, date, r.employeeName, _leaveApps,
                 _scheduleForEmployee(r.employeeName),
-                lateWaived: r.lateWaived).status ==
+                lateWaived: r.lateWaived, onDuty: r.onDuty).status ==
         CheckInStatus.late;
   }
 

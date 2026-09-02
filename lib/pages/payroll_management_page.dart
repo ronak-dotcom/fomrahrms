@@ -1066,7 +1066,7 @@ class _GeneratePayslipPageState extends State<GeneratePayslipPage> {
     for (final r in attendance) {
       final date = parseSlashDate(r.date);
       if (date == null) continue;
-      final status = checkInStatusFor(r.checkInTime, date, widget.user.name, leaves, schedule, lateWaived: r.lateWaived);
+      final status = checkInStatusFor(r.checkInTime, date, widget.user.name, leaves, schedule, lateWaived: r.lateWaived, onDuty: r.onDuty);
       if (status.status != CheckInStatus.late) continue;
       if (isSevereLate(r.checkInTime, schedule)) {
         severeLateDays++;

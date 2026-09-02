@@ -807,10 +807,13 @@ class NotificationService {
     // A waived arrival must not raise a late alert either — otherwise HR is
     // notified about lateness Management has already excused.
     bool lateWaived = false,
+    // Nor an on-duty day: the timing rules do not apply to business work
+    // outside normal hours, so a 9pm BTL start is not a late arrival.
+    bool onDuty = false,
   }) async {
     final leaves = await SupabaseService.fetchLeaveApplications();
     final status = checkInStatusFor(checkInTime, date, employeeName, leaves, schedule,
-        lateWaived: lateWaived);
+        lateWaived: lateWaived, onDuty: onDuty);
     if (status.status != CheckInStatus.late) return;
 
     final hadApprovedPermissionToday =

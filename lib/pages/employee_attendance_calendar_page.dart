@@ -260,9 +260,14 @@ class _EmployeeAttendanceCalendarPageState
       final rec = byDate[ds];
       if (rec != null && rec.checkInTime.isNotEmpty) {
         final st = checkInStatusFor(rec.checkInTime, d, widget.employeeName, leaveApps,
-            rangeSchedule, lateWaived: rec.lateWaived);
+            rangeSchedule, lateWaived: rec.lateWaived, onDuty: rec.onDuty);
         rows.add(_RangeDay(
-            d, st.status == CheckInStatus.late ? 'Late Coming' : 'Present',
+            d,
+            switch (st.status) {
+              CheckInStatus.onDuty => 'On Duty',
+              CheckInStatus.late => 'Late Coming',
+              _ => 'Present',
+            },
             rec.checkInTime, rec.checkOutTime));
       } else if (holidayDateStrs.contains(ds)) {
         rows.add(_RangeDay(d, 'Holiday', '', ''));
