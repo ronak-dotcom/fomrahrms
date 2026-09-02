@@ -3617,6 +3617,34 @@ class SupabaseService {
     }
   }
 
+  /// True when this employee has an approved On Duty request for [date] —
+  /// a conference, client site or similar, agreed in advance. Used to lift
+  /// the check-in geofence for that day: holding someone to an office
+  /// radius on a day they were approved to be elsewhere would demand a
+  /// written excuse for doing what was already authorised.
+  ///
+  /// Failures return false rather than throwing, so a network problem
+  /// cannot stop a check-in — it just falls back to the normal geofence.
+  static Future<bool> hasApprovedOnDuty(String employeeId, DateTime date) async {
+    if (employeeId.isEmpty) return false;
+    try {
+      final iso = '${date.year.toString().padLeft(4, '0')}-'
+          '${date.month.toString().padLeft(2, '0')}-'
+          '${date.day.toString().padLeft(2, '0')}';
+      final rows = await _db
+          ?.from('on_duty_requests')
+          .select('id')
+          .eq('employee_id', employeeId)
+          .eq('date_iso', iso)
+          .eq('status', 'approved')
+          .limit(1)
+          .timeout(const Duration(seconds: 5));
+      return rows != null && (rows as List).isNotEmpty;
+    } catch (_) {
+      return false;
+    }
+  }
+
   /// Employee raises an On Duty request for a date — night or BTL work they
   /// know is coming. Approval applies the flag to the attendance record
   /// whichever order the two arrive in (see the triggers on

@@ -122,11 +122,30 @@ class AttendancePolicyStore {
   /// Head Office point if nothing is configured yet (e.g. before the first
   /// sync completes), so a Single-Location employee is never silently left
   /// with zero locations.
+  /// Locations an employee may check in from.
+  ///
+  /// Every ACTIVE company site counts, not only the ones assigned to them.
+  /// Staff move between the office and sites for meetings, handovers and
+  /// site visits, and being at another Fomra location is plainly not an
+  /// absence — it was previously treated as off-site and demanded a written
+  /// excuse. The assignment still matters: it is what
+  /// [primaryLocationsFor] reports as the person's normal base, and the
+  /// recorded coordinates show which site they were actually at.
   static List<OfficeLocation> locationsForEmployee(String employeeId) {
-    final ids = _employeeLocationIds[employeeId];
-    if (ids == null || ids.isEmpty) {
-      return _locations.isEmpty ? const [fallbackLocation] : const [];
+    final active = _locations.where((l) => l.active).toList();
+    if (active.isEmpty) {
+      // No locations configured at all — fall back rather than treat every
+      // employee as permanently off-site.
+      return const [fallbackLocation];
     }
+    return active;
+  }
+
+  /// The sites actually assigned to [employeeId] — their normal base, as
+  /// distinct from everywhere they are permitted to check in from.
+  static List<OfficeLocation> primaryLocationsFor(String employeeId) {
+    final ids = _employeeLocationIds[employeeId];
+    if (ids == null || ids.isEmpty) return const [];
     return _locations.where((l) => l.active && ids.contains(l.id)).toList();
   }
 

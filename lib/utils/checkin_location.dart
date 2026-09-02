@@ -5,6 +5,7 @@ import '../models/attendance_policy_store.dart';
 import '../models/office_timing.dart';
 import '../models/user_session.dart';
 import '../services/gps_tracking_service.dart';
+import '../services/supabase_service.dart';
 import 'geofence.dart';
 
 /// Everything a check-in or check-out needs to know about where the employee is.
@@ -89,15 +90,28 @@ Future<CheckInLocation> resolveCheckInLocation() async {
   final locations =
       AttendancePolicyStore.locationsForEmployee(UserSession.employeeId);
 
+  // An approved On Duty day means the person is working somewhere that is
+  // deliberately not a company site — a conference, a client office, an
+  // exhibition. Holding them to a geofence on such a day would demand a
+  // written excuse for doing exactly what was already approved, so the
+  // check is lifted. The coordinates are still recorded, so management can
+  // see where they actually were.
+  final onDutyToday = await SupabaseService.hasApprovedOnDuty(
+    UserSession.employeeId,
+    DateTime.now(),
+  );
+
   // A failed lookup is treated as being outside every assigned location, so an
   // employee whose policy requires one still gets a check-in — with a required
   // reason — rather than silently skipping the geofence.
-  final geofence = evaluateGeofence(
-    policy: policy,
-    locations: locations,
-    lat: pos?.latitude,
-    lng: pos?.longitude,
-  );
+  final geofence = onDutyToday
+      ? GeofenceResult.unrestricted
+      : evaluateGeofence(
+          policy: policy,
+          locations: locations,
+          lat: pos?.latitude,
+          lng: pos?.longitude,
+        );
 
   return CheckInLocation(
     position: pos,

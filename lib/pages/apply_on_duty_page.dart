@@ -21,10 +21,12 @@ class _ApplyOnDutyPageState extends State<ApplyOnDutyPage> {
   static Color get _color => Colors.orange.shade700;
 
   static const _reasons = [
+    'Conference / Seminar',
     'BTL Activity',
     'Site Visit',
     'Project Work',
     'Client Meeting',
+    'Training',
     'Event / Exhibition',
     'Others',
   ];
@@ -127,9 +129,11 @@ class _ApplyOnDutyPageState extends State<ApplyOnDutyPage> {
                     fontSize: 22, fontWeight: FontWeight.w700, color: _color)),
             const SizedBox(height: 6),
             const Text(
-              'For work outside normal hours on company business. This is not '
-              'leave — the day counts as present, and late or early timing '
-              'rules will not be applied to it once approved.',
+              'For company business away from your usual workplace or outside '
+              'normal hours — a conference, client site, exhibition or night '
+              'work. This is not leave: the day counts as present, timing '
+              'rules are not applied, and once approved you can check in from '
+              'wherever the work takes you.',
               style: TextStyle(fontSize: 12.5, height: 1.4),
             ),
             const SizedBox(height: 20),
