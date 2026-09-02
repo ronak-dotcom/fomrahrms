@@ -128,27 +128,30 @@ class _CheckOutPageState extends State<CheckOutPage> {
       _nearestLocationName = geofence.nearestLocation?.name ?? '';
     });
 
+    // Being away from the office at check-out is not a violation — the
+    // working day is over and people have legitimately left. Blocking it
+    // demanded a typed reason from someone already on their way home, and
+    // because the dialog only said "enter a reason below" and then did
+    // nothing, it read as the app being broken: on 02/09 six of ten people
+    // had no check-out by 19:19, while the four who succeeded had all done
+    // so from the office before 18:36.
+    //
+    // The off-site fact is still captured — the recorded GPS position and
+    // the outside-location flag both persist for management to see — it
+    // simply no longer stops the employee from clocking out. Check-IN keeps
+    // its geofence: starting the day away from your location is a different
+    // question from ending it.
     if (outsideOffice && _noteController.text.trim().isEmpty) {
       final locationPhrase = _nearestLocationName.isNotEmpty
-          ? "outside $_nearestLocationName"
-          : 'outside your assigned location';
-      await showDialog<void>(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          title: const Text('You Are Not At Your Assigned Location'),
-          content: Text(
-            "You're $locationPhrase. Please enter a reason "
-            'below to check out from this location.',
-          ),
-          actions: [
-            ElevatedButton(
-              onPressed: () => Navigator.of(ctx).pop(),
-              child: const Text('OK'),
-            ),
-          ],
-        ),
-      );
-      return;
+          ? 'away from $_nearestLocationName'
+          : 'away from your assigned location';
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('Checked out $locationPhrase. '
+            'Add a note if you want to explain why.'),
+        backgroundColor: Colors.blueGrey.shade700,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+      ));
     }
 
     final schedule = OfficeTimingStore.scheduleForCurrentUser();
