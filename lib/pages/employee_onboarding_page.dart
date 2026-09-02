@@ -1388,7 +1388,13 @@ class _SubmissionCardState extends State<_SubmissionCard> {
     final d = widget.data;
     final name = (d['name'] as String?) ?? '';
     final emailCtrl = TextEditingController(text: _autoEmail(name));
-    final empIdCtrl  = TextEditingController(text: _nextEmpId(allUsers));
+    final empIdCtrl  = TextEditingController();
+    // Which company the hire belongs to decides the id prefix. HR previously
+    // had no way to say, and the local fallback only understood the EMP001
+    // pattern, so for FD-/FHIPL- ids it offered an unrelated default and the
+    // real one was typed by hand — which is how FD-06 was assigned twice.
+    String selectedCompany = 'FOMRA Housing';
+    const companyOptions = ['FOMRA Housing', 'FOMRA Developers'];
     String selectedManager = managers.isNotEmpty ? managers.first : '';
     // Management is excluded here — it's not an employee record and isn't
     // created through recruitment (see role_hierarchy notes elsewhere).
@@ -1407,6 +1413,14 @@ class _SubmissionCardState extends State<_SubmissionCard> {
     final desigMatch = kDesignations.firstWhere(
         (d) => d.toLowerCase() == linkedDesig.toLowerCase(), orElse: () => '');
     String? selectedDesignation = desigMatch.isEmpty ? null : desigMatch;
+
+    // Asked of the database rather than computed locally: it is the only
+    // place that sees both existing staff and ids already reserved on other
+    // in-flight onboardings. Falls back to the local EMP-pattern helper if
+    // it can't be reached, so the dialog still opens.
+    empIdCtrl.text = await SupabaseService.nextEmployeeId(
+            businessUnit: selectedCompany) ??
+        _nextEmpId(allUsers);
 
     await showDialog(
       context: context,
@@ -1449,6 +1463,31 @@ class _SubmissionCardState extends State<_SubmissionCard> {
                 ),
               ),
               const SizedBox(height: 12),
+              DropdownButtonFormField<String>(
+                initialValue: selectedCompany,
+                decoration: InputDecoration(
+                  labelText: 'Company',
+                  prefixIcon: Icon(Icons.business_rounded, color: _blue, size: 20),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                  filled: true, fillColor: Colors.white,
+                  labelStyle: const TextStyle(color: Color(0xFF6B7280)),
+                ),
+                items: companyOptions
+                    .map((c) => DropdownMenuItem(value: c, child: Text(c)))
+                    .toList(),
+                onChanged: (v) async {
+                  if (v == null) return;
+                  final next = await SupabaseService.nextEmployeeId(businessUnit: v);
+                  setS(() {
+                    selectedCompany = v;
+                    // Re-suggests for the newly chosen prefix. Anything HR
+                    // has typed is replaced, since an id carried over from
+                    // the other company would be wrong by definition.
+                    if (next != null) empIdCtrl.text = next;
+                  });
+                },
+              ),
+              const SizedBox(height: 12),
               TextField(
                 controller: empIdCtrl,
                 // Rebuild on every keystroke so the clash shows as it is
@@ -1456,6 +1495,7 @@ class _SubmissionCardState extends State<_SubmissionCard> {
                 onChanged: (_) => setS(() {}),
                 decoration: InputDecoration(
                   labelText: 'Employee ID',
+                  helperText: 'Next available for $selectedCompany',
                   errorText: _empIdClash(empIdCtrl.text, allUsers),
                   prefixIcon: Icon(Icons.badge_rounded, color: _blue, size: 20),
                   border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
@@ -1547,6 +1587,7 @@ class _SubmissionCardState extends State<_SubmissionCard> {
                         'forwarded_at':          DateTime.now().toIso8601String(),
                         'assigned_email':        '${emailCtrl.text.trim()}@fomrahousing.in',
                         'assigned_emp_id':       empIdCtrl.text.trim(),
+                        'assigned_business_unit': selectedCompany,
                         'assigned_manager':      selectedManager,
                         'assigned_department':   selectedDepartment ?? '',
                         'assigned_designation':  selectedDesignation ?? '',
@@ -1631,6 +1672,12 @@ class _SubmissionCardState extends State<_SubmissionCard> {
         department:       department,
         role:             (role != null && role.isNotEmpty) ? role : 'Employee',
         active:           true,
+        // The company HR chose when forwarding, which also decided the
+        // FD-/FHIPL- id prefix. Older submissions predate this field, so
+        // they fall back to the default rather than being left blank.
+        businessUnit:     ((d['assigned_business_unit'] as String?)?.isNotEmpty ?? false)
+                              ? d['assigned_business_unit'] as String
+                              : 'FOMRA Housing',
         reportingManager: manager,
         // Left blank here deliberately — this only fires when the account is
         // *created* and the activation email goes out, which can be days
