@@ -71,6 +71,13 @@ class GpsTrackingService {
             'Location permission is blocked. Enable it for this site in your browser settings (the padlock icon in the address bar), then try again.';
         return null;
       }
+      // Kept deliberately short. These run in series and sit in front of a
+      // check-in or check-out the employee is waiting on, so the worst case
+      // is what they experience as "the app is frozen". An earlier version
+      // used 18s + 15s which, on top of the store loads, meant up to ~43
+      // seconds of spinner — long enough that people gave up and reported
+      // check-out as broken. A fix that never arrives is the same as no fix.
+      //
       // Two layers of timeout on purpose. The inner `timeLimit` is handled by
       // the plugin; on iOS Safari it is not reliably enforced, because if the
       // browser never invokes its own success/error callback there is nothing
@@ -81,9 +88,9 @@ class GpsTrackingService {
         return await Geolocator.getCurrentPosition(
           locationSettings: const LocationSettings(
             accuracy: LocationAccuracy.high,
-            timeLimit: Duration(seconds: 15),
+            timeLimit: Duration(seconds: 6),
           ),
-        ).timeout(const Duration(seconds: 18));
+        ).timeout(const Duration(seconds: 8));
       } on TimeoutException {
         // Safari on iOS is often slow or unwilling to produce a high-accuracy
         // fix indoors, but will return a coarse network-based one quickly.
@@ -92,9 +99,9 @@ class GpsTrackingService {
         return await Geolocator.getCurrentPosition(
           locationSettings: const LocationSettings(
             accuracy: LocationAccuracy.medium,
-            timeLimit: Duration(seconds: 12),
+            timeLimit: Duration(seconds: 5),
           ),
-        ).timeout(const Duration(seconds: 15));
+        ).timeout(const Duration(seconds: 6));
       }
     } on TimeoutException {
       lastLocationError =

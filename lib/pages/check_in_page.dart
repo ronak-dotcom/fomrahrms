@@ -135,7 +135,7 @@ class _CheckInPageState extends State<CheckInPage> {
       // these two network calls would otherwise leave the employee on the
       // spinner with nothing on screen. Both stores fall back to sensible
       // built-in defaults when empty, so proceeding is better than hanging.
-    ].map((f) => f.timeout(const Duration(seconds: 10), onTimeout: () {})));
+    ].map((f) => f.timeout(const Duration(seconds: 5), onTimeout: () {})));
     if (!mounted) return;
     final policy = AttendancePolicyStore.policyForEmployee(
       employeeId: UserSession.employeeId,
