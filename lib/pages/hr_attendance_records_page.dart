@@ -1281,7 +1281,80 @@ class _AttendanceDetailDialogState extends State<_AttendanceDetailDialog> {
 
   late bool _waived = widget.record.lateWaived;
   late String _waiverReason = widget.record.lateWaiverReason;
+  late bool _onDuty = widget.record.onDuty;
+  late String _onDutyReason = widget.record.onDutyReason;
   bool _busy = false;
+
+  /// Marks the day as business work outside normal hours — BTL activity,
+  /// site or project work. The recorded times are untouched; this only says
+  /// the timing rules do not apply to this day, so a 9pm start is not
+  /// reported as a late arrival or counted against payroll punctuality.
+  Future<void> _toggleOnDuty() async {
+    if (_onDuty) {
+      setState(() => _busy = true);
+      final err = await SupabaseService.setOnDuty(widget.record.id, false);
+      if (!mounted) return;
+      setState(() {
+        _busy = false;
+        if (err == null) { _onDuty = false; _onDutyReason = ''; }
+      });
+      if (err != null && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Could not clear On Duty: $err'),
+          backgroundColor: Colors.red.shade700));
+      }
+      return;
+    }
+
+    final ctrl = TextEditingController();
+    final reason = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Mark as On Duty'),
+        content: Column(mainAxisSize: MainAxisSize.min, children: [
+          const Text(
+            'For business work outside normal hours — BTL activity, site or '
+            'project work. Late-arrival and early-checkout rules will not '
+            'apply to this day, and it is shown in its own colour on the '
+            'calendar. The recorded times are not changed.',
+            style: TextStyle(fontSize: 12.5),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: ctrl,
+            autofocus: true,
+            decoration: const InputDecoration(
+              labelText: 'Reason',
+              hintText: 'e.g. BTL activity at site',
+              border: OutlineInputBorder(),
+            ),
+          ),
+        ]),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
+            child: const Text('Mark On Duty'),
+          ),
+        ],
+      ),
+    );
+    if (reason == null || reason.isEmpty || !mounted) return;
+
+    setState(() => _busy = true);
+    final err = await SupabaseService.setOnDuty(widget.record.id, true,
+        reason: reason, setBy: UserSession.email);
+    if (!mounted) return;
+    setState(() {
+      _busy = false;
+      if (err == null) { _onDuty = true; _onDutyReason = reason; }
+    });
+    if (err != null && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('Could not mark On Duty: $err'),
+        backgroundColor: Colors.red.shade700));
+    }
+  }
 
   /// Excuse a late arrival. Management only — the RPC refuses anyone else, so
   /// the button is hidden rather than shown-and-refused.
@@ -1371,6 +1444,63 @@ class _AttendanceDetailDialogState extends State<_AttendanceDetailDialog> {
                   ),
                 ),
               ]),
+
+              // On Duty — business work outside normal hours. Offered to HR
+              // and Management; shown as a banner once set so the reason and
+              // the fact the day is exempt from timing rules are both visible.
+              if (_onDuty) ...[
+                const SizedBox(height: 14),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: Colors.orange.shade50,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: Colors.orange.shade200),
+                  ),
+                  child: Row(children: [
+                    Icon(Icons.work_history_rounded, size: 16, color: Colors.orange.shade800),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Text('On Duty',
+                            style: TextStyle(
+                                fontSize: 12.5,
+                                fontWeight: FontWeight.w700,
+                                color: Colors.orange.shade900)),
+                        if (_onDutyReason.isNotEmpty)
+                          Text(_onDutyReason,
+                              style: TextStyle(fontSize: 11.5, color: Colors.orange.shade900)),
+                        Text('Timing rules do not apply to this day.',
+                            style: TextStyle(fontSize: 11, color: Colors.orange.shade800)),
+                      ]),
+                    ),
+                    if (UserSession.role == UserRole.management ||
+                        UserSession.role == UserRole.hr)
+                      TextButton(
+                        onPressed: _busy ? null : _toggleOnDuty,
+                        child: const Text('Remove', style: TextStyle(fontSize: 12)),
+                      ),
+                  ]),
+                ),
+              ] else if (r.checkInTime.isNotEmpty &&
+                  (UserSession.role == UserRole.management ||
+                   UserSession.role == UserRole.hr)) ...[
+                const SizedBox(height: 14),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: _busy ? null : _toggleOnDuty,
+                    icon: const Icon(Icons.work_history_rounded, size: 16),
+                    label: const Text('Mark as On Duty (night / BTL work)'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Colors.orange.shade800,
+                      side: BorderSide(color: Colors.orange.shade300),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    ),
+                  ),
+                ),
+              ],
 
               // Late waiver. Shown when already excused so the reason and who
               // granted it are visible; offered to Management otherwise.

@@ -131,7 +131,11 @@ class _CheckInPageState extends State<CheckInPage> {
     await Future.wait([
       AttendancePolicyStore.ensureLoaded(),
       OfficeTimingStore.ensureLoaded(),
-    ]);
+      // Timed out rather than awaited indefinitely: on a stalled connection
+      // these two network calls would otherwise leave the employee on the
+      // spinner with nothing on screen. Both stores fall back to sensible
+      // built-in defaults when empty, so proceeding is better than hanging.
+    ].map((f) => f.timeout(const Duration(seconds: 10), onTimeout: () {})));
     if (!mounted) return;
     final policy = AttendancePolicyStore.policyForEmployee(
       employeeId: UserSession.employeeId,

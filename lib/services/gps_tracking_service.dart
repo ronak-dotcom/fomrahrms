@@ -71,14 +71,31 @@ class GpsTrackingService {
             'Location permission is blocked. Enable it for this site in your browser settings (the padlock icon in the address bar), then try again.';
         return null;
       }
-      // Without a timeout this can hang indefinitely on a weak signal, leaving
-      // the employee on a spinner with no idea anything is wrong.
-      return await Geolocator.getCurrentPosition(
-        locationSettings: const LocationSettings(
-          accuracy: LocationAccuracy.high,
-          timeLimit: Duration(seconds: 20),
-        ),
-      );
+      // Two layers of timeout on purpose. The inner `timeLimit` is handled by
+      // the plugin; on iOS Safari it is not reliably enforced, because if the
+      // browser never invokes its own success/error callback there is nothing
+      // for the plugin to time out — the Future simply never completes and the
+      // employee sits on a spinner forever with no error. The outer Dart
+      // .timeout() always fires, so the call can no longer hang.
+      try {
+        return await Geolocator.getCurrentPosition(
+          locationSettings: const LocationSettings(
+            accuracy: LocationAccuracy.high,
+            timeLimit: Duration(seconds: 15),
+          ),
+        ).timeout(const Duration(seconds: 18));
+      } on TimeoutException {
+        // Safari on iOS is often slow or unwilling to produce a high-accuracy
+        // fix indoors, but will return a coarse network-based one quickly.
+        // A less precise position still places someone inside a 500m office
+        // radius, so it beats failing the check-in outright.
+        return await Geolocator.getCurrentPosition(
+          locationSettings: const LocationSettings(
+            accuracy: LocationAccuracy.medium,
+            timeLimit: Duration(seconds: 12),
+          ),
+        ).timeout(const Duration(seconds: 15));
+      }
     } on TimeoutException {
       lastLocationError =
           'Could not get a GPS fix in time. Move somewhere with a clearer view of the sky and try again.';
