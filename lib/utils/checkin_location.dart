@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 
@@ -150,6 +151,25 @@ Future<bool> promptForLocationReason(
   final where = loc.nearestLocationName.isNotEmpty
       ? loc.nearestLocationName
       : 'your usual location';
+
+  // Logged here as well as in check_in_page: the dashboard shortcut card and
+  // employee_attendance_page both come through this helper, and neither was
+  // recording anything. An employee using the dashboard button could fail
+  // repeatedly and leave no trace, which is exactly the blind spot this
+  // logging exists to close.
+  unawaited(SupabaseService.logCheckInAttempt(
+    kind: isCheckOut ? 'check_out' : 'check_in',
+    outcome: loc.position == null ? 'gps_failed' : 'flagged_offsite',
+    reason: gpsError ?? 'off-site'
+        '${loc.geofence.nearestDistanceMeters != null
+            ? ' (${loc.geofence.nearestDistanceMeters!.round()}m from $where'
+              '${loc.accuracy != null ? ', +/-${loc.accuracy!.round()}m' : ''})'
+            : ''}',
+    lat: loc.lat,
+    lng: loc.lng,
+    accuracy: loc.accuracy,
+    withinRadius: loc.withinRadius,
+  ));
 
   if (context.mounted) {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
