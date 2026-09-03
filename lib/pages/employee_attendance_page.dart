@@ -137,7 +137,7 @@ class _EmployeeAttendancePageState extends State<EmployeeAttendancePage> {
       if (!mounted) return;
       setState(() => _submitting = false);
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: const Text('A selfie is required to check in. Please try again.'),
+        content: Text('Selfie required to check in. ${SelfieCaptureService.lastFailure ?? "Please try again."}'),
         backgroundColor: Colors.orange.shade700,
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
@@ -228,7 +228,7 @@ class _EmployeeAttendancePageState extends State<EmployeeAttendancePage> {
       if (!mounted) return;
       setState(() => _submitting = false);
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: const Text('A selfie is required to check out. Please try again.'),
+        content: Text('Selfie required to check out. ${SelfieCaptureService.lastFailure ?? "Please try again."}'),
         backgroundColor: Colors.orange.shade700,
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),

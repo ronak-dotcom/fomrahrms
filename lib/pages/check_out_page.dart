@@ -185,7 +185,7 @@ class _CheckOutPageState extends State<CheckOutPage> {
     if (selfiePath == null && selfieRequiredForCurrentUser) {
       setState(() => _locatingForCheckOut = false);
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: const Text('A selfie is required to check out. Please try again.'),
+        content: Text('Selfie required to check out. ${SelfieCaptureService.lastFailure ?? "Please try again."}'),
         backgroundColor: Colors.orange.shade700,
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),

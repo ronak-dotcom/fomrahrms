@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 import '../models/user_session.dart';
@@ -34,7 +35,14 @@ class SelfieCaptureService {
   /// cancelled the camera, the shot couldn't be processed, or it couldn't be
   /// compressed under the size cap — callers must treat null as "selfie
   /// required" and block the check-in/out rather than proceeding without one.
+  /// Why the last capture returned null. Every failure path here used to
+  /// return a bare null, so a blocked check-in showed no reason at all —
+  /// one employee had zero selfies on record while colleagues had hundreds,
+  /// and nothing anywhere said which step was failing for her.
+  static String? lastFailure;
+
   static Future<Uint8List?> capture({required String label}) async {
+    lastFailure = null;
     XFile? shot;
     try {
       shot = await ImagePicker().pickImage(
@@ -43,22 +51,40 @@ class SelfieCaptureService {
         maxWidth: 1600,
         imageQuality: 90,
       );
-    } catch (_) {
+    } catch (e) {
+      // Typically camera permission denied, or a browser that will not open
+      // the camera from this context.
+      lastFailure = 'Camera unavailable: $e';
       return null;
     }
-    if (shot == null) return null;
+    if (shot == null) {
+      lastFailure = 'Camera closed before a photo was taken';
+      return null;
+    }
 
     final pos = await GpsTrackingService.getCurrentLocation();
-    final rawBytes = await shot.readAsBytes();
+    final Uint8List rawBytes;
+    try {
+      rawBytes = await shot.readAsBytes();
+    } catch (e) {
+      lastFailure = 'Could not read the photo: $e';
+      return null;
+    }
 
     Uint8List watermarked;
     try {
       watermarked = await _drawWatermark(rawBytes, _lines(label, DateTime.now(), pos));
-    } catch (_) {
+    } catch (e) {
+      lastFailure = 'Could not stamp the photo: $e';
       return null;
     }
 
-    return compressImage(watermarked, 'image/png');
+    try {
+      return compressImage(watermarked, 'image/png');
+    } catch (e) {
+      lastFailure = 'Could not compress the photo: $e';
+      return null;
+    }
   }
 
   /// Captures + uploads in one step, for the three check-in/out entry
@@ -73,13 +99,30 @@ class SelfieCaptureService {
     required String label, // 'Check-In' | 'Check-Out'
   }) async {
     final bytes = await capture(label: label);
-    if (bytes == null) return null;
-    return SupabaseService.uploadAttendanceSelfie(
+    if (bytes == null) {
+      // capture() has already set lastFailure with the specific step.
+      unawaited(SupabaseService.logCheckInAttempt(
+        kind: kind == 'checkout' ? 'check_out' : 'check_in',
+        outcome: 'selfie_failed',
+        reason: lastFailure ?? 'selfie capture failed',
+      ));
+      return null;
+    }
+    final path = await SupabaseService.uploadAttendanceSelfie(
       employeeId: employeeId,
       date: date,
       kind: kind,
       bytes: bytes,
     );
+    if (path == null) {
+      lastFailure = 'Photo taken but upload failed';
+      unawaited(SupabaseService.logCheckInAttempt(
+        kind: kind == 'checkout' ? 'check_out' : 'check_in',
+        outcome: 'selfie_failed',
+        reason: lastFailure!,
+      ));
+    }
+    return path;
   }
 
   static List<String> _lines(String label, DateTime now, Position? pos) {
