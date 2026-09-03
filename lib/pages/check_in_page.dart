@@ -163,6 +163,22 @@ class _CheckInPageState extends State<CheckInPage> {
       // and you're genuinely elsewhere". Both used to show the same message,
       // which made a GPS failure look like the employee was in the wrong place.
       final gpsError = pos == null ? GpsTrackingService.lastLocationError : null;
+      // Logged before the dialog so the record exists even if the employee
+      // closes the app in frustration. This is the only trace a blocked
+      // attempt leaves — attendance_records will have no row at all.
+      unawaited(SupabaseService.logCheckInAttempt(
+        kind: 'check_in',
+        outcome: pos == null ? 'gps_failed' : 'blocked',
+        reason: gpsError ?? 'outside allowed location'
+            '${geofence.nearestDistanceMeters != null
+                ? ' (${geofence.nearestDistanceMeters!.round()}m from '
+                  '${geofence.nearestLocation?.name ?? "nearest site"})'
+                : ''}',
+        lat: pos?.latitude,
+        lng: pos?.longitude,
+        accuracy: pos?.accuracy,
+        withinRadius: pos == null ? null : geofence.isWithinAnyLocation,
+      ));
       final locationPhrase = _nearestLocationName.isNotEmpty
           ? "outside $_nearestLocationName"
           : 'outside your assigned location';
@@ -252,6 +268,19 @@ class _CheckInPageState extends State<CheckInPage> {
     );
 
     if (!mounted) return;
+
+    // Logged either way so the health report can tell "never attempted"
+    // apart from "attempted and worked" — an employee who simply did not
+    // come in looks identical to one the app refused, without this.
+    unawaited(SupabaseService.logCheckInAttempt(
+      kind: 'check_in',
+      outcome: err != null ? 'error' : 'success',
+      reason: err ?? '',
+      lat: pos?.latitude,
+      lng: pos?.longitude,
+      accuracy: pos?.accuracy,
+      withinRadius: geofence.requiresLocation ? geofence.isWithinAnyLocation : null,
+    ));
 
     if (err != null) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(

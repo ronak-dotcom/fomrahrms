@@ -1,5 +1,6 @@
 // ignore_for_file: avoid_catches_without_on_clauses
 import 'dart:async';
+import 'package:flutter/foundation.dart' show kIsWeb, defaultTargetPlatform;
 import 'gps_tracking_service.dart';
 import 'user_store.dart';
 import 'session_storage.dart';
@@ -3614,6 +3615,41 @@ class SupabaseService {
     } catch (e) {
       _writeFailed('fetchLocationHistory', e);
       return [];
+    }
+  }
+
+  /// Records that a check-in or check-out was ATTEMPTED, including when it
+  /// failed. attendance_records only ever holds successes, so without this
+  /// a blocked or errored attempt leaves no trace anywhere and can only be
+  /// diagnosed by inferring from an absent row — which is how a week went
+  /// by before anyone could explain why one employee could not check in.
+  ///
+  /// Fire-and-forget by design: logging a diagnostic must never be able to
+  /// block the attendance action it is describing.
+  static Future<void> logCheckInAttempt({
+    required String kind,      // 'check_in' | 'check_out'
+    required String outcome,   // 'success' | 'blocked' | 'gps_failed' | 'error'
+    String reason = '',
+    double? lat,
+    double? lng,
+    double? accuracy,
+    bool? withinRadius,
+  }) async {
+    try {
+      await _db?.from('checkin_attempts').insert({
+        'employee_id': UserSession.employeeId,
+        'employee_name': UserSession.name,
+        'kind': kind,
+        'outcome': outcome,
+        'reason': reason,
+        'lat': lat,
+        'lng': lng,
+        'accuracy': accuracy,
+        'within_radius': withinRadius,
+        'platform': kIsWeb ? 'web' : defaultTargetPlatform.name,
+      }).timeout(const Duration(seconds: 5));
+    } catch (_) {
+      // Swallowed deliberately — see above.
     }
   }
 
