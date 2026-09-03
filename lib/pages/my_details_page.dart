@@ -1,32 +1,74 @@
 import 'package:flutter/material.dart';
-import '../models/profile_store.dart';
+import '../models/app_user.dart';
+import '../models/user_session.dart';
+import '../services/user_store.dart';
 import '../widgets/back_button.dart';
 import '../theme/app_theme.dart';
 
-class MyDetailsPage extends StatelessWidget {
+/// Reads the employee's real record from app_users.
+///
+/// This page previously read ProfileStore, an in-memory map that was only
+/// ever populated by a bootstrap loader querying an `employee_profiles`
+/// table that does not exist. The loader 404'd on every app start, the
+/// store stayed empty, and the page showed blank fields for everyone.
+/// Removing the dead loader made that permanent, so it now reads the same
+/// source the rest of the app treats as the truth about a person.
+class MyDetailsPage extends StatefulWidget {
   const MyDetailsPage({super.key});
 
+  @override
+  State<MyDetailsPage> createState() => _MyDetailsPageState();
+}
+
+class _MyDetailsPageState extends State<MyDetailsPage> {
   static Color get _color => AppTheme.primaryBlue;
+
+  AppUser? _me;
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final users = await UserStore.load();
+      final match = users.where((u) =>
+          u.email.trim().toLowerCase() == UserSession.email.trim().toLowerCase());
+      if (!mounted) return;
+      setState(() {
+        _me = match.isNotEmpty ? match.first : null;
+        _loading = false;
+      });
+    } catch (_) {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    final p = ProfileStore.current;
+    final p = _me;
 
     final fields = [
-      _Field('Employee ID',       Icons.badge_rounded,               p.employeeId),
-      _Field('Full Name',         Icons.person_outline_rounded,      p.fullName),
-      _Field('Mobile',            Icons.phone_rounded,               p.mobile),
-      _Field('Email',             Icons.email_rounded,               p.email),
-      _Field('Address',           Icons.location_on_rounded,         p.address),
-      _Field('Department',        Icons.account_tree_rounded,        p.department),
-      _Field('Designation',       Icons.work_rounded,                p.designation),
-      _Field('Reporting Manager', Icons.manage_accounts_rounded,     p.reportingManager),
-      _Field('Date of Joining',   Icons.calendar_today_rounded,      p.dateOfJoining),
+      _Field('Employee ID',       Icons.badge_rounded,           p?.employeeId ?? ''),
+      _Field('Full Name',         Icons.person_outline_rounded,  p?.name ?? ''),
+      _Field('Mobile',            Icons.phone_rounded,           p?.mobile ?? ''),
+      _Field('Email',             Icons.email_rounded,           p?.email ?? ''),
+      _Field('Address',           Icons.location_on_rounded,     p?.address ?? ''),
+      _Field('Department',        Icons.account_tree_rounded,    p?.department ?? ''),
+      _Field('Designation',       Icons.work_rounded,            p?.designation ?? ''),
+      _Field('Reporting Manager', Icons.manage_accounts_rounded, p?.reportingManager ?? ''),
+      _Field('Date of Joining',   Icons.calendar_today_rounded,  p?.dateOfJoining ?? ''),
+      _Field('Work Location',     Icons.place_rounded,           p?.workLocation ?? ''),
     ];
 
     return Scaffold(
       backgroundColor: null,
-      body: SingleChildScrollView(
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : SingleChildScrollView(
         padding: const EdgeInsets.all(24),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -61,7 +103,7 @@ class MyDetailsPage extends StatelessWidget {
                   const SizedBox(width: 20),
                   Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                     Text(
-                      p.fullName.isEmpty ? '—' : p.fullName,
+                      (p?.name ?? '').isEmpty ? '—' : p!.name,
                       style: const TextStyle(
                           fontSize: 20, fontWeight: FontWeight.bold,
                           color: Color(0xFF111827)),
@@ -75,7 +117,7 @@ class MyDetailsPage extends StatelessWidget {
                         borderRadius: BorderRadius.circular(20),
                       ),
                       child: Text(
-                        p.designation.isEmpty ? '—' : p.designation,
+                        (p?.designation ?? '').isEmpty ? '—' : p!.designation,
                         style: TextStyle(
                             fontSize: 12, color: _color,
                             fontWeight: FontWeight.w500),
