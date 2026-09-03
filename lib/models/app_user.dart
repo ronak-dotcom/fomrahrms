@@ -83,7 +83,9 @@ class AppUser {
   // these; a Head of Operations at Management level has leave and salary
   // applied and is exempt only from timing and geofencing.
   bool exemptFromTiming;       // never assessed for lateness or early departure
-  bool exemptFromGeofence;     // check-in never assessed against an office radius
+  bool exemptFromGeofence;
+  /// Device cannot capture a selfie; check-in proceeds without one.
+  bool exemptFromSelfie;     // check-in never assessed against an office radius
   bool exemptFromLeaveRules;   // no probation cap, no permission quota/durations
   bool exemptFromAttendance;   // excluded from attendance entirely, incl. reports
   bool payrollEligible;        // appears in payroll runs
@@ -144,6 +146,7 @@ class AppUser {
     this.companyEmail = '',
     this.exemptFromTiming = false,
     this.exemptFromGeofence = false,
+    this.exemptFromSelfie = false,
     this.exemptFromLeaveRules = false,
     this.exemptFromAttendance = false,
     this.payrollEligible = true,
@@ -368,6 +371,7 @@ class AppUser {
     'companyEmail':          companyEmail,
     'exemptFromTiming':      exemptFromTiming,
     'exemptFromGeofence':    exemptFromGeofence,
+    'exemptFromSelfie':      exemptFromSelfie,
     'exemptFromLeaveRules':  exemptFromLeaveRules,
     'exemptFromAttendance':  exemptFromAttendance,
     'payrollEligible':       payrollEligible,
@@ -428,6 +432,7 @@ class AppUser {
     companyEmail:           j['companyEmail']          as String? ?? '',
     exemptFromTiming:       j['exemptFromTiming']      as bool? ?? false,
     exemptFromGeofence:     j['exemptFromGeofence']    as bool? ?? false,
+    exemptFromSelfie:       j['exemptFromSelfie']      as bool? ?? false,
     exemptFromLeaveRules:   j['exemptFromLeaveRules']  as bool? ?? false,
     exemptFromAttendance:   j['exemptFromAttendance']  as bool? ?? false,
     payrollEligible:        j['payrollEligible']       as bool? ?? true,

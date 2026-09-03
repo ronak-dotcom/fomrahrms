@@ -45,6 +45,13 @@ class UserSession {
   /// consultant could match that pattern without being oversight-only.
   static bool     oversightOnly = false;
 
+  /// Set by HR/Management when the employee's device genuinely cannot produce
+  /// a selfie — a browser that refuses to open the camera, for instance. The
+  /// selfie is otherwise mandatory and blocks check-in outright, which left
+  /// one employee unable to record attendance at all for over a week. GPS and
+  /// timing rules still apply; only the photo is waived.
+  static bool     exemptFromSelfie = false;
+
   /// Management is an oversight role, exempt from the leave cycle, permission
   /// limits, fixed timings and payroll. Derived from [role].
   static bool get isManagement => role == UserRole.management;
@@ -86,5 +93,12 @@ class UserSession {
     workLocation     = '';
     permissionMinutesQuota = 120;
     photoUrl         = '';
+    // Exemptions are per-person privileges. Left set, they would carry to
+    // whoever logs in next on a shared device — someone else's phone, or a
+    // site tablet — silently waiving a requirement for the wrong employee.
+    exemptFromSelfie     = false;
+    exemptFromAttendance = false;
+    exemptFromTiming     = false;
+    oversightOnly        = false;
   }
 }

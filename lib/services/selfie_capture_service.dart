@@ -19,7 +19,7 @@ import 'supabase_service.dart';
 /// each of the six capture sites — the late-reason prompt was raised in three
 /// separate files and fixing only one of them cost several rounds.
 bool get selfieRequiredForCurrentUser =>
-    UserSession.role != UserRole.management;
+    UserSession.role != UserRole.management && !UserSession.exemptFromSelfie;
 
 /// Mandatory attendance selfie: opens the device camera directly (never the
 /// gallery), burns the date/day/time/GPS coordinates into the photo, then

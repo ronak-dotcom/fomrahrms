@@ -1226,7 +1226,7 @@ class SupabaseService {
       'work_location, work_location_pending, work_location_requested_at, '
       'permission_minutes_quota, permission_minutes_quota_pending, permission_minutes_quota_requested_at, '
       'company_email, email_pending, email_requested_at, '
-      'exempt_from_timing, exempt_from_geofence, exempt_from_leave_rules, '
+      'exempt_from_timing, exempt_from_geofence, exempt_from_selfie, exempt_from_leave_rules, '
       'exempt_from_attendance, payroll_eligible, oversight_only';
 
   // Postgres `numeric` columns (gross_pay, gross_pay_pending, ...) come back
@@ -1298,6 +1298,7 @@ class SupabaseService {
         companyEmail:         (row['company_email']           as String?) ?? '',
         exemptFromTiming:     (row['exempt_from_timing']      as bool?) ?? false,
         exemptFromGeofence:   (row['exempt_from_geofence']    as bool?) ?? false,
+        exemptFromSelfie:     (row['exempt_from_selfie']      as bool?) ?? false,
         exemptFromLeaveRules: (row['exempt_from_leave_rules'] as bool?) ?? false,
         exemptFromAttendance: (row['exempt_from_attendance']  as bool?) ?? false,
         payrollEligible:      (row['payroll_eligible']        as bool?) ?? true,
@@ -4169,6 +4170,7 @@ class SupabaseService {
       if (me == null) return;
       UserSession.isOnroll             = me.onrollConfirmedAt.trim().isNotEmpty;
       UserSession.exemptFromTiming     = me.exemptFromTiming;
+      UserSession.exemptFromSelfie     = me.exemptFromSelfie;
       UserSession.exemptFromAttendance = me.exemptFromAttendance;
       UserSession.oversightOnly        = me.oversightOnly;
       UserSession.permissionMinutesQuota = me.permissionMinutesQuota;
