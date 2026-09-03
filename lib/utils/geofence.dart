@@ -53,6 +53,7 @@ GeofenceResult evaluateGeofence({
   required List<OfficeLocation> locations,
   required double? lat,
   required double? lng,
+  double? accuracy,
 }) {
   if (!policy.requiresLocation) return GeofenceResult.unrestricted;
 
@@ -84,6 +85,16 @@ GeofenceResult evaluateGeofence({
       nearest = loc;
     }
     if (d <= loc.radiusMeters) within = true;
+    // A reading is only evidence of being outside if it is precise enough to
+    // tell. Deepak was measured 566 m from Head Office — 66 m past a 500 m
+    // radius — on a fix accurate to +/-2000 m: a cell-tower estimate, not
+    // GPS. His true position was anywhere in a 4 km-wide circle, so calling
+    // that "not at the office" states as fact something the data cannot
+    // support. Where the margin of error covers the boundary, the reading is
+    // inconclusive and the employee gets the benefit of the doubt. The raw
+    // coordinates and accuracy are still recorded, so a genuinely distant
+    // check-in remains visible to HR.
+    if (accuracy != null && d <= loc.radiusMeters + accuracy) within = true;
   }
 
   return GeofenceResult(

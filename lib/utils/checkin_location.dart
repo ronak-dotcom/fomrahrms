@@ -111,6 +111,7 @@ Future<CheckInLocation> resolveCheckInLocation() async {
           locations: locations,
           lat: pos?.latitude,
           lng: pos?.longitude,
+          accuracy: pos?.accuracy,
         );
 
   return CheckInLocation(
@@ -121,44 +122,45 @@ Future<CheckInLocation> resolveCheckInLocation() async {
   );
 }
 
-/// Shows the "you are not at your assigned location" prompt.
+/// Notifies the employee that their check-in was recorded away from their
+/// usual location, and returns false so the caller proceeds.
 ///
-/// Returns true when the caller should stop and let the employee type a
-/// reason. Deliberately not a hard block: a genuine GPS failure must not stop
-/// someone recording their attendance, and the reason is captured on the
-/// record either way.
+/// Previously this blocked until a reason was typed. That put the burden on
+/// the employee for something the app cannot reliably determine — a check-in
+/// 566 m from the office on a +/-2000 m fix was reported as "not at your
+/// assigned location", a claim the reading does not support — and it produced
+/// reasons written to dismiss a dialog rather than to inform anyone.
+///
+/// The position, accuracy and off-site verdict are stored on the attendance
+/// record regardless, and surfaced to HR and Management, who can see the
+/// distance and judge it.
 Future<bool> promptForLocationReason(
   BuildContext context,
   CheckInLocation loc, {
+  // Retained so the two call sites keep compiling, but no longer consulted:
+  // an empty note used to mean "block until they type something", and
+  // off-site check-ins are now recorded and flagged rather than blocked.
+  // ignore: avoid_unused_constructor_parameters
   required bool noteIsEmpty,
   bool isCheckOut = false,
 }) async {
-  if (!loc.outsideAllowedLocation || !noteIsEmpty) return false;
+  if (!loc.outsideAllowedLocation) return false;
 
   final gpsError = loc.gpsError;
   final where = loc.nearestLocationName.isNotEmpty
-      ? 'outside ${loc.nearestLocationName}'
-      : 'outside your assigned location';
-  final action = isCheckOut ? 'check out' : 'check in';
+      ? loc.nearestLocationName
+      : 'your usual location';
 
-  await showDialog<void>(
-    context: context,
-    builder: (ctx) => AlertDialog(
-      title: Text(gpsError != null
-          ? 'Could Not Check Your Location'
-          : 'You Are Not At Your Assigned Location'),
-      content: Text(
-        gpsError != null
-            ? '$gpsError\n\nYou can still $action — please enter a reason below.'
-            : "You're $where. Please enter a reason below to $action from this location.",
-      ),
-      actions: [
-        ElevatedButton(
-          onPressed: () => Navigator.of(ctx).pop(),
-          child: const Text('OK'),
-        ),
-      ],
-    ),
-  );
-  return true;
+  if (context.mounted) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(gpsError != null
+          ? 'Location unavailable - recorded and flagged for HR.'
+          : 'Recorded away from $where - flagged for HR.'),
+      backgroundColor: Colors.blueGrey.shade700,
+      behavior: SnackBarBehavior.floating,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+    ));
+  }
+  // Never blocks - the caller continues and the record is written.
+  return false;
 }

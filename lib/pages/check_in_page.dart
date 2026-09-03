@@ -149,6 +149,7 @@ class _CheckInPageState extends State<CheckInPage> {
     // reason, rather than silently skipping the geofence check.
     final geofence = evaluateGeofence(
       policy: policy, locations: locations, lat: pos?.latitude, lng: pos?.longitude,
+      accuracy: pos?.accuracy,
     );
     final outsideOffice = geofence.outsideAllowedLocation;
     if (!mounted) return;
@@ -158,51 +159,41 @@ class _CheckInPageState extends State<CheckInPage> {
       _nearestLocationName = geofence.nearestLocation?.name ?? '';
     });
 
-    if (outsideOffice && _noteController.text.trim().isEmpty) {
-      // Distinguish "we couldn't read your location at all" from "we read it
-      // and you're genuinely elsewhere". Both used to show the same message,
-      // which made a GPS failure look like the employee was in the wrong place.
+    if (outsideOffice) {
+      // Recorded, not blocked. Requiring a typed justification put the burden
+      // on the employee for something the app cannot reliably determine: a
+      // check-in 566 m from the office on a +/-2000 m fix was reported as
+      // "not at your assigned location", which is a claim the data does not
+      // support. It also produced reasons written to get past a dialog rather
+      // than to inform anyone.
+      //
+      // The position, its accuracy and the off-site verdict are all stored on
+      // the attendance record and surfaced to HR and Management, who can see
+      // the distance and judge it. The employee is simply told what was
+      // recorded.
       final gpsError = pos == null ? GpsTrackingService.lastLocationError : null;
-      // Logged before the dialog so the record exists even if the employee
-      // closes the app in frustration. This is the only trace a blocked
-      // attempt leaves — attendance_records will have no row at all.
       unawaited(SupabaseService.logCheckInAttempt(
         kind: 'check_in',
-        outcome: pos == null ? 'gps_failed' : 'blocked',
-        reason: gpsError ?? 'outside allowed location'
+        outcome: pos == null ? 'gps_failed' : 'flagged_offsite',
+        reason: gpsError ?? 'off-site'
             '${geofence.nearestDistanceMeters != null
                 ? ' (${geofence.nearestDistanceMeters!.round()}m from '
-                  '${geofence.nearestLocation?.name ?? "nearest site"})'
+                  '${geofence.nearestLocation?.name ?? "nearest site"}'
+                  '${pos?.accuracy != null ? ', +/-${pos!.accuracy.round()}m' : ''})'
                 : ''}',
         lat: pos?.latitude,
         lng: pos?.longitude,
         accuracy: pos?.accuracy,
         withinRadius: pos == null ? null : geofence.isWithinAnyLocation,
       ));
-      final locationPhrase = _nearestLocationName.isNotEmpty
-          ? "outside $_nearestLocationName"
-          : 'outside your assigned location';
-      await showDialog<void>(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          title: Text(gpsError != null
-              ? 'Could Not Check Your Location'
-              : 'You Are Not At Your Assigned Location'),
-          content: Text(
-            gpsError != null
-                ? '$gpsError\n\nYou can still check in — please enter a reason below.'
-                : "You're $locationPhrase. Please enter a reason "
-                    'below to check in from this location.',
-          ),
-          actions: [
-            ElevatedButton(
-              onPressed: () => Navigator.of(ctx).pop(),
-              child: const Text('OK'),
-            ),
-          ],
-        ),
-      );
-      return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(gpsError != null
+            ? 'Location unavailable — checked in and flagged for HR.'
+            : 'Checked in away from ${_nearestLocationName.isNotEmpty ? _nearestLocationName : "your usual location"} — flagged for HR.'),
+        backgroundColor: Colors.blueGrey.shade700,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+      ));
     }
 
     final schedule = OfficeTimingStore.scheduleForCurrentUser();

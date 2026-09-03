@@ -119,6 +119,7 @@ class _CheckOutPageState extends State<CheckOutPage> {
     // reason, rather than silently skipping the geofence check.
     final geofence = evaluateGeofence(
       policy: policy, locations: locations, lat: pos?.latitude, lng: pos?.longitude,
+      accuracy: pos?.accuracy,
     );
     final outsideOffice = geofence.outsideAllowedLocation;
     if (!mounted) return;
