@@ -45,12 +45,22 @@ class SelfieCaptureService {
     lastFailure = null;
     XFile? shot;
     try {
+      // Timed out because this can never resolve on iOS Safari: if the
+      // camera sheet is dismissed in certain ways, or the browser refuses to
+      // open it, pickImage() simply never completes. The caller has already
+      // set _submitting = true by then, so the check-in button greys out and
+      // stays that way — "nothing happens, it's just stuck". Two minutes is
+      // generous for actually taking a photo while still bounded.
       shot = await ImagePicker().pickImage(
         source: ImageSource.camera,
         preferredCameraDevice: CameraDevice.front,
         maxWidth: 1600,
         imageQuality: 90,
-      );
+      ).timeout(const Duration(seconds: 120));
+    } on TimeoutException {
+      lastFailure = 'The camera did not open. Check camera permission for this '
+          'site in your browser settings, then try again.';
+      return null;
     } catch (e) {
       // Typically camera permission denied, or a browser that will not open
       // the camera from this context.
@@ -108,12 +118,19 @@ class SelfieCaptureService {
       ));
       return null;
     }
-    final path = await SupabaseService.uploadAttendanceSelfie(
-      employeeId: employeeId,
-      date: date,
-      kind: kind,
-      bytes: bytes,
-    );
+    // Also bounded: an upload stalling on a weak connection would leave the
+    // button greyed just as surely as a camera that never opens.
+    String? path;
+    try {
+      path = await SupabaseService.uploadAttendanceSelfie(
+        employeeId: employeeId,
+        date: date,
+        kind: kind,
+        bytes: bytes,
+      ).timeout(const Duration(seconds: 30));
+    } on TimeoutException {
+      path = null;
+    }
     if (path == null) {
       lastFailure = 'Photo taken but upload failed';
       unawaited(SupabaseService.logCheckInAttempt(
