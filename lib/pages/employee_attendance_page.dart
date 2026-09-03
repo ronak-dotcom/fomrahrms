@@ -163,6 +163,7 @@ class _EmployeeAttendancePageState extends State<EmployeeAttendancePage> {
           : '',
       note:     _checkInNoteCtrl.text.trim(),
       selfiePath: selfiePath ?? '',
+      selfieFromPicker: SelfieCaptureService.lastUsedFallback,
       lat:          loc.lat,
       lng:          loc.lng,
       withinRadius: loc.withinRadius,
@@ -247,6 +248,7 @@ class _EmployeeAttendancePageState extends State<EmployeeAttendancePage> {
       time: _checkOutCtrl.text,
       note: _checkOutNoteCtrl.text.trim(),
       selfiePath: selfiePath ?? '',
+      selfieFromPicker: SelfieCaptureService.lastUsedFallback,
     );
     if (UserSession.email.isNotEmpty) {
       NotificationService.checkOutRecorded(

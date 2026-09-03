@@ -2268,6 +2268,7 @@ class SupabaseService {
     String location = '',
     String note = '',
     String selfiePath = '',
+    bool selfieFromPicker = false,
     double? lat,
     double? lng,
     bool? withinRadius,
@@ -2286,6 +2287,10 @@ class SupabaseService {
         'location':                location,
         'check_in_note':           note,
         'check_in_selfie_path':    selfiePath,
+        // Whether the device would open its camera directly, or fell back to
+        // the photo picker. Both watermark identically, so without this the
+        // difference is invisible to HR.
+        'check_in_selfie_from_picker': selfieFromPicker,
         'check_in_lat':            lat,
         'check_in_lng':            lng,
         'check_in_within_radius':  withinRadius,
@@ -2369,6 +2374,7 @@ class SupabaseService {
     required String time,
     String note = '',
     String selfiePath = '',
+    bool selfieFromPicker = false,
     double? lat,
     double? lng,
     bool? withinRadius,
@@ -2380,6 +2386,7 @@ class SupabaseService {
             'check_out_time':          time,
             'check_out_note':          note,
             'check_out_selfie_path':   selfiePath,
+            'check_out_selfie_from_picker': selfieFromPicker,
             'check_out_lat':           lat,
             'check_out_lng':           lng,
             'check_out_within_radius': withinRadius,

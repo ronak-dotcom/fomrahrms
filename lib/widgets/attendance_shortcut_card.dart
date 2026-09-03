@@ -1009,6 +1009,7 @@ class _AttendanceSheetState extends State<_AttendanceSheet> {
           : '',
       note:         _noteCtrl.text.trim(),
       selfiePath:   selfiePath ?? '',
+      selfieFromPicker: SelfieCaptureService.lastUsedFallback,
       // Previously omitted entirely, so the coordinates were fetched and
       // thrown away.
       lat:          loc.lat,
@@ -1096,6 +1097,7 @@ class _AttendanceSheetState extends State<_AttendanceSheet> {
       time:        _timeCtrl.text,
       note:        _noteCtrl.text.trim(),
       selfiePath:  selfiePath ?? '',
+      selfieFromPicker: SelfieCaptureService.lastUsedFallback,
     );
 
     if (!mounted) return;

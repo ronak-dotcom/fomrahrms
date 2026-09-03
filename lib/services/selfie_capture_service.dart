@@ -41,8 +41,15 @@ class SelfieCaptureService {
   /// and nothing anywhere said which step was failing for her.
   static String? lastFailure;
 
+  /// True when the last capture came from the photo picker rather than a
+  /// direct camera launch. Recorded rather than hidden: a picker selection
+  /// could be an existing photo, so HR should be able to tell the two apart
+  /// even though both are watermarked identically.
+  static bool lastUsedFallback = false;
+
   static Future<Uint8List?> capture({required String label}) async {
     lastFailure = null;
+    lastUsedFallback = false;
     XFile? shot;
     try {
       // Timed out because this can never resolve on iOS Safari: if the
@@ -58,14 +65,16 @@ class SelfieCaptureService {
         imageQuality: 90,
       ).timeout(const Duration(seconds: 120));
     } on TimeoutException {
-      lastFailure = 'The camera did not open. Check camera permission for this '
-          'site in your browser settings, then try again.';
-      return null;
-    } catch (e) {
-      // Typically camera permission denied, or a browser that will not open
-      // the camera from this context.
-      lastFailure = 'Camera unavailable: $e';
-      return null;
+      shot = await _fallbackPick();
+      if (shot == null) return null;
+    } catch (_) {
+      // iOS Safari refuses a direct camera launch on some devices - one
+      // employee could not check in for over a week because of it. Rather
+      // than waive the selfie, which is the control itself, fall back to the
+      // photo picker: on iOS that sheet still offers "Take Photo", so a live
+      // selfie is usually still what gets captured.
+      shot = await _fallbackPick();
+      if (shot == null) return null;
     }
     if (shot == null) {
       lastFailure = 'Camera closed before a photo was taken';
@@ -140,6 +149,31 @@ class SelfieCaptureService {
       ));
     }
     return path;
+  }
+
+  /// Photo picker fallback for devices whose browser will not open the
+  /// camera directly. Flags the result so it is distinguishable from a
+  /// direct capture.
+  static Future<XFile?> _fallbackPick() async {
+    try {
+      final shot = await ImagePicker()
+          .pickImage(source: ImageSource.gallery, maxWidth: 1600, imageQuality: 90)
+          .timeout(const Duration(seconds: 120));
+      if (shot == null) {
+        lastFailure = 'No photo was selected. A selfie is required to check in.';
+        return null;
+      }
+      lastUsedFallback = true;
+      return shot;
+    } on TimeoutException {
+      lastFailure = 'The camera and photo picker both failed to open. '
+          'Allow camera access for this site, or ask your manager to confirm '
+          'your attendance.';
+      return null;
+    } catch (e) {
+      lastFailure = 'Could not open the camera or photo picker: $e';
+      return null;
+    }
   }
 
   static List<String> _lines(String label, DateTime now, Position? pos) {

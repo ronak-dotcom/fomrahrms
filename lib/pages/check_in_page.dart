@@ -251,6 +251,7 @@ class _CheckInPageState extends State<CheckInPage> {
       location: loc,
       note: _noteController.text.trim(),
       selfiePath: selfiePath ?? '',
+      selfieFromPicker: SelfieCaptureService.lastUsedFallback,
       lat: pos?.latitude,
       lng: pos?.longitude,
       accuracy: pos?.accuracy,
