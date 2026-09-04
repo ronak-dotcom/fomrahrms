@@ -81,6 +81,89 @@ class _ApprovalsPageState extends State<ApprovalsPage> with SingleTickerProvider
         ),
       );
 
+  // Manager-vouched attendance for days a device could not verify. Two
+  // separate queues on purpose: the reporting manager confirms presence
+  // because they are the one who knows, and HR approves afterwards because a
+  // vouched day has no GPS and no selfie behind it — one signature should not
+  // turn that into pay.
+  List<Map<String, dynamic>> _attendanceConfirmations = const [];
+
+  List<Map<String, dynamic>> get _pendingManagerVouch =>
+      _attendanceConfirmations.where((r) => (r['status'] ?? '') == 'pending').toList();
+
+  // Reaches HR only once the manager has confirmed.
+  List<Map<String, dynamic>> get _pendingHrVouch => _attendanceConfirmations
+      .where((r) => (r['status'] ?? '') == 'confirmed'
+                 && (r['hr_status'] ?? '') == 'pending')
+      .toList();
+
+  Future<void> _decideVouch(Map<String, dynamic> r, bool ok) async {
+    await SupabaseService.decideAttendanceConfirmation(r['id'].toString(), ok);
+    await _load();
+  }
+
+  Future<void> _hrDecideVouch(Map<String, dynamic> r, bool ok) async {
+    await SupabaseService.hrDecideAttendanceConfirmation(r['id'].toString(), ok);
+    await _load();
+  }
+
+  Widget _vouchCard(Map<String, dynamic> r,
+      {required VoidCallback onApprove, required VoidCallback onDeny, bool hrStage = false}) {
+    return _ApprovalCard(
+      title: (r['employee_name'] ?? '').toString(),
+      subtitle: '${r['date_iso'] ?? ''} · claims ${r['claimed_time'] ?? ''}',
+      details: [
+        if ((r['employee_note'] ?? '').toString().isNotEmpty)
+          'Employee: ${r['employee_note']}',
+        // The actual failure, not the employee's account of it.
+        if ((r['failure_reason'] ?? '').toString().isNotEmpty)
+          'App reported: ${r['failure_reason']}',
+        if (hrStage && (r['decided_by_name'] ?? '').toString().isNotEmpty)
+          'Confirmed by ${r['decided_by_name']}',
+        'No GPS or selfie for this day — it will be recorded as manager-confirmed.',
+      ],
+      meta: _fmtIso((r['requested_at'] ?? '').toString()),
+      onApprove: onApprove,
+      onDeny: onDeny,
+    );
+  }
+
+  _CategoryInfo get _vouchCategory => _CategoryInfo(
+        icon: Icons.how_to_reg_rounded,
+        color: Colors.indigo.shade600,
+        label: 'Attendance Confirmations',
+        pending: _pendingManagerVouch.length,
+        approved: 0, rejected: 0,
+        total: _pendingManagerVouch.length,
+        onViewAll: () => _showPendingSheet(
+          label: 'Attendance Confirmations',
+          color: Colors.indigo.shade600,
+          buildCards: (refresh) => _pendingManagerVouch
+              .map((r) => _vouchCard(r,
+                  onApprove: () async { await _decideVouch(r, true); refresh(); },
+                  onDeny: () async { await _decideVouch(r, false); refresh(); }))
+              .toList(),
+        ),
+      );
+
+  _CategoryInfo get _vouchHrCategory => _CategoryInfo(
+        icon: Icons.verified_user_rounded,
+        color: Colors.indigo.shade400,
+        label: 'Attendance — HR Approval',
+        pending: _pendingHrVouch.length,
+        approved: 0, rejected: 0,
+        total: _pendingHrVouch.length,
+        onViewAll: () => _showPendingSheet(
+          label: 'Attendance — HR Approval',
+          color: Colors.indigo.shade400,
+          buildCards: (refresh) => _pendingHrVouch
+              .map((r) => _vouchCard(r, hrStage: true,
+                  onApprove: () async { await _hrDecideVouch(r, true); refresh(); },
+                  onDeny: () async { await _hrDecideVouch(r, false); refresh(); }))
+              .toList(),
+        ),
+      );
+
   Future<void> _load() async {
     if (mounted) setState(() => _loading = true);
     try {
@@ -94,6 +177,7 @@ class _ApprovalsPageState extends State<ApprovalsPage> with SingleTickerProvider
         SupabaseService.fetchMaintenanceFormVersions(),
         SupabaseService.fetchKraDocuments(),
         SupabaseService.fetchOnDutyRequests(status: 'pending'),
+        SupabaseService.fetchAttendanceConfirmations(),
       ]);
       final leaves = results[0] as List<LeaveApplication>;
       if (leaves.isNotEmpty) {
@@ -112,6 +196,7 @@ class _ApprovalsPageState extends State<ApprovalsPage> with SingleTickerProvider
         _maintenanceVersions = results[6] as List<Map<String, dynamic>>;
         _kraDocs = results[7] as List<KraDocument>;
         _onDutyRequests = results[8] as List<Map<String, dynamic>>;
+        _attendanceConfirmations = results[9] as List<Map<String, dynamic>>;
         _loading = false;
       });
     } catch (_) {
@@ -472,6 +557,7 @@ class _ApprovalsPageState extends State<ApprovalsPage> with SingleTickerProvider
 
   List<_CategoryInfo> get _allCategories => [
         _leaveCategory, _permissionCategory, _compOffCategory, _onDutyCategory,
+        _vouchCategory, _vouchHrCategory,
         _onrollCategory, _grossPayCategory, _permissionQuotaCategory, _workLocationCategory,
         _businessUnitCategory,
         _reportingManagerCategory, _rmFlagCategory, _kraCategory,
@@ -649,7 +735,8 @@ class _ApprovalsPageState extends State<ApprovalsPage> with SingleTickerProvider
             : switch (_tabs.index) {
                 0 => _tabView(categories),
                 1 => _tabView(categories, pendingOnly: true),
-                2 => _tabView([_leaveCategory, _permissionCategory, _compOffCategory, _onDutyCategory]),
+                2 => _tabView([_leaveCategory, _permissionCategory, _compOffCategory, _onDutyCategory,
+                               _vouchCategory, _vouchHrCategory]),
                 3 => _tabView([_grossPayCategory]),
                 4 => _tabView([_onrollCategory]),
                 5 => _tabView([_permissionQuotaCategory, _workLocationCategory, _businessUnitCategory, _reportingManagerCategory, _rmFlagCategory, _kraCategory]),

@@ -29,6 +29,8 @@ const _baseEmpNavItems = [
   _NavItem('Apply Permission',     Icons.schedule_rounded,                '/employee/leave/permission'),
   _NavItem('Apply Comp Off',       Icons.swap_horiz_rounded,              '/employee/leave/compoff'),
   _NavItem('Apply On Duty',        Icons.work_history_rounded,            '/employee/on-duty'),
+  // Last resort when the app itself could not record a check-in.
+  _NavItem('Attendance Issue',     Icons.report_problem_rounded,          '/employee/attendance-confirmation'),
   _NavItem('My Payslips',          Icons.receipt_long_rounded,            '/employee/payslips'),
   _NavItem('My Tasks',             Icons.task_alt_rounded,                '/employee/tasks'),
   _NavItem('Appraisal',            Icons.fact_check_rounded,              '/employee/appraisal'),

@@ -23,6 +23,7 @@ import 'pages/apply_leave_page.dart';
 import 'pages/apply_permission_page.dart';
 import 'pages/apply_comp_off_page.dart';
 import 'pages/apply_on_duty_page.dart';
+import 'pages/request_attendance_confirmation_page.dart';
 import 'pages/leave_approvals_page.dart';
 import 'pages/leave_balance_page.dart';
 import 'pages/task_management_page.dart';
@@ -399,6 +400,7 @@ final _router = GoRouter(
         GoRoute(path: '/employee/leave/permission',        builder: (_, __) => const ApplyPermissionPage()),
         GoRoute(path: '/employee/leave/compoff',           builder: (_, __) => const ApplyCompOffPage()),
         GoRoute(path: '/employee/on-duty',                 builder: (_, __) => const ApplyOnDutyPage()),
+        GoRoute(path: '/employee/attendance-confirmation', builder: (_, __) => const RequestAttendanceConfirmationPage()),
         GoRoute(path: '/employee/leave/approvals',         builder: (_, __) => const MyLeaveApprovalsPage()),
         GoRoute(path: '/employee/leave/balance',           builder: (_, __) => const MyLeaveBalancePage()),
         GoRoute(path: '/employee/leave',                   builder: (_, __) => const ApplyLeavePage()),

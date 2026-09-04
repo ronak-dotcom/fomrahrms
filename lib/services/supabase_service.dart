@@ -3626,6 +3626,127 @@ class SupabaseService {
     }
   }
 
+  // ── Manager-vouched attendance ────────────────────────────────────────
+  // For days a device could not verify: camera blocked, location denied, no
+  // GPS fix. The reporting manager confirms presence and HR approves
+  // separately, because a vouched day has no GPS and no selfie behind it —
+  // one signature should not turn that into pay.
+
+  /// Whether this employee may have another day vouched for this week.
+  /// Capped at two, unless HR has granted a dated exception for a device
+  /// that persistently cannot comply. Asked of the database so the limit
+  /// cannot be sidestepped by the client.
+  static Future<({bool allowed, int used, int cap, String reason})>
+      canVouchAttendance(String employeeId, DateTime date) async {
+    try {
+      final iso = '${date.year.toString().padLeft(4, '0')}-'
+          '${date.month.toString().padLeft(2, '0')}-'
+          '${date.day.toString().padLeft(2, '0')}';
+      final rows = await _db?.rpc('can_vouch_attendance',
+          params: {'p_employee_id': employeeId, 'p_date': iso});
+      if (rows is List && rows.isNotEmpty) {
+        final r = Map<String, dynamic>.from(rows.first as Map);
+        return (
+          allowed: r['allowed'] == true,
+          used: (r['used'] as num?)?.toInt() ?? 0,
+          cap: (r['cap'] as num?)?.toInt() ?? 2,
+          reason: (r['reason'] as String?) ?? '',
+        );
+      }
+    } catch (e) {
+      _writeFailed('canVouchAttendance', e);
+    }
+    // Fails closed: if the limit cannot be checked, do not offer the route.
+    return (allowed: false, used: 0, cap: 2, reason: 'Could not check the limit');
+  }
+
+  static Future<String?> requestAttendanceConfirmation({
+    required DateTime date,
+    required String claimedTime,
+    required String employeeNote,
+    required String failureReason,
+    double? lat,
+    double? lng,
+    double? accuracy,
+    String kind = 'check_in',
+  }) async {
+    try {
+      final iso = '${date.year.toString().padLeft(4, '0')}-'
+          '${date.month.toString().padLeft(2, '0')}-'
+          '${date.day.toString().padLeft(2, '0')}';
+      await _db?.from('attendance_confirmations').upsert({
+        'employee_id': UserSession.employeeId,
+        'employee_name': UserSession.name,
+        'date_iso': iso,
+        'kind': kind,
+        'claimed_time': claimedTime,
+        'employee_note': employeeNote,
+        // Carried from the actual failure rather than the employee's
+        // description, so the manager sees what went wrong first-hand.
+        'failure_reason': failureReason,
+        'lat': lat, 'lng': lng, 'accuracy': accuracy,
+        'status': 'pending', 'hr_status': 'pending',
+      }, onConflict: 'employee_id,date_iso,kind');
+      return null;
+    } catch (e) {
+      _writeFailed('requestAttendanceConfirmation', e);
+      return e.toString();
+    }
+  }
+
+  /// RLS narrows this to the caller's own requests, their reports', or
+  /// everything for HR and Management.
+  static Future<List<Map<String, dynamic>>> fetchAttendanceConfirmations() async {
+    try {
+      final rows = await _db
+          ?.from('attendance_confirmations')
+          .select()
+          .order('date_iso', ascending: false);
+      return List<Map<String, dynamic>>.from(rows ?? []);
+    } catch (e) {
+      _writeFailed('fetchAttendanceConfirmations', e);
+      return [];
+    }
+  }
+
+  /// Manager's decision. Does not create the attendance record on its own —
+  /// HR must approve too (enforced by the database trigger).
+  static Future<String?> decideAttendanceConfirmation(
+      String id, bool confirm, {String note = ''}) async {
+    try {
+      await _db?.from('attendance_confirmations').update({
+        'status': confirm ? 'confirmed' : 'rejected',
+        'decided_by': UserSession.email,
+        'decided_by_name': UserSession.name,
+        'decided_at': DateTime.now().toUtc().toIso8601String(),
+        'decision_note': note,
+      }).eq('id', id);
+      return null;
+    } catch (e) {
+      _writeFailed('decideAttendanceConfirmation', e);
+      return e.toString();
+    }
+  }
+
+  /// HR's second signature. Only once this lands does the day become
+  /// attendance.
+  static Future<String?> hrDecideAttendanceConfirmation(
+      String id, bool approve, {String note = ''}) async {
+    try {
+      await _db?.from('attendance_confirmations').update({
+        'hr_status': approve ? 'approved' : 'rejected',
+        'hr_decided_by': UserSession.email,
+        'hr_decided_by_name': UserSession.name,
+        'hr_decided_at': DateTime.now().toUtc().toIso8601String(),
+        'hr_note': note,
+      }).eq('id', id);
+      return null;
+    } catch (e) {
+      _writeFailed('hrDecideAttendanceConfirmation', e);
+      return e.toString();
+    }
+  }
+
   /// Records that a check-in or check-out was ATTEMPTED, including when it
   /// failed. attendance_records only ever holds successes, so without this
   /// a blocked or errored attempt leaves no trace anywhere and can only be
