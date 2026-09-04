@@ -243,18 +243,21 @@ class _ApplyLeavePageState extends State<ApplyLeavePage> {
     super.dispose();
   }
 
+
+  Widget _pickerTheme(BuildContext ctx, Widget? child) => Theme(
+        data: Theme.of(ctx).copyWith(
+          colorScheme: ColorScheme.light(primary: _color),
+        ),
+        child: child!,
+      );
+
   Future<void> _pickFrom() async {
     final picked = await showDatePicker(
       context: context,
       initialDate: _fromDate ?? DateTime.now(),
       firstDate: DateTime.now().subtract(const Duration(days: 30)),
       lastDate: DateTime.now().add(const Duration(days: 365)),
-      builder: (ctx, child) => Theme(
-        data: Theme.of(ctx).copyWith(
-          colorScheme: ColorScheme.light(primary: _color),
-        ),
-        child: child!,
-      ),
+      builder: _pickerTheme,
     );
     if (picked != null) {
       setState(() {
@@ -274,12 +277,7 @@ class _ApplyLeavePageState extends State<ApplyLeavePage> {
       initialDate: _toDate ?? (_fromDate ?? DateTime.now()),
       firstDate: _fromDate ?? DateTime.now(),
       lastDate: DateTime.now().add(const Duration(days: 365)),
-      builder: (ctx, child) => Theme(
-        data: Theme.of(ctx).copyWith(
-          colorScheme: ColorScheme.light(primary: _color),
-        ),
-        child: child!,
-      ),
+      builder: _pickerTheme,
     );
     if (picked != null) setState(() => _toDate = picked);
   }

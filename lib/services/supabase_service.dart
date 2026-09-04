@@ -3747,6 +3747,63 @@ class SupabaseService {
     }
   }
 
+  /// Employee withdraws their own leave. Plans change, and without this an
+  /// approved request could only be undone by asking HR to edit the record —
+  /// so people simply came to work on a day still marked as leave, and the
+  /// balance stayed spent.
+  ///
+  /// The columns already existed on leave_applications (cancel_reason,
+  /// cancelled_by, cancelled_at) but nothing in the app ever wrote them.
+  static Future<String?> cancelLeaveApplication(String id, String reason) async {
+    try {
+      await _db?.from('leave_applications').update({
+        'manager_status': 'denied',
+        'cancel_reason': reason,
+        'cancelled_by': UserSession.name,
+        'cancelled_at': DateTime.now().toUtc().toIso8601String(),
+        'cancel_requested_at': DateTime.now().toUtc().toIso8601String(),
+      }).eq('id', id);
+      logAuditEvent('leave_cancelled',
+          targetType: 'leave_applications', targetId: id);
+      return null;
+    } catch (e) {
+      _writeFailed('cancelLeaveApplication', e);
+      return e.toString();
+    }
+  }
+
+  /// Who else on this team is already off across [from]..[to] — the question
+  /// every manager asks before approving, which previously required opening
+  /// the leave list and reading it by eye.
+  static Future<List<String>> teamMembersOnLeave({
+    required String department,
+    required DateTime from,
+    required DateTime to,
+    required String excludeName,
+  }) async {
+    try {
+      String iso(DateTime d) => '${d.year.toString().padLeft(4, '0')}-'
+          '${d.month.toString().padLeft(2, '0')}-'
+          '${d.day.toString().padLeft(2, '0')}';
+      final rows = await _db
+          ?.from('leave_applications')
+          .select('employee_name, from_date, to_date')
+          .eq('department', department)
+          .eq('manager_status', 'approved')
+          .lte('from_date', iso(to))
+          .gte('to_date', iso(from));
+      if (rows == null) return [];
+      return List<Map<String, dynamic>>.from(rows)
+          .map((r) => (r['employee_name'] as String?) ?? '')
+          .where((n) => n.isNotEmpty && n != excludeName)
+          .toSet()
+          .toList();
+    } catch (e) {
+      _writeFailed('teamMembersOnLeave', e);
+      return [];
+    }
+  }
+
   /// Records that a check-in or check-out was ATTEMPTED, including when it
   /// failed. attendance_records only ever holds successes, so without this
   /// a blocked or errored attempt leaves no trace anywhere and can only be

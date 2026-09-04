@@ -166,6 +166,50 @@ class _EmployeeLeavePageState extends State<EmployeeLeavePage> {
   }
 
   // ── Balance helpers ────────────────────────────────────────────────────────
+  /// Confirms, then withdraws. Requires a reason because HR and the manager
+  /// will see the day disappear from an approved plan and should know why.
+  Future<void> _withdraw(LeaveApplication a) async {
+    final ctrl = TextEditingController();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Withdraw this leave?'),
+        content: Column(mainAxisSize: MainAxisSize.min, children: [
+          Text('${a.leaveType}: ${a.from.day}/${a.from.month} - ${a.to.day}/${a.to.month}',
+              style: const TextStyle(fontSize: 13)),
+          const SizedBox(height: 6),
+          const Text('The days go back to your balance and your manager is '
+              'notified.', style: TextStyle(fontSize: 12)),
+          const SizedBox(height: 12),
+          TextField(
+            controller: ctrl,
+            autofocus: true,
+            decoration: const InputDecoration(
+              labelText: 'Reason', border: OutlineInputBorder()),
+          ),
+        ]),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Keep')),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red.shade700, foregroundColor: Colors.white),
+            child: const Text('Withdraw'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    final err = await SupabaseService.cancelLeaveApplication(
+        a.id, ctrl.text.trim().isEmpty ? 'Withdrawn by employee' : ctrl.text.trim());
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(err == null ? 'Leave withdrawn.' : 'Could not withdraw: $err'),
+      backgroundColor: err == null ? Colors.green.shade700 : Colors.red.shade700,
+    ));
+    if (err == null) _loadData();
+  }
+
   bool _isThisMonth(LeaveApplication a) {
     // Attendance cycle runs 26th -> 25th, so a calendar-month comparison
     // splits a single cycle across two windows (and merges two cycles into
@@ -361,7 +405,7 @@ class _EmployeeLeavePageState extends State<EmployeeLeavePage> {
       else
         ..._filtered.map((a) => Padding(
               padding: const EdgeInsets.only(bottom: 10),
-              child: _AppCard(app: a),
+              child: _AppCard(app: a, onWithdraw: () => _withdraw(a)),
             )),
     ];
 
@@ -488,7 +532,8 @@ class _Pill extends StatelessWidget {
 // ── Leave application card ─────────────────────────────────────────────────────
 class _AppCard extends StatelessWidget {
   final LeaveApplication app;
-  const _AppCard({required this.app});
+  final VoidCallback? onWithdraw;
+  const _AppCard({required this.app, this.onWithdraw});
 
   String _fmt(DateTime d) =>
       '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}';
@@ -559,10 +604,106 @@ class _AppCard extends StatelessWidget {
               ]),
             ),
           ],
+
+          // Where the request has actually got to. A single status word left
+          // people unsure whether anyone had seen it yet, so they asked their
+          // manager in person - which is the thing the app is meant to save.
+          const SizedBox(height: 12),
+          _Timeline(app: app),
+
+          // Plans change. Without a withdraw option an approved day could
+          // only be undone by asking HR to edit the record, so people came in
+          // anyway on a day still marked as leave and the balance stayed
+          // spent. Only future-dated leave can be withdrawn: a day already
+          // taken is a matter of record, not a request.
+          if (onWithdraw != null &&
+              app.effectiveStatus != LeaveApprovalStatus.denied &&
+              app.from.isAfter(DateTime.now())) ...[
+            const SizedBox(height: 10),
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton.icon(
+                onPressed: onWithdraw,
+                icon: const Icon(Icons.undo_rounded, size: 15),
+                label: const Text('Withdraw', style: TextStyle(fontSize: 12.5)),
+                style: TextButton.styleFrom(foregroundColor: Colors.red.shade700),
+              ),
+            ),
+          ],
         ]),
       ),
     );
   }
+}
+
+/// Applied -> Manager -> outcome, with the decider's name where known.
+class _Timeline extends StatelessWidget {
+  final LeaveApplication app;
+  const _Timeline({required this.app});
+
+  @override
+  Widget build(BuildContext context) {
+    final status = app.effectiveStatus;
+    final decided = status != LeaveApprovalStatus.pending;
+    final approved = status == LeaveApprovalStatus.approved;
+
+    return Row(children: [
+      _Dot(done: true, label: 'Applied'),
+      _Bar(done: decided),
+      _Dot(
+        done: decided,
+        label: decided
+            ? (approved ? 'Approved' : 'Declined')
+            : 'With manager',
+        color: decided
+            ? (approved ? Colors.green.shade700 : Colors.red.shade700)
+            : Colors.orange.shade700,
+      ),
+      if (app.decidedBy.isNotEmpty) ...[
+        const SizedBox(width: 8),
+        Flexible(
+          child: Text('by ${app.decidedBy}',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 11, color: Color(0xFF6B7280))),
+        ),
+      ],
+    ]);
+  }
+}
+
+class _Dot extends StatelessWidget {
+  final bool done;
+  final String label;
+  final Color? color;
+  const _Dot({required this.done, required this.label, this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    final c = color ?? (done ? Colors.green.shade700 : const Color(0xFFD1D5DB));
+    return Row(mainAxisSize: MainAxisSize.min, children: [
+      Container(width: 9, height: 9,
+          decoration: BoxDecoration(color: c, shape: BoxShape.circle)),
+      const SizedBox(width: 5),
+      Text(label,
+          style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color: done ? c : const Color(0xFF9CA3AF))),
+    ]);
+  }
+}
+
+class _Bar extends StatelessWidget {
+  final bool done;
+  const _Bar({required this.done});
+
+  @override
+  Widget build(BuildContext context) => Container(
+        width: 22, height: 2,
+        margin: const EdgeInsets.symmetric(horizontal: 6),
+        color: done ? Colors.green.shade700 : const Color(0xFFD1D5DB),
+      );
 }
 
 class _StatusPill extends StatelessWidget {
