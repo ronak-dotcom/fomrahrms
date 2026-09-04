@@ -66,6 +66,10 @@ class AttendanceRecord {
   /// skipped and the day is shown in its own colour. No hours accounting.
   final bool onDuty;
   final String onDutyReason;
+  /// 'device' (GPS + selfie as normal) or 'vouched' (a manager confirmed
+  /// presence and HR approved; nothing on the device verified it).
+  final String verification;
+  final String vouchedBy;
   final double? checkOutLat;
   final double? checkOutLng;
   final bool? checkOutWithinRadius;
@@ -91,6 +95,8 @@ class AttendanceRecord {
     this.lateWaiverReason = '',
     this.onDuty = false,
     this.onDutyReason = '',
+    this.verification = 'device',
+    this.vouchedBy = '',
     this.checkOutLat,
     this.checkOutLng,
     this.checkOutWithinRadius,

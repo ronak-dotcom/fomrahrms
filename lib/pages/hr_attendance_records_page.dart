@@ -1118,6 +1118,14 @@ class _AttendanceTableState extends State<_AttendanceTable> {
         NonWorkingReason.notTracked => const Color(0xFF9CA3AF),
       };
     } else {
+      // A vouched day had no GPS and no selfie — a manager confirmed it and
+      // HR approved. It must not look identical to a verified check-in, or
+      // the two-signature control is invisible at the point someone reviews
+      // the day.
+      if (r.verification == 'vouched') {
+        label = 'Vouched';
+        chipColor = Colors.indigo.shade600;
+      } else {
       switch (rs.status) {
         case CheckInStatus.onDuty:
           // Business work outside normal hours — presence, and deliberately
@@ -1138,6 +1146,7 @@ class _AttendanceTableState extends State<_AttendanceTable> {
           label = 'Present';
           chipColor = _green;
           break;
+      }
       }
     }
     return Container(

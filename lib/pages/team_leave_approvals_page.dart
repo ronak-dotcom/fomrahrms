@@ -1286,6 +1286,25 @@ class _RequestRowState extends State<_RequestRow> {
   static const _undoWindow = Duration(minutes: 10);
   Timer? _timer;
 
+  // Who else from this department is already off across the same dates.
+  // The question every approver actually asks, and answering it previously
+  // meant leaving the screen and reading the leave list by eye — so in
+  // practice it was not asked at all, and clashes surfaced later.
+  List<String>? _clash;
+
+  Future<void> _loadClash() async {
+    if (widget.request.managerStatus != LeaveApprovalStatus.pending) return;
+    final dept = widget.user?.department ?? '';
+    if (dept.isEmpty) return;
+    final names = await SupabaseService.teamMembersOnLeave(
+      department: dept,
+      from: widget.request.from,
+      to: widget.request.to,
+      excludeName: widget.request.employeeName,
+    );
+    if (mounted) setState(() => _clash = names);
+  }
+
   bool get _canUndo {
     final da = widget.request.decidedAt;
     if (da == null || widget.request.managerStatus == LeaveApprovalStatus.pending) return false;
@@ -1296,6 +1315,7 @@ class _RequestRowState extends State<_RequestRow> {
   void initState() {
     super.initState();
     _maybeStartTimer();
+    _loadClash();
   }
 
   @override
@@ -1393,6 +1413,24 @@ class _RequestRowState extends State<_RequestRow> {
       ],
     ]);
 
+    // Shown only when there IS a clash: a "nobody else is off" line on every
+    // card would be noise and would stop the real warnings standing out.
+    final clashBanner = (_clash == null || _clash!.isEmpty)
+        ? const SizedBox.shrink()
+        : Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Icon(Icons.groups_rounded, size: 13, color: Colors.orange.shade800),
+              const SizedBox(width: 5),
+              Expanded(
+                child: Text(
+                  'Also off these dates: ${_clash!.join(', ')}',
+                  style: TextStyle(fontSize: 11.5, color: Colors.orange.shade900),
+                ),
+              ),
+            ]),
+          );
+
     final actions = Row(mainAxisSize: MainAxisSize.min, children: [
       if (locked)
         Icon(Icons.lock_rounded, size: 16, color: Colors.grey.shade400)
@@ -1487,6 +1525,9 @@ class _RequestRowState extends State<_RequestRow> {
               actions,
             ]);
           }),
+          // After the LayoutBuilder so it appears once, on both the narrow
+          // and wide arrangements, rather than being duplicated into each.
+          clashBanner,
           if (status == LeaveApprovalStatus.denied && req.rejectionComment.isNotEmpty) ...[
             const SizedBox(height: 10),
             Container(

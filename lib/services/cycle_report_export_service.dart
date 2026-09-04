@@ -29,6 +29,12 @@ class CycleReportExportService {
     'lop_days': 'NO LOP DAYS',
     'late_count': 'NO OF LATE',
     'permission_count': 'NO OF PERMISSION',
+    // Days where NOTHING verified attendance — no GPS reading, no selfie —
+    // and presence rests on a manager vouching for it with HR's approval.
+    // Placed next to days worked because that is the figure it qualifies:
+    // without it, payroll sees "present" and cannot tell that some of those
+    // days had no evidence behind them at all.
+    'vouched_days': 'OF WHICH VOUCHED',
     'pay_days': 'NO OF PAY DAYS',
     'remarks': 'REMARKS',
   };
