@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import '../models/attendance_policy_store.dart';
 import '../models/attendance_store.dart';
 import '../models/leave_store.dart';
@@ -227,6 +228,12 @@ class _CheckInPageState extends State<CheckInPage> {
       setState(() => _locatingForCheckIn = false);
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         content: Text('Selfie required to check in. ${SelfieCaptureService.lastFailure ?? "Please try again."}'),
+        duration: const Duration(seconds: 10),
+        action: SnackBarAction(
+          label: 'Get help',
+          textColor: Colors.white,
+          onPressed: () => context.push('/employee/attendance-confirmation'),
+        ),
         backgroundColor: Colors.orange.shade700,
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),

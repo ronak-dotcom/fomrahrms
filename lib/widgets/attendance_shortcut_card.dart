@@ -989,6 +989,12 @@ class _AttendanceSheetState extends State<_AttendanceSheet> {
       setState(() => _submitting = false);
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         content: Text('Selfie required to check in. ${SelfieCaptureService.lastFailure ?? "Please try again."}'),
+        duration: const Duration(seconds: 10),
+        action: SnackBarAction(
+          label: 'Get help',
+          textColor: Colors.white,
+          onPressed: () => context.push('/employee/attendance-confirmation'),
+        ),
         backgroundColor: Colors.orange.shade700,
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),

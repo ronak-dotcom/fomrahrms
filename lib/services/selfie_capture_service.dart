@@ -6,6 +6,7 @@ import '../models/user_session.dart';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../utils/image_compress.dart';
 import 'gps_tracking_service.dart';
@@ -27,6 +28,46 @@ bool get selfieRequiredForCurrentUser =>
 /// check-in/check-out entry point so the requirement can't be bypassed by
 /// picking a different screen.
 class SelfieCaptureService {
+  // Remembered per device, not per session. When both the camera and the
+  // photo picker fail, image_picker is simply non-functional in that browser
+  // — no permission change fixes it. One employee spent 16 attempts on a
+  // 120-second timeout each, over half an hour, rediscovering the same dead
+  // end. Once known, the app should say so immediately and point at the
+  // manager-confirmation route instead of making her wait again.
+  static const _pickerBrokenKey = 'selfie_picker_unavailable';
+  static bool? _pickerBrokenCache;
+
+  /// True when this device has already proved it cannot produce a selfie.
+  static Future<bool> isPickerUnavailable() async {
+    if (_pickerBrokenCache != null) return _pickerBrokenCache!;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      _pickerBrokenCache = prefs.getBool(_pickerBrokenKey) ?? false;
+    } catch (_) {
+      _pickerBrokenCache = false;
+    }
+    return _pickerBrokenCache!;
+  }
+
+  static Future<void> _markPickerUnavailable() async {
+    _pickerBrokenCache = true;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(_pickerBrokenKey, true);
+    } catch (_) {/* remembering is an optimisation, not a requirement */}
+  }
+
+  /// Cleared on a successful capture, so a device that starts working again
+  /// — a browser update, a different browser — is not held to an old verdict.
+  static Future<void> _clearPickerUnavailable() async {
+    if (_pickerBrokenCache == false) return;
+    _pickerBrokenCache = false;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_pickerBrokenKey);
+    } catch (_) {}
+  }
+
   static const _days = [
     'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday',
   ];
@@ -50,6 +91,17 @@ class SelfieCaptureService {
   static Future<Uint8List?> capture({required String label}) async {
     lastFailure = null;
     lastUsedFallback = false;
+
+    // Already proved unable on this device: fail straight away rather than
+    // spending another 120s on the camera and 120s on the picker to reach
+    // the same answer. The employee gets the alternative route immediately.
+    if (await isPickerUnavailable()) {
+      lastFailure = 'This browser will not open the camera or photo library. '
+          'Use "Attendance Issue" in the menu to have your manager confirm '
+          'your attendance, or try a different browser.';
+      return null;
+    }
+
     XFile? shot;
     try {
       // Timed out because this can never resolve on iOS Safari: if the
@@ -105,6 +157,7 @@ class SelfieCaptureService {
     }
 
     try {
+      await _clearPickerUnavailable();
       return compressImage(watermarked, 'image/png');
     } catch (e) {
       lastFailure = 'Could not compress the photo: $e';
@@ -170,11 +223,15 @@ class SelfieCaptureService {
         return null;
       }
       lastUsedFallback = true;
+      await _clearPickerUnavailable();
       return shot;
     } on TimeoutException {
-      lastFailure = 'The camera and photo picker both failed to open. '
-          'Allow camera access for this site, or ask your manager to confirm '
-          'your attendance.';
+      // Both routes failed: image_picker does not work in this browser at
+      // all. Remembered so the next attempt does not repeat the wait.
+      await _markPickerUnavailable();
+      lastFailure = 'This browser will not open the camera or photo library. '
+          'Use "Attendance Issue" in the menu to have your manager confirm '
+          'your attendance, or try a different browser.';
       return null;
     } catch (e) {
       lastFailure = 'Could not open the camera or photo picker: $e';
