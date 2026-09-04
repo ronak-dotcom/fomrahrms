@@ -86,9 +86,14 @@ class _RequestAttendanceConfirmationPageState
       return;
     }
     setState(() => _busy = true);
+    // Re-read at submit: the page may have been open for a while, and the
+    // recorded time should be when they submitted, not when they opened it.
+    final now = DateTime.now();
+    final stamp =
+        '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
     final err = await SupabaseService.requestAttendanceConfirmation(
       date: _date,
-      claimedTime: _timeCtrl.text.trim(),
+      claimedTime: stamp,
       employeeNote: _noteCtrl.text.trim(),
       failureReason: 'Reported by employee',
     );
@@ -196,8 +201,15 @@ class _RequestAttendanceConfirmationPageState
               const SizedBox(height: 12),
               TextField(
                 controller: _timeCtrl,
+                // System clock only, same rule as check-in itself. An
+                // editable field here would be a way round the read-only
+                // time on the normal flow: claim any arrival time, have a
+                // manager wave it through. The point of this route is that
+                // the device failed, not that the time is negotiable.
+                readOnly: true,
                 decoration: const InputDecoration(
-                  labelText: 'Time you arrived (HH:MM)',
+                  labelText: 'Time recorded',
+                  helperText: 'Taken from the clock now — this cannot be edited',
                   border: OutlineInputBorder(),
                 ),
               ),

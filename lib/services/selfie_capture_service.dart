@@ -106,16 +106,22 @@ class SelfieCaptureService {
     try {
       // Timed out because this can never resolve on iOS Safari: if the
       // camera sheet is dismissed in certain ways, or the browser refuses to
-      // open it, pickImage() simply never completes. The caller has already
-      // set _submitting = true by then, so the check-in button greys out and
-      // stays that way — "nothing happens, it's just stuck". Two minutes is
-      // generous for actually taking a photo while still bounded.
+      // open it, pickImage() simply never completes and the button greys out
+      // for as long as the timeout lasts.
+      //
+      // 60s, down from 120s. This covers the WHOLE operation including the
+      // time someone takes to pose, so it cannot be cut to the few seconds a
+      // sheet needs to open - that would abort legitimate slow photos. But
+      // 120s for the camera and another 120s for the picker meant up to four
+      // minutes of dead screen when both fail, which is what Safari "just
+      // buffering" was. 60s each keeps a real photo safe while halving the
+      // worst case.
       shot = await ImagePicker().pickImage(
         source: ImageSource.camera,
         preferredCameraDevice: CameraDevice.front,
         maxWidth: 1600,
         imageQuality: 90,
-      ).timeout(const Duration(seconds: 120));
+      ).timeout(const Duration(seconds: 60));
     } on TimeoutException {
       shot = await _fallbackPick();
       if (shot == null) return null;
@@ -217,7 +223,7 @@ class SelfieCaptureService {
     try {
       final shot = await ImagePicker()
           .pickImage(source: ImageSource.gallery, maxWidth: 1600, imageQuality: 90)
-          .timeout(const Duration(seconds: 120));
+          .timeout(const Duration(seconds: 60));
       if (shot == null) {
         lastFailure = 'No photo was selected. A selfie is required to check in.';
         return null;
