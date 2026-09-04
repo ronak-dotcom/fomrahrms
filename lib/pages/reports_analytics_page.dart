@@ -168,7 +168,8 @@ class _ReportsAnalyticsPageState extends State<ReportsAnalyticsPage> {
   Set<String> get _filteredNames =>
       _filteredUsers.map((u) => u.name.toLowerCase()).toSet();
 
-  int get _activeCount => _filteredUsers.where((u) => u.active).length;
+  int get _activeCount =>
+      _filteredUsers.where((u) => u.active && u.countsInHeadcount).length;
 
   // ── Today KPIs ─────────────────────────────────────────────────────────
 
@@ -208,7 +209,7 @@ class _ReportsAnalyticsPageState extends State<ReportsAnalyticsPage> {
         .map((r) => r.employeeName.trim().toLowerCase())
         .toSet();
     final out = <AppUser, NonWorkingReason>{};
-    for (final u in _filteredUsers.where((u) => u.active)) {
+    for (final u in _filteredUsers.where((u) => u.active && u.countsInHeadcount)) {
       if (present.contains(u.name.trim().toLowerCase())) continue;
       out[u] = classifyMissingAttendance(
         employee: u,
@@ -266,7 +267,7 @@ class _ReportsAnalyticsPageState extends State<ReportsAnalyticsPage> {
     ..sort((a, b) => a.name.compareTo(b.name));
 
   List<EmployeeListItem> get _allEmployeePeople => (_filteredUsers
-          .where((u) => u.active)
+          .where((u) => u.active && u.countsInHeadcount)
           .map((u) => EmployeeListItem(
                 name: u.name,
                 subtitle: _withDetail(
@@ -507,7 +508,7 @@ class _ReportsAnalyticsPageState extends State<ReportsAnalyticsPage> {
 
   List<TopAttendanceRow> get _topAttendanceRows {
     final days = _datesInRange().length.clamp(1, 1 << 30);
-    final rows = _filteredUsers.where((u) => u.active).map((u) {
+    final rows = _filteredUsers.where((u) => u.active && u.countsInHeadcount).map((u) {
       final present = _rangeFiltered
           .where((r) => r.employeeName.toLowerCase() == u.name.toLowerCase() && r.checkInTime.isNotEmpty)
           .length;

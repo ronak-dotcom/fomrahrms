@@ -102,7 +102,11 @@ class _HrAttendanceRecordsPageState extends State<HrAttendanceRecordsPage> {
     ]);
     if (mounted) setState(() {
       _records = results[0] as List<AttendanceRecord>;
-      _allUsers = (results[1] as List<AppUser>).where((u) => u.active).toList();
+      // countsInHeadcount excludes oversight-only accounts - a super admin who
+      // approves things but has no attendance or payroll. Without it he
+      // appeared in the daily roster and was reported absent every day.
+      _allUsers = (results[1] as List<AppUser>)
+          .where((u) => u.active && u.countsInHeadcount).toList();
       _leaveApps = results[2] as List<LeaveApplication>;
       final trendRecords = results[3] as List<AttendanceRecord>;
       _trendByDate = {

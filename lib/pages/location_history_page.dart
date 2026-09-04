@@ -56,7 +56,8 @@ class _LocationHistoryPageState extends State<LocationHistoryPage> {
     if (!mounted) return;
     setState(() {
       _rows = results[0] as List<Map<String, dynamic>>;
-      _users = (results[1] as List).cast<AppUser>().where((u) => u.active).toList()
+      _users = (results[1] as List).cast<AppUser>()
+          .where((u) => u.active && u.countsInHeadcount).toList()
         ..sort((a, b) => a.name.compareTo(b.name));
       _loading = false;
     });
