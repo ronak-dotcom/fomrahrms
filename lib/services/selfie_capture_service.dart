@@ -77,8 +77,14 @@ class SelfieCaptureService {
       if (shot == null) return null;
     }
     if (shot == null) {
-      lastFailure = 'Camera closed before a photo was taken';
-      return null;
+      // pickImage returning null WITHOUT throwing is the commonest way this
+      // fails on iOS Safari: the browser declines to open the camera and
+      // reports it as a cancellation rather than an error. The fallback used
+      // to trigger only on a timeout or an exception, so this - the most
+      // frequent failure in the attempt log - skipped it entirely and the
+      // employee never saw a picker at all.
+      shot = await _fallbackPick();
+      if (shot == null) return null;
     }
 
     final pos = await GpsTrackingService.getCurrentLocation();
