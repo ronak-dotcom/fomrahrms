@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../models/user_session.dart';
+import '../services/notification_service.dart';
 import '../services/supabase_service.dart';
 import '../widgets/back_button.dart';
 
@@ -103,6 +104,13 @@ class _RequestAttendanceConfirmationPageState
       _snack('Could not submit: $err');
       return;
     }
+    // Without this the request sat in the database and the manager only knew
+    // if the employee told them in person.
+    NotificationService.attendanceConfirmationRequested(
+      employeeName: UserSession.name,
+      dateLabel: _fmt(_date),
+      reportingManagerName: UserSession.reportingManager,
+    );
     _snack('Sent to your reporting manager.');
     _noteCtrl.clear();
     _load();

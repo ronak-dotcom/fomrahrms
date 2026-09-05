@@ -89,6 +89,39 @@ class NotificationService {
   // Notifies the employee's Reporting Manager (existing), plus HR and
   // Management (broadcast) — the RM approves it, but HR/Management still
   // want visibility into every request as it comes in.
+  /// Raised when a device could not verify a check-in and the employee is
+  /// asking their manager to confirm presence instead.
+  ///
+  /// Routes explicitly to the approvals screen. An earlier version sent no
+  /// notification at all, and the manager who was told about it verbally had
+  /// nowhere in the app to act — the approvals page was not even reachable
+  /// from the manager menu.
+  static Future<void> attendanceConfirmationRequested({
+    required String employeeName,
+    required String dateLabel,
+    required String reportingManagerName,
+  }) async {
+    if (reportingManagerName.isNotEmpty) {
+      await _create(
+        type: 'attendance_confirmation_requested',
+        title: 'Attendance confirmation needed',
+        body: '$employeeName could not check in on $dateLabel and has asked '
+            'you to confirm they were present',
+        route: '/manager/approvals',
+        targetReportingManager: reportingManagerName,
+      );
+    }
+    // HR is told now rather than only after the manager acts, so a request
+    // that stalls with a manager is still visible to someone.
+    await _create(
+      type: 'attendance_confirmation_requested',
+      title: 'Attendance confirmation raised',
+      body: '$employeeName could not check in on $dateLabel',
+      route: '/hr/approvals',
+      targetRole: 'HR',
+    );
+  }
+
   static Future<void> leaveSubmitted({
     required String employeeName,
     required String leaveType,

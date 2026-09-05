@@ -365,6 +365,7 @@ final _router = GoRouter(
         GoRoute(path: '/hr/maintenance-management', builder: (_, __) => const MaintenanceManagementPage(personalView: true)),
         // "My Team" — only shown/relevant when UserSession.isReportingManager (see app_shell.dart).
         GoRoute(path: '/hr/leave/team-approvals',   builder: (_, __) => const TeamLeaveApprovalsPage()),
+        GoRoute(path: '/hr/approvals',              builder: (_, __) => const ApprovalsPage()),
         GoRoute(path: '/hr/interview-review',       builder: (_, __) => const ManagerInterviewReviewPage()),
         GoRoute(path: '/hr/appraisal',               builder: (_, __) =>
             const EmployeeAppraisalRequestPage(formRoute: '/hr/appraisal/form')),
