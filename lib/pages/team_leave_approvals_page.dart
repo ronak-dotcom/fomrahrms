@@ -227,6 +227,23 @@ class _TeamLeaveApprovalsPageState extends State<TeamLeaveApprovalsPage>
           .map((u) => u.name)
           .toSet();
 
+      // HR also actions approvals for anyone whose reporting manager is an
+      // oversight-only account, asking that manager directly. Without this
+      // those requests sat with someone who does not use the system: one had
+      // been pending since 08/08. Self-approval is excluded — HR standing in
+      // for their own manager must not mean signing off their own leave.
+      if (UserSession.role == UserRole.hr) {
+        myTeam.addAll(users
+            .where((u) {
+              final mgr = users.where((m) =>
+                  m.name.trim().toLowerCase() ==
+                  u.reportingManager.trim().toLowerCase());
+              return mgr.isNotEmpty && mgr.first.oversightOnly;
+            })
+            .map((u) => u.name)
+            .where((n) => n != UserSession.name));
+      }
+
       if (mounted) {
         setState(() {
           _teamNames  = myTeam;
