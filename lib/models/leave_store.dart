@@ -1,3 +1,4 @@
+import 'user_session.dart';
 import '../utils/attendance_cycle.dart';
 
 enum LeaveApprovalStatus { pending, approved, denied }
@@ -60,9 +61,30 @@ class LeaveStore {
   static final List<LeaveApplication> applications = [];
   static int _counter = 0;
 
-  static String generateId() =>
-      'LV-${(++_counter).toString().padLeft(3, '0')}';
+  /// Globally unique, because the counter never could be.
+  ///
+  /// syncCounter() only ever saw the applications the CURRENT user could
+  /// load, and RLS limits an employee to their own — so the counter restarted
+  /// at zero for each person and every employee's first request was LV-001.
+  /// Devaraj's request on 05/09 was generated as LV-001, which already
+  /// belonged to Nirmal Kumar: the upsert either collided or was refused, and
+  /// the employee was told it had been submitted either way.
+  ///
+  /// RLS is what saved Nirmal here — an employee cannot write another's row.
+  /// Had the applicant been HR or a manager, whose policy DOES allow it, the
+  /// upsert would have silently overwritten someone else's approved leave.
+  static String generateId() {
+    final now = DateTime.now();
+    final stamp = now.microsecondsSinceEpoch.toRadixString(36).toUpperCase();
+    // Employee id keeps it readable and collision-proof even if two people
+    // submit in the same microsecond.
+    final who = UserSession.employeeId.replaceAll(RegExp(r'[^A-Za-z0-9]'), '');
+    return 'LV-$who-$stamp';
+  }
 
+  /// Retained: older records still carry LV-001 style ids and other code
+  /// calls this. It no longer feeds id generation, which is now independent
+  /// of what the caller happens to have loaded.
   static void syncCounter() {
     for (final a in applications) {
       final n = int.tryParse(a.id.replaceAll(RegExp(r'[^0-9]'), ''));
