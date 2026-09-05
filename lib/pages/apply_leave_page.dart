@@ -2,6 +2,7 @@ import 'package:file_picker/file_picker.dart';
 import '../utils/leave_deduction.dart';
 import '../utils/attendance_cycle.dart';
 import 'package:flutter/material.dart';
+import '../widgets/leave_month_calendar.dart';
 import '../models/app_user.dart';
 import '../models/leave_form_config.dart';
 import '../models/leave_store.dart';
@@ -243,6 +244,23 @@ class _ApplyLeavePageState extends State<ApplyLeavePage> {
     super.dispose();
   }
 
+
+  /// Holiday or the employee's weekly off. Falls back to Sunday when no
+  /// weekly off is recorded, which is the case for most staff.
+  bool _isNonWorkingDay(DateTime d) {
+    final iso = '${d.year.toString().padLeft(4, '0')}-'
+        '${d.month.toString().padLeft(2, '0')}-'
+        '${d.day.toString().padLeft(2, '0')}';
+    if (_holidayDates.contains(iso)) return true;
+    const names = {
+      'monday': DateTime.monday, 'tuesday': DateTime.tuesday,
+      'wednesday': DateTime.wednesday, 'thursday': DateTime.thursday,
+      'friday': DateTime.friday, 'saturday': DateTime.saturday,
+      'sunday': DateTime.sunday,
+    };
+    final off = (_me?.weeklyOffDay ?? '').trim().toLowerCase();
+    return d.weekday == (names[off] ?? DateTime.sunday);
+  }
 
   Widget _pickerTheme(BuildContext ctx, Widget? child) => Theme(
         data: Theme.of(ctx).copyWith(
@@ -592,7 +610,11 @@ class _ApplyLeavePageState extends State<ApplyLeavePage> {
                     ]),
                     const SizedBox(height: 14),
 
-                    // From / To date row
+                    // Calendar rather than two date fields. Holidays and the
+                    // employee's weekly off are shaded, so a request is not
+                    // built across them unknowingly — previously the reduced
+                    // day count only appeared after selecting, which read as
+                    // the app miscounting.
                     Row(children: [
                       Expanded(child: _DateTile(
                         label: 'From Date',
@@ -609,6 +631,20 @@ class _ApplyLeavePageState extends State<ApplyLeavePage> {
                         disabled: _isHalfDay,
                       )),
                     ]),
+                    const SizedBox(height: 12),
+                    LeaveMonthCalendar(
+                      from: _fromDate,
+                      to: _isHalfDay ? _fromDate : _toDate,
+                      firstDate: DateTime.now().subtract(const Duration(days: 365)),
+                      lastDate: DateTime.now().add(const Duration(days: 365)),
+                      color: _color,
+                      singleDate: _isHalfDay,
+                      isNonWorking: _isNonWorkingDay,
+                      onRangeChanged: (f, t) => setState(() {
+                        _fromDate = f;
+                        _toDate = _isHalfDay ? f : t;
+                      }),
+                    ),
 
                     // What this will actually cost, and why — shown before
                     // submitting rather than discovered afterwards.
