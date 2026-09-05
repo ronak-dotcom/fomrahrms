@@ -345,7 +345,7 @@ class _ApplyLeavePageState extends State<ApplyLeavePage> {
       if (!agreed) return;
     }
 
-    _doSubmit();
+    await _doSubmit();
   }
 
   Future<bool> _showUnpaidDialog() async {
@@ -420,7 +420,7 @@ class _ApplyLeavePageState extends State<ApplyLeavePage> {
         false;
   }
 
-  void _doSubmit() {
+  Future<void> _doSubmit() async {
     final toDate = _isHalfDay ? _fromDate! : _toDate!;
     final app = LeaveApplication(
       id:           LeaveStore.generateId(),
