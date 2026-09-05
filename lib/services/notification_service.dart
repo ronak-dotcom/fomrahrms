@@ -92,10 +92,10 @@ class NotificationService {
   /// Raised when a device could not verify a check-in and the employee is
   /// asking their manager to confirm presence instead.
   ///
-  /// Routes explicitly to the approvals screen. An earlier version sent no
-  /// notification at all, and the manager who was told about it verbally had
-  /// nowhere in the app to act — the approvals page was not even reachable
-  /// from the manager menu.
+  /// Only the reporting manager is told at this point. Notifying HR and
+  /// Management simultaneously meant everyone saw a request none of them
+  /// could act on yet — the manager has to confirm first — and three inboxes
+  /// filled with items that were not anyone's turn.
   static Future<void> attendanceConfirmationRequested({
     required String employeeName,
     required String dateLabel,
@@ -110,16 +110,67 @@ class NotificationService {
         route: '/manager/approvals',
         targetReportingManager: reportingManagerName,
       );
+    } else {
+      // No reporting manager on file, so nobody would ever see it. HR is the
+      // fallback rather than letting the request sit unseen.
+      await _create(
+        type: 'attendance_confirmation_requested',
+        title: 'Attendance confirmation raised',
+        body: '$employeeName could not check in on $dateLabel '
+            '(no reporting manager on file)',
+        route: '/hr/approvals',
+        targetRole: 'HR',
+      );
     }
-    // HR is told now rather than only after the manager acts, so a request
-    // that stalls with a manager is still visible to someone.
+  }
+
+  /// The manager has confirmed; it is now HR's turn to approve.
+  static Future<void> attendanceConfirmationManagerDecided({
+    required String employeeName,
+    required String dateLabel,
+    required String managerName,
+    required bool confirmed,
+  }) async {
+    // A rejected request stops here — there is nothing for HR to approve, and
+    // telling them would only add an item they must dismiss.
+    if (!confirmed) return;
     await _create(
-      type: 'attendance_confirmation_requested',
-      title: 'Attendance confirmation raised',
-      body: '$employeeName could not check in on $dateLabel',
+      type: 'attendance_confirmation_manager_confirmed',
+      title: 'Attendance confirmation to approve',
+      body: '$managerName confirmed $employeeName was present on $dateLabel',
       route: '/hr/approvals',
       targetRole: 'HR',
     );
+  }
+
+  /// HR has approved. Management is told only now, once both signatures are
+  /// in and the day has actually become attendance.
+  static Future<void> attendanceConfirmationHrApproved({
+    required String employeeName,
+    required String employeeEmail,
+    required String dateLabel,
+    required String hrName,
+  }) async {
+    await _create(
+      type: 'attendance_confirmation_approved',
+      title: 'Vouched attendance recorded',
+      body: '$hrName approved $employeeName\u2019s attendance for $dateLabel '
+          '(no GPS or selfie — confirmed by manager)',
+      route: '/management/approvals',
+      targetRole: 'Management',
+    );
+    // The employee is told too: they raised it and otherwise would not know
+    // it had gone through. Skipped when no address is known rather than
+    // sending with an empty target, which matches nobody.
+    if (employeeEmail.isNotEmpty) {
+      await _create(
+        type: 'attendance_confirmation_approved',
+        title: 'Your attendance was confirmed',
+        body: 'Your attendance for $dateLabel has been approved',
+        route: '/employee/attendance-confirmation',
+        targetEmail: employeeEmail,
+      );
+    }
   }
 
   static Future<void> leaveSubmitted({

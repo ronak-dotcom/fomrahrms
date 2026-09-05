@@ -4,6 +4,7 @@ import '../models/app_user.dart';
 import '../models/kra_store.dart';
 import '../models/leave_store.dart';
 import '../models/user_session.dart';
+import '../services/notification_service.dart';
 import '../services/supabase_service.dart';
 import '../services/user_store.dart';
 import '../utils/month_picker.dart';
@@ -99,11 +100,34 @@ class _ApprovalsPageState extends State<ApprovalsPage> with SingleTickerProvider
 
   Future<void> _decideVouch(Map<String, dynamic> r, bool ok) async {
     await SupabaseService.decideAttendanceConfirmation(r['id'].toString(), ok);
+    // HR is told only now, when it is actually their turn. Notifying them at
+    // the moment the employee raised it filled their inbox with items nobody
+    // could act on until the manager had confirmed.
+    NotificationService.attendanceConfirmationManagerDecided(
+      employeeName: (r['employee_name'] ?? '').toString(),
+      dateLabel: (r['date_iso'] ?? '').toString(),
+      managerName: UserSession.name,
+      confirmed: ok,
+    );
     await _load();
   }
 
   Future<void> _hrDecideVouch(Map<String, dynamic> r, bool ok) async {
     await SupabaseService.hrDecideAttendanceConfirmation(r['id'].toString(), ok);
+    if (ok) {
+      // Both signatures are in and the day has become attendance, so
+      // Management is told now rather than earlier.
+      final email = _users
+          .where((u) => u.name == (r['employee_name'] ?? '').toString())
+          .map((u) => u.email)
+          .firstOrNull ?? '';
+      NotificationService.attendanceConfirmationHrApproved(
+        employeeName: (r['employee_name'] ?? '').toString(),
+        employeeEmail: email,
+        dateLabel: (r['date_iso'] ?? '').toString(),
+        hrName: UserSession.name,
+      );
+    }
     await _load();
   }
 
