@@ -92,15 +92,19 @@ class SelfieCaptureService {
     lastFailure = null;
     lastUsedFallback = false;
 
-    // Already proved unable on this device: fail straight away rather than
-    // spending another 120s on the camera and 120s on the picker to reach
-    // the same answer. The employee gets the alternative route immediately.
-    if (await isPickerUnavailable()) {
-      lastFailure = 'This browser will not open the camera or photo library. '
-          'Use "Attendance Issue" in the menu to have your manager confirm '
-          'your attendance, or try a different browser.';
-      return null;
-    }
+    // A device that failed before is retried, just faster.
+    //
+    // This used to return immediately without attempting anything, which
+    // deadlocked: the flag is only cleared by a SUCCESSFUL capture, and no
+    // capture could succeed because none was attempted. One employee failed
+    // 13 times in a row against a cached verdict while her camera may well
+    // have been working. A remembered failure must never become permanent on
+    // its own.
+    //
+    // Shorter timeouts instead, so a working camera still succeeds while a
+    // broken one fails in seconds rather than minutes.
+    final knownBad = await isPickerUnavailable();
+    final limit = knownBad ? const Duration(seconds: 15) : const Duration(seconds: 60);
 
     XFile? shot;
     try {
@@ -121,9 +125,9 @@ class SelfieCaptureService {
         preferredCameraDevice: CameraDevice.front,
         maxWidth: 1600,
         imageQuality: 90,
-      ).timeout(const Duration(seconds: 60));
+      ).timeout(limit);
     } on TimeoutException {
-      shot = await _fallbackPick();
+      shot = await _fallbackPick(limit);
       if (shot == null) return null;
     } catch (_) {
       // iOS Safari refuses a direct camera launch on some devices - one
@@ -131,7 +135,7 @@ class SelfieCaptureService {
       // than waive the selfie, which is the control itself, fall back to the
       // photo picker: on iOS that sheet still offers "Take Photo", so a live
       // selfie is usually still what gets captured.
-      shot = await _fallbackPick();
+      shot = await _fallbackPick(limit);
       if (shot == null) return null;
     }
     if (shot == null) {
@@ -141,7 +145,7 @@ class SelfieCaptureService {
       // to trigger only on a timeout or an exception, so this - the most
       // frequent failure in the attempt log - skipped it entirely and the
       // employee never saw a picker at all.
-      shot = await _fallbackPick();
+      shot = await _fallbackPick(limit);
       if (shot == null) return null;
     }
 
@@ -219,11 +223,11 @@ class SelfieCaptureService {
   /// Photo picker fallback for devices whose browser will not open the
   /// camera directly. Flags the result so it is distinguishable from a
   /// direct capture.
-  static Future<XFile?> _fallbackPick() async {
+  static Future<XFile?> _fallbackPick(Duration limit) async {
     try {
       final shot = await ImagePicker()
           .pickImage(source: ImageSource.gallery, maxWidth: 1600, imageQuality: 90)
-          .timeout(const Duration(seconds: 60));
+          .timeout(limit);
       if (shot == null) {
         lastFailure = 'No photo was selected. A selfie is required to check in.';
         return null;
