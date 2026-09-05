@@ -3721,6 +3721,31 @@ class SupabaseService {
     }
   }
 
+  /// Management overturning an approved confirmation on policy grounds.
+  ///
+  /// Not a required step: the day becomes attendance once the manager
+  /// confirms and HR approves. Management sees what was decided and steps in
+  /// only where something breached policy. A database trigger removes the
+  /// attendance row this flow created — and only that row, so a day the
+  /// employee later checked into normally is not destroyed along with it.
+  static Future<String?> overturnAttendanceConfirmation(
+      String id, String note) async {
+    try {
+      await _db?.from('attendance_confirmations').update({
+        'mgmt_status': 'overturned',
+        'mgmt_by': UserSession.name,
+        'mgmt_at': DateTime.now().toUtc().toIso8601String(),
+        'mgmt_note': note,
+      }).eq('id', id);
+      logAuditEvent('attendance_confirmation_overturned',
+          targetType: 'attendance_confirmations', targetId: id);
+      return null;
+    } catch (e) {
+      _writeFailed('overturnAttendanceConfirmation', e);
+      return e.toString();
+    }
+  }
+
   /// Manager's decision. Does not create the attendance record on its own —
   /// HR must approve too (enforced by the database trigger).
   static Future<String?> decideAttendanceConfirmation(

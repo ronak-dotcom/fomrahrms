@@ -170,6 +170,93 @@ class _ApprovalsPageState extends State<ApprovalsPage> with SingleTickerProvider
         ),
       );
 
+  // Fully approved confirmations, shown to Management for oversight. They
+  // are not a required signature — the day is already attendance — so these
+  // are presented as decided, with the option to overturn if something
+  // breached policy. Already-overturned entries drop out.
+  List<Map<String, dynamic>> get _vouchedForOversight => _attendanceConfirmations
+      .where((r) => (r['status'] ?? '') == 'confirmed'
+                 && (r['hr_status'] ?? '') == 'approved'
+                 && (r['mgmt_status'] ?? 'none') != 'overturned')
+      .toList();
+
+  Future<void> _overturnVouch(Map<String, dynamic> r) async {
+    final ctrl = TextEditingController();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Overturn this confirmation?'),
+        content: Column(mainAxisSize: MainAxisSize.min, children: [
+          Text('${r['employee_name']} — ${r['date_iso']}',
+              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+          const SizedBox(height: 6),
+          const Text(
+            'The attendance recorded from this confirmation will be removed. '
+            'Use this only where the confirmation breached policy.',
+            style: TextStyle(fontSize: 12),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: ctrl,
+            autofocus: true,
+            decoration: const InputDecoration(
+                labelText: 'Reason', border: OutlineInputBorder()),
+          ),
+        ]),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel')),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red.shade700,
+                foregroundColor: Colors.white),
+            child: const Text('Overturn'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    await SupabaseService.overturnAttendanceConfirmation(
+        r['id'].toString(),
+        ctrl.text.trim().isEmpty ? 'Overturned by Management' : ctrl.text.trim());
+    await _load();
+  }
+
+  _CategoryInfo get _vouchOversightCategory => _CategoryInfo(
+        icon: Icons.visibility_rounded,
+        color: Colors.blueGrey.shade600,
+        label: 'Vouched Attendance (for information)',
+        // Zero pending: nothing is waiting on Management. Counting these as
+        // pending would imply an action is required and inflate the badge.
+        pending: 0,
+        approved: _vouchedForOversight.length,
+        rejected: 0,
+        total: _vouchedForOversight.length,
+        onViewAll: () => _showPendingSheet(
+          label: 'Vouched Attendance',
+          color: Colors.blueGrey.shade600,
+          buildCards: (refresh) => _vouchedForOversight
+              .map((r) => _ApprovalCard(
+                    title: (r['employee_name'] ?? '').toString(),
+                    subtitle: '${r['date_iso'] ?? ''} · ${r['claimed_time'] ?? ''}',
+                    details: [
+                      if ((r['employee_note'] ?? '').toString().isNotEmpty)
+                        'Employee: ${r['employee_note']}',
+                      'Confirmed by ${r['decided_by_name'] ?? '—'}, '
+                          'approved by ${r['hr_decided_by_name'] ?? '—'}',
+                      'No GPS or selfie for this day.',
+                    ],
+                    meta: _fmtIso((r['hr_decided_at'] ?? '').toString()),
+                    // Approve is absent on purpose: it is already approved.
+                    denyLabel: 'Overturn',
+                    onDeny: () async { await _overturnVouch(r); refresh(); },
+                  ))
+              .toList(),
+        ),
+      );
+
   _CategoryInfo get _vouchHrCategory => _CategoryInfo(
         icon: Icons.verified_user_rounded,
         color: Colors.indigo.shade400,
@@ -582,6 +669,10 @@ class _ApprovalsPageState extends State<ApprovalsPage> with SingleTickerProvider
   List<_CategoryInfo> get _allCategories => [
         _leaveCategory, _permissionCategory, _compOffCategory, _onDutyCategory,
         _vouchCategory, _vouchHrCategory,
+        // Oversight only — shown to Management, who can overturn but are not
+        // a required signature. On other roles it would be a card with
+        // nothing to do.
+        if (UserSession.role == UserRole.management) _vouchOversightCategory,
         _onrollCategory, _grossPayCategory, _permissionQuotaCategory, _workLocationCategory,
         _businessUnitCategory,
         _reportingManagerCategory, _rmFlagCategory, _kraCategory,
@@ -760,7 +851,9 @@ class _ApprovalsPageState extends State<ApprovalsPage> with SingleTickerProvider
                 0 => _tabView(categories),
                 1 => _tabView(categories, pendingOnly: true),
                 2 => _tabView([_leaveCategory, _permissionCategory, _compOffCategory, _onDutyCategory,
-                               _vouchCategory, _vouchHrCategory]),
+                               _vouchCategory, _vouchHrCategory,
+                               if (UserSession.role == UserRole.management)
+                                 _vouchOversightCategory]),
                 3 => _tabView([_grossPayCategory]),
                 4 => _tabView([_onrollCategory]),
                 5 => _tabView([_permissionQuotaCategory, _workLocationCategory, _businessUnitCategory, _reportingManagerCategory, _rmFlagCategory, _kraCategory]),
@@ -1069,6 +1162,9 @@ class _ApprovalCard extends StatelessWidget {
   final String meta;
   final VoidCallback? onApprove;
   final VoidCallback? onDeny;
+  /// 'Deny' for a pending request; 'Overturn' where the decision is already
+  /// made and Management is reversing it.
+  final String denyLabel;
   const _ApprovalCard({
     required this.title,
     required this.subtitle,
@@ -1076,6 +1172,7 @@ class _ApprovalCard extends StatelessWidget {
     required this.meta,
     this.onApprove,
     this.onDeny,
+    this.denyLabel = 'Deny',
   });
 
   @override
@@ -1110,11 +1207,16 @@ class _ApprovalCard extends StatelessWidget {
               ],
               const SizedBox(height: 10),
               Row(children: [
+                // Both buttons were always rendered, so a card with only one
+                // action showed the other greyed out and looking broken. The
+                // Management oversight card has no Approve: the request is
+                // already approved, it can only be overturned.
+                if (onDeny != null)
                 Expanded(
                   child: OutlinedButton.icon(
                     onPressed: onDeny,
                     icon: const Icon(Icons.close_rounded, size: 14),
-                    label: const Text('Deny'),
+                    label: Text(denyLabel),
                     style: OutlinedButton.styleFrom(
                       foregroundColor: Colors.red.shade400,
                       side: BorderSide(color: Colors.red.shade300),
@@ -1123,7 +1225,9 @@ class _ApprovalCard extends StatelessWidget {
                     ),
                   ),
                 ),
-                const SizedBox(width: 10),
+                if (onDeny != null && onApprove != null)
+                  const SizedBox(width: 10),
+                if (onApprove != null)
                 Expanded(
                   child: ElevatedButton.icon(
                     onPressed: onApprove,
