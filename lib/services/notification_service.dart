@@ -71,6 +71,12 @@ class NotificationService {
     if (n.isReadBy(UserSession.email)) return;
     n.readBy.add(UserSession.email);
     NotificationStore.recomputeUnread();
+    // Local placeholders are inserted so a new notification appears at once,
+    // before the row comes back from the server. Their ids are not real —
+    // sending one to the database produced "invalid input syntax for type
+    // uuid: local-1788584075634000" on every read. Marked read locally only;
+    // the real row is marked when it arrives on the next refresh.
+    if (n.id.startsWith('local-')) return;
     await SupabaseService.markNotificationRead(n.id, n.readBy);
   }
 
@@ -78,6 +84,8 @@ class NotificationService {
     for (final n in notifications) {
       if (!n.isReadBy(UserSession.email)) {
         n.readBy.add(UserSession.email);
+        // Same placeholder guard as markRead().
+        if (n.id.startsWith('local-')) continue;
         await SupabaseService.markNotificationRead(n.id, n.readBy);
       }
     }
