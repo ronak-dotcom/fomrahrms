@@ -93,10 +93,44 @@ class _ApprovalsPageState extends State<ApprovalsPage> with SingleTickerProvider
       _attendanceConfirmations.where((r) => (r['status'] ?? '') == 'pending').toList();
 
   // Reaches HR only once the manager has confirmed.
+  //
+  // Excludes anything the current user confirmed themselves. Where an
+  // employee's reporting manager IS the HR role holder — which is the case in
+  // the HR department — one person would otherwise see both queues and could
+  // confirm and then approve their own confirmation, collapsing the two
+  // signatures into one. Those fall to Management instead, and the database
+  // rejects a same-person approval regardless of which screen it comes from.
   List<Map<String, dynamic>> get _pendingHrVouch => _attendanceConfirmations
+      .where((r) => (r['status'] ?? '') == 'confirmed'
+                 && (r['hr_status'] ?? '') == 'pending'
+                 && (r['decided_by'] ?? '').toString().toLowerCase()
+                    != UserSession.email.toLowerCase())
+      .toList();
+
+  /// Confirmed by someone who cannot also approve it — needs Management as
+  /// the second signature.
+  List<Map<String, dynamic>> get _vouchNeedingManagement => _attendanceConfirmations
       .where((r) => (r['status'] ?? '') == 'confirmed'
                  && (r['hr_status'] ?? '') == 'pending')
       .toList();
+
+  _CategoryInfo get _vouchMgmtApprovalCategory => _CategoryInfo(
+        icon: Icons.gavel_rounded,
+        color: Colors.indigo.shade700,
+        label: 'Attendance — Second Approval',
+        pending: _vouchNeedingManagement.length,
+        approved: 0, rejected: 0,
+        total: _vouchNeedingManagement.length,
+        onViewAll: () => _showPendingSheet(
+          label: 'Attendance — Second Approval',
+          color: Colors.indigo.shade700,
+          buildCards: (refresh) => _vouchNeedingManagement
+              .map((r) => _vouchCard(r, hrStage: true,
+                  onApprove: () async { await _hrDecideVouch(r, true); refresh(); },
+                  onDeny: () async { await _hrDecideVouch(r, false); refresh(); }))
+              .toList(),
+        ),
+      );
 
   Future<void> _decideVouch(Map<String, dynamic> r, bool ok) async {
     await SupabaseService.decideAttendanceConfirmation(r['id'].toString(), ok);
@@ -672,7 +706,10 @@ class _ApprovalsPageState extends State<ApprovalsPage> with SingleTickerProvider
         // Oversight only — shown to Management, who can overturn but are not
         // a required signature. On other roles it would be a card with
         // nothing to do.
-        if (UserSession.role == UserRole.management) _vouchOversightCategory,
+        if (UserSession.role == UserRole.management) ...[
+          _vouchMgmtApprovalCategory,
+          _vouchOversightCategory,
+        ],
         _onrollCategory, _grossPayCategory, _permissionQuotaCategory, _workLocationCategory,
         _businessUnitCategory,
         _reportingManagerCategory, _rmFlagCategory, _kraCategory,
@@ -852,8 +889,10 @@ class _ApprovalsPageState extends State<ApprovalsPage> with SingleTickerProvider
                 1 => _tabView(categories, pendingOnly: true),
                 2 => _tabView([_leaveCategory, _permissionCategory, _compOffCategory, _onDutyCategory,
                                _vouchCategory, _vouchHrCategory,
-                               if (UserSession.role == UserRole.management)
-                                 _vouchOversightCategory]),
+                               if (UserSession.role == UserRole.management) ...[
+                                 _vouchMgmtApprovalCategory,
+                                 _vouchOversightCategory,
+                               ]]),
                 3 => _tabView([_grossPayCategory]),
                 4 => _tabView([_onrollCategory]),
                 5 => _tabView([_permissionQuotaCategory, _workLocationCategory, _businessUnitCategory, _reportingManagerCategory, _rmFlagCategory, _kraCategory]),
