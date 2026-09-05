@@ -707,7 +707,11 @@ class _ApprovalsPageState extends State<ApprovalsPage> with SingleTickerProvider
 
   List<_CategoryInfo> get _allCategories => [
         _leaveCategory, _permissionCategory, _compOffCategory, _onDutyCategory,
-        _vouchCategory, _vouchHrCategory,
+        // Scoped by role. Management sees every confirmation through RLS, so
+        // without this Ronak was shown four overlapping attendance queues —
+        // including HR's, which is not his to action.
+        if (UserSession.isReportingManager) _vouchCategory,
+        if (UserSession.role == UserRole.hr) _vouchHrCategory,
         // Oversight only — shown to Management, who can overturn but are not
         // a required signature. On other roles it would be a card with
         // nothing to do.
@@ -893,7 +897,8 @@ class _ApprovalsPageState extends State<ApprovalsPage> with SingleTickerProvider
                 0 => _tabView(categories),
                 1 => _tabView(categories, pendingOnly: true),
                 2 => _tabView([_leaveCategory, _permissionCategory, _compOffCategory, _onDutyCategory,
-                               _vouchCategory, _vouchHrCategory,
+                               if (UserSession.isReportingManager) _vouchCategory,
+                               if (UserSession.role == UserRole.hr) _vouchHrCategory,
                                if (UserSession.role == UserRole.management) ...[
                                  _vouchMgmtApprovalCategory,
                                  _vouchOversightCategory,

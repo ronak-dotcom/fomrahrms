@@ -3721,6 +3721,26 @@ class SupabaseService {
     }
   }
 
+  /// Minimal lookup used when a notification must be routed to someone
+  /// else's shell. A reporting manager can hold any role, and each role is
+  /// confined to its own route prefix, so the recipient's role decides the
+  /// link — not the sender's.
+  static Future<Map<String, dynamic>?> userByName(String name) async {
+    if (name.trim().isEmpty) return null;
+    try {
+      final rows = await _db
+          ?.from('app_users')
+          .select('name, email, role')
+          .ilike('name', name.trim())
+          .limit(1);
+      if (rows == null || (rows as List).isEmpty) return null;
+      return Map<String, dynamic>.from(rows.first as Map);
+    } catch (e) {
+      _writeFailed('userByName', e);
+      return null;
+    }
+  }
+
   /// Management overturning an approved confirmation on policy grounds.
   ///
   /// Not a required step: the day becomes attendance once the manager

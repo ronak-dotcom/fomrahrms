@@ -102,12 +102,23 @@ class NotificationService {
     required String reportingManagerName,
   }) async {
     if (reportingManagerName.isNotEmpty) {
+      // The route must match the RECIPIENT's shell, not the sender's. A
+      // reporting manager can hold any role — Devaraj's is Management — and
+      // _guard() confines each role to its own prefix, so a hardcoded
+      // '/manager/approvals' bounced him to his dashboard: the notification
+      // arrived and tapping it appeared to do nothing.
+      final mgr = await SupabaseService.userByName(reportingManagerName);
+      final prefix = switch ((mgr?['role'] as String?)?.toLowerCase()) {
+        'management' => '/management',
+        'hr' => '/hr',
+        _ => '/manager',
+      };
       await _create(
         type: 'attendance_confirmation_requested',
         title: 'Attendance confirmation needed',
         body: '$employeeName could not check in on $dateLabel and has asked '
             'you to confirm they were present',
-        route: '/manager/approvals',
+        route: '$prefix/approvals',
         targetReportingManager: reportingManagerName,
       );
     } else {
