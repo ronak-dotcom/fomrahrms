@@ -436,9 +436,20 @@ class _ApplyLeavePageState extends State<ApplyLeavePage> {
       ..isHalfDay   = _isHalfDay
       ..proofUrl    = _proofUrl
       ..leaveBucket = _bucket;
+    // Awaited. Fire-and-forget is how a request vanished today while the
+    // employee saw "submitted successfully" and the manager was notified
+    // about something that does not exist.
+    final err = await SupabaseService.saveLeaveApplication(app);
+    if (!mounted) return;
+    if (err != null) {
+      _showSnack('Could not submit: $err', Colors.red.shade700);
+      return;
+    }
+
     LeaveStore.applications.add(app);
-    SupabaseService.saveLeaveApplication(app);
     if (UserSession.reportingManager.isNotEmpty) {
+      // Only after the write succeeded — notifying about a request that was
+      // not stored sends the manager to an empty queue.
       NotificationService.leaveSubmitted(
         employeeName: app.employeeName,
         leaveType: app.leaveType,

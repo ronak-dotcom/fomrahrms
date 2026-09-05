@@ -672,7 +672,11 @@ class SupabaseService {
 
   // ── Leave Applications ────────────────────────────────────────────────
 
-  static Future<void> saveLeaveApplication(LeaveApplication app) async {
+  /// Returns null on success, or the error. Printing loudly was not enough:
+  /// a request still vanished today while the employee was told it had been
+  /// submitted and the manager was notified about it. The caller must be able
+  /// to see the failure.
+  static Future<String?> saveLeaveApplication(LeaveApplication app) async {
     // Core upsert — only columns that exist in the original schema
     try {
       await _db?.from('leave_applications').upsert({
@@ -704,6 +708,9 @@ class SupabaseService {
       // reported success.
       // ignore: avoid_print
       print('saveLeaveApplication FAILED for ${app.employeeName}: $e');
+      // Returned rather than only logged, so the apply page can tell the
+      // employee instead of claiming success.
+      return e.toString();
     }
     // is_half_day / proof_url / leave_bucket — added later; skipped silently if columns not yet in DB
     try {
@@ -722,6 +729,7 @@ class SupabaseService {
           .eq('id', app.id);
     } catch (e) { _writeFailed('saveLeaveApplication', e); }
     logAuditEvent('leave_application_saved', targetType: 'leave_applications', targetId: app.id);
+    return null;
   }
 
   static Future<void> updateLeaveManagerStatus(

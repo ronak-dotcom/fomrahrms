@@ -93,7 +93,7 @@ class _ApplyCompOffPageState extends State<ApplyCompOffPage> {
     if (picked != null) setState(() => _claimDate = picked);
   }
 
-  void _submit() {
+  Future<void> _submit() async {
     if (_workedDate == null || _claimDate == null) {
       _snack('Please select both dates.'); return;
     }
@@ -117,8 +117,13 @@ class _ApplyCompOffPageState extends State<ApplyCompOffPage> {
       appliedOn:    DateTime.now(),
     );
 
+    // Awaited: the same fire-and-forget pattern lost a leave request today
+    // while the employee was told it succeeded.
+    final err = await SupabaseService.saveLeaveApplication(app);
+    if (!mounted) return;
+    if (err != null) { _snack('Could not submit: $err'); return; }
+
     LeaveStore.applications.add(app);
-    SupabaseService.saveLeaveApplication(app);
     if (UserSession.reportingManager.isNotEmpty) {
       NotificationService.leaveSubmitted(
         employeeName: app.employeeName,

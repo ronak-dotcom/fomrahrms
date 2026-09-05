@@ -83,7 +83,7 @@ class _ApplyPermissionPageState extends State<ApplyPermissionPage> {
     if (picked != null) setState(() => _date = picked);
   }
 
-  void _submit() {
+  Future<void> _submit() async {
     if (_date == null) {
       _snack('Please select a date.'); return;
     }
@@ -134,8 +134,13 @@ class _ApplyPermissionPageState extends State<ApplyPermissionPage> {
       appliedOn:    DateTime.now(),
     )..isHalfDay = true;
 
+    // Awaited: the same fire-and-forget pattern lost a leave request today
+    // while the employee was told it succeeded.
+    final err = await SupabaseService.saveLeaveApplication(app);
+    if (!mounted) return;
+    if (err != null) { _snack('Could not submit: $err'); return; }
+
     LeaveStore.applications.add(app);
-    SupabaseService.saveLeaveApplication(app);
     if (UserSession.reportingManager.isNotEmpty) {
       NotificationService.leaveSubmitted(
         employeeName: app.employeeName,
