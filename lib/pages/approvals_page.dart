@@ -107,8 +107,13 @@ class _ApprovalsPageState extends State<ApprovalsPage> with SingleTickerProvider
                     != UserSession.email.toLowerCase())
       .toList();
 
-  /// Confirmed by someone who cannot also approve it — needs Management as
-  /// the second signature.
+  /// Confirmed but still awaiting a second signature.
+  ///
+  /// Where the reporting manager IS the HR role holder this now auto-approves
+  /// — no action means approved, rather than the employee losing the day to
+  /// an org chart they did not choose. So anything still sitting here has a
+  /// real separate HR approver who has simply not acted yet, and Management
+  /// can step in if it stalls.
   List<Map<String, dynamic>> get _vouchNeedingManagement => _attendanceConfirmations
       .where((r) => (r['status'] ?? '') == 'confirmed'
                  && (r['hr_status'] ?? '') == 'pending')
