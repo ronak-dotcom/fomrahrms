@@ -430,6 +430,10 @@ class _LoginPageState extends State<LoginPage> {
     TextInputType? keyboardType,
     Widget? suffix,
     ValueChanged<String>? onSubmitted,
+    // Without these the browser cannot tell what the field is FOR, so it
+    // never offers to save or fill the credentials — which is why staff were
+    // typing them in full every time.
+    List<String>? autofillHints,
   }) {
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Text(label,
@@ -445,6 +449,7 @@ class _LoginPageState extends State<LoginPage> {
           obscureText: obscure,
           keyboardType: keyboardType,
           onSubmitted: onSubmitted,
+          autofillHints: autofillHints,
           style: GoogleFonts.inter(fontSize: 15, color: _textDark),
           decoration: InputDecoration(
             hintText: hint,
@@ -517,6 +522,7 @@ class _LoginPageState extends State<LoginPage> {
         hint: 'Enter your email',
         icon: Icons.mail_outline_rounded,
         keyboardType: TextInputType.emailAddress,
+        autofillHints: const [AutofillHints.username, AutofillHints.email],
       ),
       const SizedBox(height: 18),
       _labeledField(
@@ -525,6 +531,7 @@ class _LoginPageState extends State<LoginPage> {
         hint: 'Enter your password',
         icon: Icons.lock_outline_rounded,
         obscure: _obscure,
+        autofillHints: const [AutofillHints.password],
         onSubmitted: (_) => _login(),
         suffix: _obscureToggle(_obscure, () => setState(() => _obscure = !_obscure)),
       ),

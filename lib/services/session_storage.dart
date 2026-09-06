@@ -28,6 +28,35 @@ class SessionStorage {
   /// the app regularly never sees the login screen again. Signing out still
   /// clears it immediately.
   static const _duration = Duration(days: 30);
+
+  /// Daily re-authentication point, chosen deliberately at 15:00.
+  ///
+  /// A session that simply never expires would let anyone holding the phone
+  /// check in or out as that person indefinitely. But putting the login at a
+  /// fixed clock time beats an elapsed-time expiry, which lands wherever the
+  /// previous login happened to fall — often 09:00, exactly when people are
+  /// rushing to check in, which is what was making them late.
+  ///
+  /// 15:00 sits between the two moments that matter: after everyone has
+  /// checked in, and well before check-out at 18:30. The one login of the day
+  /// therefore happens when nobody is against the clock.
+  static const _dailyResetHour = 15;
+
+  /// The next 15:00 after [from]. Sessions never outlive this.
+  static DateTime _nextDailyReset(DateTime from) {
+    final todayReset =
+        DateTime(from.year, from.month, from.day, _dailyResetHour);
+    return from.isBefore(todayReset)
+        ? todayReset
+        : todayReset.add(const Duration(days: 1));
+  }
+
+  /// Whichever comes first: the rolling window, or the next 15:00.
+  static DateTime _expiryFrom(DateTime now, Duration window) {
+    final rolling = now.add(window);
+    final reset = _nextDailyReset(now);
+    return rolling.isBefore(reset) ? rolling : reset;
+  }
   // Housekeeping/Support Staff stay logged in far longer — they share
   // devices and re-entering credentials each shift is impractical.
   static const _staffPortalDuration = Duration(days: 180);
@@ -49,8 +78,12 @@ class SessionStorage {
     await kvSetString(_kExemptTiming, UserSession.exemptFromTiming ? '1' : '0');
     final duration =
         UserSession.isStaffPortal ? _staffPortalDuration : _duration;
-    await kvSetString(_kExpiry,
-        DateTime.now().add(duration).millisecondsSinceEpoch.toString());
+    // Staff portal keeps its long window untouched: it is a shared device
+    // that nobody would be present to sign back in at 15:00.
+    final expiry = UserSession.isStaffPortal
+        ? DateTime.now().add(duration)
+        : _expiryFrom(DateTime.now(), duration);
+    await kvSetString(_kExpiry, expiry.millisecondsSinceEpoch.toString());
   }
 
   static Future<bool> restore() async {
@@ -92,8 +125,10 @@ class SessionStorage {
       // to predict.
       final renewal =
           UserSession.isStaffPortal ? _staffPortalDuration : _duration;
-      await kvSetString(_kExpiry,
-          DateTime.now().add(renewal).millisecondsSinceEpoch.toString());
+      final renewed = UserSession.isStaffPortal
+          ? DateTime.now().add(renewal)
+          : _expiryFrom(DateTime.now(), renewal);
+      await kvSetString(_kExpiry, renewed.millisecondsSinceEpoch.toString());
 
       // Photo URL is fetched from main() once Supabase has finished
       // initializing (fetching it here would race Supabase.initialize()
