@@ -483,6 +483,13 @@ class _EmployeeOnboardingPageState extends State<EmployeeOnboardingPage> {
         Supabase.instance.client
             .from('onboarding_forms')
             .select()
+            // Hides earlier submissions from the same person. The list showed
+            // 19 forms for 15 people — a denied form sat beside its approved
+            // replacement, and two sent-back attempts beside the live one, so
+            // HR had to work out which row was current and could action a
+            // stale one by mistake. Nothing is deleted: a denied form is the
+            // record of why it was denied.
+            .eq('superseded', false)
             .order('submitted_at', ascending: false),
         SupabaseService.fetchOnboardingFormVersions(),
       ]);
