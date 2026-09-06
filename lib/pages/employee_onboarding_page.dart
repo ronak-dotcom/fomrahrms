@@ -1405,14 +1405,46 @@ class _SubmissionCardState extends State<_SubmissionCard> {
     // still editable in case the role changed before joining. Matched
     // case-insensitively so older records that don't exactly match the
     // curated list's casing still prefill instead of silently showing blank.
-    final linkedDept  = (_linkedInterview?['department']  as String?)?.trim() ?? '';
-    final linkedDesig = (_linkedInterview?['designation'] as String?)?.trim() ?? '';
+    // Falls back to the joining form itself when no interview is linked —
+    // which is EVERY form: none of the 19 submitted so far came through the
+    // candidate-application stage, so this prefill never once fired and HR
+    // retyped a designation the candidate had already given. Retyping is also
+    // how FD-06 came to be assigned twice.
+    final formData = (d['form_data'] as Map?)?.cast<String, dynamic>() ?? const {};
+    String pick(String key, String fallback) {
+      final linked = (_linkedInterview?[key] as String?)?.trim() ?? '';
+      if (linked.isNotEmpty) return linked;
+      final onForm = (formData[key] as String?)?.trim() ?? '';
+      return onForm.isNotEmpty ? onForm : fallback;
+    }
+
+    final linkedDept  = pick('department', '');
+    final linkedDesig = pick('designation', (d['designation'] as String?)?.trim() ?? '');
+    // The curated lists do not cover everything people actually hold —
+    // "Junior Executive-HR" and "Sr. Admin Executive" are both real and both
+    // absent. Without adding them the dropdown shows blank and HR retypes the
+    // value the candidate already supplied, which is the thing this is meant
+    // to stop. The submitted value is offered as an option so it can be
+    // accepted as-is or corrected.
     final deptMatch = kDepartments.firstWhere(
         (d) => d.toLowerCase() == linkedDept.toLowerCase(), orElse: () => '');
-    String? selectedDepartment = deptMatch.isEmpty ? null : deptMatch;
+    final deptOptions = <String>[
+      ...kDepartments,
+      if (deptMatch.isEmpty && linkedDept.isNotEmpty) linkedDept,
+    ];
+    String? selectedDepartment = deptMatch.isNotEmpty
+        ? deptMatch
+        : (linkedDept.isNotEmpty ? linkedDept : null);
+
     final desigMatch = kDesignations.firstWhere(
         (d) => d.toLowerCase() == linkedDesig.toLowerCase(), orElse: () => '');
-    String? selectedDesignation = desigMatch.isEmpty ? null : desigMatch;
+    final desigOptions = <String>[
+      ...kDesignations,
+      if (desigMatch.isEmpty && linkedDesig.isNotEmpty) linkedDesig,
+    ];
+    String? selectedDesignation = desigMatch.isNotEmpty
+        ? desigMatch
+        : (linkedDesig.isNotEmpty ? linkedDesig : null);
 
     // Asked of the database rather than computed locally: it is the only
     // place that sees both existing staff and ids already reserved on other
@@ -1525,7 +1557,7 @@ class _SubmissionCardState extends State<_SubmissionCard> {
                   border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
                   filled: true, fillColor: Colors.white,
                 ),
-                items: kDepartments.map((dep) => DropdownMenuItem(value: dep, child: Text(dep))).toList(),
+                items: deptOptions.map((dep) => DropdownMenuItem(value: dep, child: Text(dep))).toList(),
                 onChanged: (v) => setS(() => selectedDepartment = v),
               ),
               const SizedBox(height: 12),
@@ -1538,7 +1570,7 @@ class _SubmissionCardState extends State<_SubmissionCard> {
                   border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
                   filled: true, fillColor: Colors.white,
                 ),
-                items: kDesignations.map((des) => DropdownMenuItem(value: des, child: Text(des))).toList(),
+                items: desigOptions.map((des) => DropdownMenuItem(value: des, child: Text(des))).toList(),
                 onChanged: (v) => setS(() => selectedDesignation = v),
               ),
               if (managers.isNotEmpty) ...[
