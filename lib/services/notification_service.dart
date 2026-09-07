@@ -18,6 +18,12 @@ import 'user_store.dart';
 class NotificationService {
   /// Shared '' / '/employee' / '/manager' / '/management' route-prefix
   /// mapping — several call sites already duplicated this switch inline.
+  /// The employee's own payslip screen. Every role except employee has a
+  /// prefixed copy; the employee's is unprefixed, so building
+  /// "/employee/my-payslips" pointed at a route that does not exist.
+  static String routeForPayslips(String prefix) =>
+      prefix == '/employee' ? '/my-payslips' : '$prefix/my-payslips';
+
   static String routePrefixForRole(UserRole role) => switch (role) {
         UserRole.hr => '/hr',
         UserRole.employee => '/employee',
@@ -329,7 +335,11 @@ class NotificationService {
         type: 'onroll_manager_pending',
         title: 'On-roll confirmation pending',
         body: '$employeeName requested on-roll confirmation',
-        route: '$prefix/employee-management',
+        // HR's copy of this screen is unprefixed; only manager and management
+        // have a role-prefixed variant.
+        route: prefix == '/hr'
+            ? '/employee-management'
+            : '$prefix/employee-management',
         targetReportingManager: reportingManagerName,
       );
     }
@@ -727,7 +737,7 @@ class NotificationService {
         type: 'payslip_ready',
         title: 'New payslip available',
         body: monthYear,
-        route: '$employeeRoutePrefix/my-payslips',
+        route: routeForPayslips(employeeRoutePrefix),
         targetEmail: employeeEmail,
       );
 
@@ -763,7 +773,7 @@ class NotificationService {
         type: 'payslip_request_denied',
         title: 'Payslip request denied',
         body: reason.isNotEmpty ? '$monthYear · $reason' : monthYear,
-        route: '$employeeRoutePrefix/my-payslips',
+        route: routeForPayslips(employeeRoutePrefix),
         targetEmail: employeeEmail,
       );
 
