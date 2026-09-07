@@ -314,6 +314,51 @@ class _ApprovalsPageState extends State<ApprovalsPage> with SingleTickerProvider
         ),
       );
 
+  /// Read straight from the database rather than assembled from the queues
+  /// above, so an item appears even when the code that should have surfaced
+  /// it is the thing that is broken.
+  List<Map<String, dynamic>> _pendingWork = const [];
+
+  Widget _pendingWorkBanner() {
+    if (_pendingWork.isEmpty) return const SizedBox.shrink();
+    return Container(
+      margin: const EdgeInsets.only(bottom: 14),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.amber.shade50,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: Colors.amber.shade200),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Icon(Icons.pending_actions_rounded, size: 16, color: Colors.amber.shade900),
+          const SizedBox(width: 6),
+          Text('${_pendingWork.length} awaiting a decision',
+              style: TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.amber.shade900)),
+        ]),
+        const SizedBox(height: 6),
+        for (final p in _pendingWork.take(8))
+          Padding(
+            padding: const EdgeInsets.only(top: 2),
+            child: Text(
+              '${p['process']} · ${p['raised_by']} — ${p['detail']} '
+              '→ ${p['waiting_on']}',
+              style: TextStyle(fontSize: 11.5, color: Colors.amber.shade900),
+            ),
+          ),
+        if (_pendingWork.length > 8)
+          Padding(
+            padding: const EdgeInsets.only(top: 2),
+            child: Text('…and ${_pendingWork.length - 8} more',
+                style: TextStyle(fontSize: 11, color: Colors.amber.shade800)),
+          ),
+      ]),
+    );
+  }
+
   Future<void> _load() async {
     if (mounted) setState(() => _loading = true);
     try {
@@ -328,6 +373,7 @@ class _ApprovalsPageState extends State<ApprovalsPage> with SingleTickerProvider
         SupabaseService.fetchKraDocuments(),
         SupabaseService.fetchOnDutyRequests(status: 'pending'),
         SupabaseService.fetchAttendanceConfirmations(),
+        SupabaseService.fetchPendingApprovals(),
       ]);
       final leaves = results[0] as List<LeaveApplication>;
       if (leaves.isNotEmpty) {
@@ -347,6 +393,7 @@ class _ApprovalsPageState extends State<ApprovalsPage> with SingleTickerProvider
         _kraDocs = results[7] as List<KraDocument>;
         _onDutyRequests = results[8] as List<Map<String, dynamic>>;
         _attendanceConfirmations = results[9] as List<Map<String, dynamic>>;
+        _pendingWork = results[10] as List<Map<String, dynamic>>;
         _loading = false;
       });
     } catch (_) {
@@ -773,21 +820,30 @@ class _ApprovalsPageState extends State<ApprovalsPage> with SingleTickerProvider
 
   Widget _tabView(List<_CategoryInfo> categories, {bool pendingOnly = false}) {
     final visible = pendingOnly ? categories.where((c) => c.pending > 0).toList() : categories;
-    return Padding(
+    return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
-      child: visible.isEmpty
-          ? Padding(
-              padding: const EdgeInsets.symmetric(vertical: 60),
-              child: Center(
-                child: Text('Nothing pending in this view',
-                    style: TextStyle(color: Colors.grey.shade400, fontSize: 13)),
-              ),
-            )
-          : Wrap(
-              spacing: 16,
-              runSpacing: 16,
-              children: visible.map((c) => SizedBox(width: 300, child: _CategorySummaryCard(info: c))).toList(),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        // Shown above the cards on every tab. If a category is empty because
+        // the code building it is broken, this still lists the item — that is
+        // the whole point of reading it from the database instead.
+        if (pendingOnly) _pendingWorkBanner(),
+        if (visible.isEmpty)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 60),
+            child: Center(
+              child: Text('Nothing pending in this view',
+                  style: TextStyle(color: Colors.grey.shade400, fontSize: 13)),
             ),
+          )
+        else
+          Wrap(
+            spacing: 16,
+            runSpacing: 16,
+            children: visible
+                .map((c) => SizedBox(width: 300, child: _CategorySummaryCard(info: c)))
+                .toList(),
+          ),
+      ]),
     );
   }
 

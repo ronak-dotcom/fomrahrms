@@ -3742,6 +3742,26 @@ class SupabaseService {
     }
   }
 
+  /// Everything awaiting a decision, computed from the data rather than from
+  /// whether a notification fired.
+  ///
+  /// Every approval process relied on a notification to be discovered, so a
+  /// bad route or a write that did not land left the request sitting with
+  /// nobody aware it existed — found each time by someone complaining rather
+  /// than by the system. This is the backstop.
+  static Future<List<Map<String, dynamic>>> fetchPendingApprovals() async {
+    try {
+      final rows = await _db
+          ?.from('v_pending_approvals')
+          .select()
+          .order('raised_on', ascending: true);
+      return List<Map<String, dynamic>>.from(rows ?? []);
+    } catch (e) {
+      _writeFailed('fetchPendingApprovals', e);
+      return [];
+    }
+  }
+
   // ── Leave balances ────────────────────────────────────────────────────
   // Balances are derived, not stored: accrued per cycle since the leave year
   // began (26 Dec), minus approved leave, plus HR adjustments. Asking the

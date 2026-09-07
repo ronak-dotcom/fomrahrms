@@ -766,6 +766,101 @@ class EmployeeProfileDialogState extends State<EmployeeProfileDialog> {
   static const _undoWindow = Duration(minutes: 10);
   late AppUser _user;
   bool _raisingOnroll = false;
+  List<Map<String, dynamic>> _balanceRows = const [];
+
+  Future<void> _loadBalance() async {
+    final rows = await SupabaseService.fetchLeaveBalance(_user.employeeId);
+    if (mounted) setState(() => _balanceRows = rows);
+  }
+
+  /// Posts a correction to someone's leave balance.
+  ///
+  /// Balances are computed from accrual minus approved usage, so there is no
+  /// stored total to edit. Corrections are ledger entries instead: an opening
+  /// balance, a carry-forward from before the system, an encashment and a
+  /// mistake being fixed all stay distinguishable, each with a reason and an
+  /// author — which overwriting a number would lose.
+  Future<void> _adjustLeave() async {
+    String bucket = 'CL';
+    final daysCtrl = TextEditingController();
+    final reasonCtrl = TextEditingController();
+
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setS) => AlertDialog(
+          title: Text('Adjust leave — ${_user.name}'),
+          content: Column(mainAxisSize: MainAxisSize.min, children: [
+            DropdownButtonFormField<String>(
+              initialValue: bucket,
+              decoration: const InputDecoration(
+                  labelText: 'Leave type', border: OutlineInputBorder()),
+              items: const [
+                DropdownMenuItem(value: 'CL', child: Text('Casual Leave')),
+                DropdownMenuItem(value: 'ML', child: Text('Medical Leave')),
+                DropdownMenuItem(value: 'EL', child: Text('Earned Leave')),
+              ],
+              onChanged: (v) => setS(() => bucket = v ?? 'CL'),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: daysCtrl,
+              keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true, signed: true),
+              decoration: const InputDecoration(
+                labelText: 'Days',
+                helperText: 'Negative to deduct, e.g. -1.5',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: reasonCtrl,
+              decoration: const InputDecoration(
+                  labelText: 'Reason', border: OutlineInputBorder()),
+            ),
+          ]),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('Cancel')),
+            ElevatedButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('Apply')),
+          ],
+        ),
+      ),
+    );
+    if (ok != true || !mounted) return;
+
+    final days = double.tryParse(daysCtrl.text.trim());
+    if (days == null || days == 0) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Enter a number of days, positive or negative.')));
+      return;
+    }
+    if (reasonCtrl.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('A reason is required — this changes someone\u2019s '
+              'entitlement.')));
+      return;
+    }
+
+    final err = await SupabaseService.adjustLeaveBalance(
+      employeeId: _user.employeeId,
+      bucket: bucket,
+      days: days,
+      reason: reasonCtrl.text.trim(),
+    );
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(err == null
+          ? '$bucket adjusted by $days for ${_user.name}.'
+          : 'Could not adjust: $err'),
+      backgroundColor: err == null ? Colors.teal.shade700 : Colors.red.shade700,
+    ));
+    if (err == null) _loadBalance();
+  }
 
   /// HR/Management moving someone from probation to confirmed.
   ///
@@ -813,6 +908,13 @@ class EmployeeProfileDialogState extends State<EmployeeProfileDialog> {
     super.initState();
     _user = widget.user;
     _startTimers();
+    // Only HR/Management can read another person's balance, and only they see
+    // the section, so fetching it for anyone else would be a wasted call that
+    // RLS would refuse anyway.
+    if (UserSession.role == UserRole.hr ||
+        UserSession.role == UserRole.management) {
+      _loadBalance();
+    }
   }
 
   @override
@@ -2859,6 +2961,41 @@ class EmployeeProfileDialogState extends State<EmployeeProfileDialog> {
             ],
 
             // ── Employment status management ──────────────────────────────
+            // Leave balance, for HR/Management only. Balances are derived
+            // from accrual minus usage, so there is no stored total to type
+            // over — corrections are posted as ledger entries instead, each
+            // with a reason and an author.
+            if (canEdit) ...[
+              const SizedBox(height: 14),
+              const Divider(),
+              const SizedBox(height: 10),
+              Row(children: [
+                const Icon(Icons.event_available_rounded, size: 14, color: Color(0xFF6B7280)),
+                const SizedBox(width: 6),
+                const Text('Leave Balance',
+                    style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700)),
+                const Spacer(),
+                TextButton.icon(
+                  onPressed: _adjustLeave,
+                  icon: const Icon(Icons.tune_rounded, size: 15),
+                  label: const Text('Adjust', style: TextStyle(fontSize: 12)),
+                ),
+              ]),
+              if (_balanceRows.isEmpty)
+                const Text('Loading…',
+                    style: TextStyle(fontSize: 11.5, color: Color(0xFF6B7280)))
+              else
+                Wrap(spacing: 14, runSpacing: 4, children: [
+                  for (final b in _balanceRows)
+                    Text(
+                      '${b['bucket']}: ${b['available']}'
+                      // The cap only matters where it actually bites.
+                      '${(b['usable'] as num) < (b['available'] as num)
+                          ? ' (${b['usable']} usable)' : ''}',
+                      style: const TextStyle(fontSize: 12),
+                    ),
+                ]),
+            ],
             if (canRaiseOnroll) ...[
               const SizedBox(height: 14),
               const Divider(),
