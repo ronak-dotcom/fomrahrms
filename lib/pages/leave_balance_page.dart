@@ -26,7 +26,11 @@ class LeaveBalancePage extends StatefulWidget {
 class _LeaveBalancePageState extends State<LeaveBalancePage> {
   bool _loading = true;
   AppUser? _me;
-  double _usedCl = 0, _usedMl = 0, _usedEl = 0;
+  // Straight from leave_balance() rather than recomputed here. The page used
+  // to derive its own figures from this cycle only, so anything carried
+  // forward was invisible and the number could disagree with what applying
+  // for leave actually allowed.
+  Map<String, Map<String, num>> _balance = const {};
   int _pending = 0;
   List<LeaveApplication> _recent = const [];
 
@@ -53,31 +57,28 @@ class _LeaveBalancePageState extends State<LeaveBalancePage> {
       // calendar month, so usage is counted over the same window. Counting a
       // calendar month here would show a remaining figure that disagrees with
       // what apply_leave_page actually permits.
-      final cycleEnd = attendanceCycleEnd(DateTime.now());
-      final cycleStart = attendanceCycleStart(cycleEnd);
-
       final mine = leaves
           .where((a) => a.employeeName == UserSession.name)
           .toList()
         ..sort((a, b) => b.from.compareTo(a.from));
 
-      double cl = 0, ml = 0, el = 0;
-      for (final a in mine) {
-        if (a.managerStatus != LeaveApprovalStatus.approved) continue;
-        if (a.from.isBefore(cycleStart) || a.from.isAfter(cycleEnd)) continue;
-        switch (a.bucket) {
-          case 'CL': cl += a.effectiveDays;
-          case 'ML': ml += a.effectiveDays;
-          case 'EL': el += a.effectiveDays;
-        }
-      }
+      final rows = me == null
+          ? const <Map<String, dynamic>>[]
+          : await SupabaseService.fetchLeaveBalance(me.employeeId);
+      final balance = <String, Map<String, num>>{
+        for (final r in rows)
+          (r['bucket'] as String): {
+            'accrued': (r['accrued'] as num?) ?? 0,
+            'used': (r['used'] as num?) ?? 0,
+            'adjusted': (r['adjusted'] as num?) ?? 0,
+            'available': (r['available'] as num?) ?? 0,
+          },
+      };
 
       if (!mounted) return;
       setState(() {
         _me = me;
-        _usedCl = cl;
-        _usedMl = ml;
-        _usedEl = el;
+        _balance = balance;
         _pending = mine
             .where((a) => a.managerStatus == LeaveApprovalStatus.pending)
             .length;
@@ -128,24 +129,28 @@ class _LeaveBalancePageState extends State<LeaveBalancePage> {
                   // staff do not have: they get one leave of any type.
                   _BalanceCard(
                     label: 'Leave this cycle',
-                    note: 'On probation — one leave per cycle, any type. '
-                        'Permission becomes available after confirmation.',
-                    entitled: AppUser.probationLeavesPerCycle.toDouble(),
-                    used: _usedCl + _usedMl + _usedEl,
+                    note: 'On probation — 1 casual leave accrues each cycle and '
+                        'unused days carry forward. Medical and Earned leave '
+                        'begin on confirmation.',
+                    entitled: ((_balance['CL']?['accrued'] ?? 0) +
+                               (_balance['CL']?['adjusted'] ?? 0)).toDouble(),
+                    used: (_balance['CL']?['used'] ?? 0).toDouble(),
                     color: AppTheme.warning,
                   )
                 else ...[
                   _BalanceCard(
                     label: 'Casual Leave',
-                    entitled: me.monthlyCl.toDouble(),
-                    used: _usedCl,
+                    entitled: ((_balance['CL']?['accrued'] ?? 0) +
+                               (_balance['CL']?['adjusted'] ?? 0)).toDouble(),
+                    used: (_balance['CL']?['used'] ?? 0).toDouble(),
                     color: AppTheme.primaryBlue,
                   ),
                   const SizedBox(height: 10),
                   _BalanceCard(
                     label: 'Medical Leave',
-                    entitled: me.monthlyMl.toDouble(),
-                    used: _usedMl,
+                    entitled: ((_balance['ML']?['accrued'] ?? 0) +
+                               (_balance['ML']?['adjusted'] ?? 0)).toDouble(),
+                    used: (_balance['ML']?['used'] ?? 0).toDouble(),
                     color: Colors.teal.shade600,
                   ),
                   const SizedBox(height: 10),
@@ -153,11 +158,17 @@ class _LeaveBalancePageState extends State<LeaveBalancePage> {
                   // up" rather than "not yet earned".
                   _BalanceCard(
                     label: 'Earned Leave',
-                    note: me.isElEligible ? null : 'Not yet eligible',
-                    entitled: me.isElEligible ? me.monthlyEl.toDouble() : 0,
-                    used: _usedEl,
+                    note: (_balance['EL']?['accrued'] ?? 0) >= 25
+                        ? 'Capped at 25 days'
+                        : (me.isElEligible ? null : 'Begins on confirmation'),
+                    entitled: ((_balance['EL']?['accrued'] ?? 0) +
+                               (_balance['EL']?['adjusted'] ?? 0)).toDouble(),
+                    used: (_balance['EL']?['used'] ?? 0).toDouble(),
                     color: Colors.deepPurple.shade400,
-                    disabled: !me.isElEligible,
+                    // Dimmed when none has accrued, which is the state the
+                    // employee actually cares about — the separate tenure
+                    // flag could say eligible while the balance was still 0.
+                    disabled: (_balance['EL']?['accrued'] ?? 0) == 0,
                   ),
                 ],
 

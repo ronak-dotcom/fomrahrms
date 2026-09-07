@@ -3742,6 +3742,69 @@ class SupabaseService {
     }
   }
 
+  // ── Leave balances ────────────────────────────────────────────────────
+  // Balances are derived, not stored: accrued per cycle since the leave year
+  // began (26 Dec), minus approved leave, plus HR adjustments. Asking the
+  // database keeps one definition rather than a second one in Dart that could
+  // disagree with what applying for leave actually permits.
+
+  /// CL/ML/EL for one employee: accrued, used, adjusted, available.
+  static Future<List<Map<String, dynamic>>> fetchLeaveBalance(
+      String employeeId) async {
+    try {
+      final rows = await _db
+          ?.rpc('leave_balance', params: {'p_employee_id': employeeId});
+      return List<Map<String, dynamic>>.from(rows ?? []);
+    } catch (e) {
+      _writeFailed('fetchLeaveBalance', e);
+      return [];
+    }
+  }
+
+  /// HR or Management correcting an individual's balance.
+  ///
+  /// Recorded as a ledger entry rather than overwriting a total, so an
+  /// opening balance, a carry-forward from before the system, an encashment
+  /// and a mistake being corrected are all distinguishable afterwards —
+  /// and each carries a reason and an author. [days] may be negative.
+  static Future<String?> adjustLeaveBalance({
+    required String employeeId,
+    required String bucket,
+    required double days,
+    required String reason,
+  }) async {
+    try {
+      await _db?.from('leave_adjustments').insert({
+        'employee_id': employeeId,
+        'bucket': bucket,
+        'days': days,
+        'reason': reason,
+        'created_by': UserSession.name,
+      });
+      logAuditEvent('leave_balance_adjusted',
+          targetType: 'app_users', targetId: employeeId);
+      return null;
+    } catch (e) {
+      _writeFailed('adjustLeaveBalance', e);
+      return e.toString();
+    }
+  }
+
+  static Future<List<Map<String, dynamic>>> fetchLeaveAdjustments(
+      String employeeId) async {
+    try {
+      final rows = await _db
+          ?.from('leave_adjustments')
+          .select()
+          .eq('employee_id', employeeId)
+          .order('effective_on', ascending: false);
+      return List<Map<String, dynamic>>.from(rows ?? []);
+    } catch (e) {
+      _writeFailed('fetchLeaveAdjustments', e);
+      return [];
+    }
+  }
+
   /// HR raises the confirmation request for an employee who has not done it
   /// themselves.
   ///
