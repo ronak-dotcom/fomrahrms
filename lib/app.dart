@@ -71,7 +71,6 @@ import 'pages/hr_employee_records_page.dart';
 import 'pages/reporting_managers_page.dart';
 import 'pages/employee_leave_page.dart';
 import 'pages/my_leave_approvals_page.dart';
-import 'pages/my_leave_balance_page.dart';
 import 'pages/hr_leave_records_page.dart';
 import 'widgets/manager_shell.dart';
 import 'pages/manager_dashboard_page.dart';
@@ -403,7 +402,7 @@ final _router = GoRouter(
         GoRoute(path: '/employee/on-duty',                 builder: (_, __) => const ApplyOnDutyPage()),
         GoRoute(path: '/employee/attendance-confirmation', builder: (_, __) => const RequestAttendanceConfirmationPage()),
         GoRoute(path: '/employee/leave/approvals',         builder: (_, __) => const MyLeaveApprovalsPage()),
-        GoRoute(path: '/employee/leave/balance',           builder: (_, __) => const MyLeaveBalancePage()),
+        GoRoute(path: '/employee/leave/balance',           builder: (_, __) => const LeaveBalancePage()),
         GoRoute(path: '/employee/leave',                   builder: (_, __) => const ApplyLeavePage()),
         GoRoute(path: '/employee/tasks',                    builder: (_, state) =>
             MyTasksPage(initialStatus: taskStatusFromName(state.uri.queryParameters['status']))),
@@ -455,7 +454,7 @@ final _router = GoRouter(
         GoRoute(path: '/manager/leave/permission',        builder: (_, __) => const ApplyPermissionPage()),
         GoRoute(path: '/manager/leave/compoff',           builder: (_, __) => const ApplyCompOffPage()),
         GoRoute(path: '/manager/leave/approvals',         builder: (_, __) => const MyLeaveApprovalsPage()),
-        GoRoute(path: '/manager/leave/balance',           builder: (_, __) => const MyLeaveBalancePage()),
+        GoRoute(path: '/manager/leave/balance',           builder: (_, __) => const LeaveBalancePage()),
         GoRoute(path: '/manager/leave/team-approvals',    builder: (_, __) => const TeamLeaveApprovalsPage()),
         GoRoute(path: '/manager/attendance/check-in',     builder: (_, __) => const CheckInPage()),
         GoRoute(path: '/manager/attendance/check-out',    builder: (_, __) => const CheckOutPage()),

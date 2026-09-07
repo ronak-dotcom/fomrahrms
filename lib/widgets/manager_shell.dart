@@ -35,6 +35,9 @@ const _hrNavItems = [
 const _personalNavItems = [
   _NavItem('My Profile',    Icons.person_rounded,                  '/manager/my-profile'),
   _NavItem('My Attendance and Leaves', Icons.event_note_rounded,   '/manager/attendance-leaves'),
+  _NavItem('My Leave Balance',     Icons.account_balance_wallet_rounded, '/manager/leave/balance'),
+  _NavItem('Apply Permission',     Icons.timer_outlined,           '/manager/leave/permission'),
+  _NavItem('Apply Comp Off',       Icons.swap_horiz_rounded,       '/manager/leave/compoff'),
   _NavItem('My Tasks',      Icons.task_alt_rounded,                '/manager/my-tasks'),
   _NavItem('My Payslips',   Icons.account_balance_wallet_rounded,  '/manager/my-payslips'),
   _NavItem('Appraisal',     Icons.fact_check_rounded,              '/manager/appraisal'),

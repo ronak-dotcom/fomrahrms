@@ -88,6 +88,17 @@ const _navGroups = <_NavGroup>[
     (label: 'Edit Onboarding Form',  icon: Icons.how_to_reg_rounded,      route: '/management/edit-onboarding-form'),
     (label: 'Edit Maintenance Form', icon: Icons.build_rounded,           route: '/management/edit-maintenance-form'),
   ]),
+  // Management are employees too. All four of these routes existed and none
+  // was linked from anywhere, so their own profile, attendance, balance and
+  // payslips were unreachable except by typing a URL. Oversight-only accounts
+  // are filtered out of attendance elsewhere, so the pages simply show
+  // nothing for them rather than being wrong.
+  _NavGroup('My Space', Icons.person_outline_rounded, [
+    (label: 'My Profile',            icon: Icons.badge_outlined,          route: '/management/my-profile'),
+    (label: 'My Attendance & Leaves', icon: Icons.event_note_rounded,     route: '/management/attendance-leaves'),
+    (label: 'My Leave Balance',      icon: Icons.account_balance_wallet_rounded, route: '/management/leave/balance'),
+    (label: 'My Payslips',           icon: Icons.receipt_long_rounded,    route: '/management/my-payslips'),
+  ]),
 ];
 
 // Reports and Notifications stay flat: single destinations that don't
