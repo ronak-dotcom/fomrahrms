@@ -313,12 +313,36 @@ class NotificationService {
       route: '/employee-management',
       targetRole: 'HR',
     );
+    // Routed by the RECIPIENT's role. Hardcoding '/manager/' sent an HR or
+    // Management reporting manager to a prefix their role cannot open, so the
+    // guard bounced them to their dashboard — the same fault that made an
+    // attendance confirmation appear to do nothing when tapped.
+    final mgr = await SupabaseService.userByName(reportingManagerName);
+    if (reportingManagerName.isNotEmpty &&
+        !((mgr?['oversight_only'] as bool?) ?? false)) {
+      final prefix = switch ((mgr?['role'] as String?)?.toLowerCase()) {
+        'management' => '/management',
+        'hr' => '/hr',
+        _ => '/manager',
+      };
+      await _create(
+        type: 'onroll_manager_pending',
+        title: 'On-roll confirmation pending',
+        body: '$employeeName requested on-roll confirmation',
+        route: '$prefix/employee-management',
+        targetReportingManager: reportingManagerName,
+      );
+    }
+
+    // Management was never told at all, despite being the final approver —
+    // the request could clear HR and the manager and then sit with nobody
+    // aware it was waiting.
     await _create(
-      type: 'onroll_manager_pending',
-      title: 'On-roll confirmation pending',
+      type: 'onroll_management_pending',
+      title: 'On-roll confirmation raised',
       body: '$employeeName requested on-roll confirmation',
-      route: '/manager/employee-management',
-      targetReportingManager: reportingManagerName,
+      route: '/management/onroll-approvals',
+      targetRole: 'Management',
     );
   }
 

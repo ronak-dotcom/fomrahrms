@@ -352,6 +352,91 @@ class _LocationDialogState extends State<_LocationDialog> {
     super.dispose();
   }
 
+  /// Pulls coordinates out of a pasted Google Maps link.
+  ///
+  /// Typing latitude and longitude by hand means reading them off a map and
+  /// transcribing 12 digits, and a single wrong digit puts the office in the
+  /// wrong place with no obvious sign anything is wrong. Pasting the link is
+  /// the way people actually have the location to hand.
+  ///
+  /// Handles the common shapes:
+  ///   .../@13.0850,80.2227,17z          — map centre
+  ///   ...!3d13.0850!4d80.2227           — the place itself
+  ///   ...?q=13.0850,80.2227             — query form
+  ///   ...&ll=13.0850,80.2227
+  /// A shortened maps.app.goo.gl link carries no coordinates at all until it
+  /// is opened, so that is reported rather than silently failing.
+  static ({double lat, double lng})? _parseMapsLink(String url) {
+    final u = url.trim();
+    if (u.isEmpty) return null;
+
+    // !3d<lat>!4d<lng> is the actual pin, so it wins over the map centre.
+    final place = RegExp(r'!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)').firstMatch(u);
+    if (place != null) {
+      return (lat: double.parse(place.group(1)!), lng: double.parse(place.group(2)!));
+    }
+    for (final re in [
+      RegExp(r'@(-?\d+\.\d+),(-?\d+\.\d+)'),
+      RegExp(r'[?&](?:q|ll|daddr|center)=(-?\d+\.\d+),\s*(-?\d+\.\d+)'),
+      RegExp(r'^\s*(-?\d+\.\d+)\s*,\s*(-?\d+\.\d+)\s*$'),  // bare lat, lng
+    ]) {
+      final m = re.firstMatch(u);
+      if (m != null) {
+        return (lat: double.parse(m.group(1)!), lng: double.parse(m.group(2)!));
+      }
+    }
+    return null;
+  }
+
+  Future<void> _pasteMapsLink() async {
+    final ctrl = TextEditingController();
+    final link = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Paste Google Maps link'),
+        content: Column(mainAxisSize: MainAxisSize.min, children: [
+          const Text(
+            'Open the place in Google Maps, tap Share, copy the link and paste '
+            'it here. A plain "latitude, longitude" also works.',
+            style: TextStyle(fontSize: 12.5),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: ctrl,
+            autofocus: true,
+            maxLines: 3,
+            decoration: const InputDecoration(
+                hintText: 'https://www.google.com/maps/...',
+                border: OutlineInputBorder()),
+          ),
+        ]),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          ElevatedButton(
+              onPressed: () => Navigator.pop(ctx, ctrl.text),
+              child: const Text('Use this')),
+        ],
+      ),
+    );
+    if (link == null || !mounted) return;
+
+    final coords = _parseMapsLink(link);
+    setState(() {
+      if (coords == null) {
+        _error = link.contains('goo.gl') || link.contains('maps.app')
+            ? 'That is a shortened link, which does not contain the '
+              'coordinates. Open it in Google Maps first, then copy the full '
+              'link from the address bar.'
+            : 'Could not find coordinates in that link. Paste the full Google '
+              'Maps URL, or type "latitude, longitude".';
+      } else {
+        _latCtrl.text = coords.lat.toString();
+        _lngCtrl.text = coords.lng.toString();
+        _error = null;
+      }
+    });
+  }
+
   Future<void> _useCurrentLocation() async {
     await ensureLocationConsent(context);
     if (!mounted) return;
@@ -460,6 +545,14 @@ class _LocationDialogState extends State<_LocationDialog> {
                   ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
                   : const Icon(Icons.my_location_rounded, size: 16),
               label: Text(_locating ? 'Locating…' : 'Use current GPS location'),
+            ),
+            // Pasting the link beats transcribing 12 digits off a map, where a
+            // single wrong digit puts the site somewhere else with nothing on
+            // screen to show it.
+            OutlinedButton.icon(
+              onPressed: _pasteMapsLink,
+              icon: const Icon(Icons.link_rounded, size: 16),
+              label: const Text('Paste Google Maps link'),
             ),
             const SizedBox(height: 14),
             TextField(

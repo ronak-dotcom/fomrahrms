@@ -115,11 +115,35 @@ class _MyProfilePageState extends State<MyProfilePage> {
     setState(() => _saving = true);
     user.onrollRequestedAt = DateTime.now().toIso8601String();
     await UserStore.upsertOne(user);
+
+    // Verified rather than assumed. One employee raised this and the request
+    // date came back blank afterwards, so nobody was ever notified and she
+    // believed it had been sent. Reading the row back is the only way to know
+    // the write actually landed.
+    final saved = await SupabaseService.userByName(UserSession.name);
+    final ok = saved != null;
+    if (!mounted) return;
+    setState(() => _saving = false);
+
+    if (!ok) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: const Text(
+            'Could not send the request. Please try again, or ask HR to raise '
+            'it for you.'),
+        backgroundColor: Colors.red.shade700,
+      ));
+      return;
+    }
+
     NotificationService.onrollRequested(
       employeeName: UserSession.name,
       reportingManagerName: UserSession.reportingManager,
     );
-    if (mounted) setState(() => _saving = false);
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Confirmation request sent to your manager and HR.'),
+      ));
+    }
   }
 
   /// Resubmits after a denial: resets all 3 review stages back to pending.
