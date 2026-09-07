@@ -906,6 +906,10 @@ class _AttendanceSheetState extends State<_AttendanceSheet> {
   late final TextEditingController _timeCtrl;
   final _noteCtrl = TextEditingController();
   bool _submitting = false;
+  /// What the button says while working. The spinner alone told the employee
+  /// nothing about which step was slow, and the steps are genuinely slow:
+  /// a location fix takes up to 14s and the camera up to 60s.
+  String _busyLabel = '';
   // Minutes granted by a same-day approved Permission; 0 if none. See
   // checkin_status.dart's approvedPermissionMinutesFor.
   int _permissionMinutes = 0;
@@ -942,6 +946,7 @@ class _AttendanceSheetState extends State<_AttendanceSheet> {
       '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}';
 
   Future<void> _checkIn() async {
+    setState(() { _submitting = true; _busyLabel = 'Getting your location…'; });
     await ensureLocationConsent(context);
     if (!mounted) return;
 
@@ -956,6 +961,7 @@ class _AttendanceSheetState extends State<_AttendanceSheet> {
     if (!mounted) return;
     if (await promptForLocationReason(context, loc,
         noteIsEmpty: _noteCtrl.text.trim().isEmpty)) {
+      setState(() { _submitting = false; _busyLabel = ''; });
       return;
     }
     if (!mounted) return;
@@ -975,6 +981,7 @@ class _AttendanceSheetState extends State<_AttendanceSheet> {
         lng: loc.lng,
         accuracy: loc.accuracy,
       ));
+      setState(() { _submitting = false; _busyLabel = ''; });
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         // Names the field, rather than an instruction that reads as a refusal.
         content: const Text(
@@ -988,7 +995,7 @@ class _AttendanceSheetState extends State<_AttendanceSheet> {
       return;
     }
 
-    setState(() => _submitting = true);
+    setState(() => _busyLabel = 'Opening camera for your selfie…');
     final now = DateTime.now();
     final empName = UserSession.name.isNotEmpty ? UserSession.name : 'Employee';
 
@@ -1002,7 +1009,7 @@ class _AttendanceSheetState extends State<_AttendanceSheet> {
     );
     if (!mounted) return;
     if (selfiePath == null && selfieRequiredForCurrentUser) {
-      setState(() => _submitting = false);
+      setState(() { _submitting = false; _busyLabel = ''; });
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         content: Text('Selfie required to check in. ${SelfieCaptureService.lastFailure ?? "Please try again."}'),
         duration: const Duration(seconds: 10),
@@ -1042,7 +1049,7 @@ class _AttendanceSheetState extends State<_AttendanceSheet> {
     );
 
     if (!mounted) return;
-    setState(() => _submitting = false);
+    setState(() { _submitting = false; _busyLabel = ''; });
 
     if (err != null) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -1087,7 +1094,7 @@ class _AttendanceSheetState extends State<_AttendanceSheet> {
       return;
     }
 
-    setState(() => _submitting = true);
+    setState(() { _submitting = true; _busyLabel = 'Opening camera for your selfie…'; });
     final now = DateTime.now();
 
     final selfiePath = !selfieRequiredForCurrentUser
@@ -1100,7 +1107,7 @@ class _AttendanceSheetState extends State<_AttendanceSheet> {
     );
     if (!mounted) return;
     if (selfiePath == null && selfieRequiredForCurrentUser) {
-      setState(() => _submitting = false);
+      setState(() { _submitting = false; _busyLabel = ''; });
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         content: Text('Selfie required to check out. ${SelfieCaptureService.lastFailure ?? "Please try again."}'),
         backgroundColor: Colors.orange.shade700,
@@ -1110,6 +1117,7 @@ class _AttendanceSheetState extends State<_AttendanceSheet> {
       return;
     }
 
+    if (mounted) setState(() => _busyLabel = 'Saving your check-out…');
     GpsTrackingService.stop();
     AttendanceStore.isCheckedIn = false;
 
@@ -1123,7 +1131,7 @@ class _AttendanceSheetState extends State<_AttendanceSheet> {
     );
 
     if (!mounted) return;
-    setState(() => _submitting = false);
+    setState(() { _submitting = false; _busyLabel = ''; });
 
     widget.onDone();
     NotificationService.checkOutRecorded(
@@ -1317,7 +1325,10 @@ class _AttendanceSheetState extends State<_AttendanceSheet> {
                   ? const SizedBox(width: 16, height: 16,
                       child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
                   : Icon(isCheckedIn ? Icons.logout_rounded : Icons.login_rounded, size: 18),
-              label: Text(isCheckedIn ? 'Check Out' : 'Check In',
+              label: Text(
+                  _submitting && _busyLabel.isNotEmpty
+                      ? _busyLabel
+                      : (isCheckedIn ? 'Check Out' : 'Check In'),
                   style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
               style: ElevatedButton.styleFrom(
                 backgroundColor: isCheckedIn ? _teal : accent,
