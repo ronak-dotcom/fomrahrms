@@ -963,10 +963,26 @@ class _AttendanceSheetState extends State<_AttendanceSheet> {
     if (isLateCheckIn(_timeCtrl.text, OfficeTimingStore.scheduleForCurrentUser()) &&
         _permissionMinutes == 0 &&
         _noteCtrl.text.trim().isEmpty) {
+      // Logged, because this stops the check-in and left no trace anywhere:
+      // an employee who does not notice the reason box just sees nothing
+      // happen and reports being unable to check in, while the diagnostics
+      // show no attempt at all. That is exactly what happened today.
+      unawaited(SupabaseService.logCheckInAttempt(
+        kind: 'check_in',
+        outcome: 'blocked',
+        reason: 'late check-in with no reason given',
+        lat: loc.lat,
+        lng: loc.lng,
+        accuracy: loc.accuracy,
+      ));
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: const Text('Please add a reason for checking in late.'),
+        // Names the field, rather than an instruction that reads as a refusal.
+        content: const Text(
+            'You are checking in late — please type a reason in the Note box '
+            'above, then press Check In again.'),
         backgroundColor: Colors.orange.shade700,
         behavior: SnackBarBehavior.floating,
+        duration: const Duration(seconds: 6),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
       ));
       return;

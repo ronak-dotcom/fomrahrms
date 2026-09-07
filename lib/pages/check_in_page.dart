@@ -200,10 +200,21 @@ class _CheckInPageState extends State<CheckInPage> {
     final schedule = OfficeTimingStore.scheduleForCurrentUser();
     if (!_onPermission && !outsideOffice && isLateCheckIn(_timeController.text, schedule) &&
         _noteController.text.trim().isEmpty) {
+      // Same silent block as the dashboard card: it stops the check-in and
+      // recorded nothing, so an employee who misses the reason box reports
+      // being unable to check in while diagnostics show no attempt at all.
+      unawaited(SupabaseService.logCheckInAttempt(
+        kind: 'check_in',
+        outcome: 'blocked',
+        reason: 'late check-in with no reason given',
+      ));
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: const Text('Please add a reason for checking in late.'),
+        content: const Text(
+            'You are checking in late — please type a reason in the Note box '
+            'above, then press Check In again.'),
         backgroundColor: Colors.orange.shade700,
         behavior: SnackBarBehavior.floating,
+        duration: const Duration(seconds: 6),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
       ));
       return;
