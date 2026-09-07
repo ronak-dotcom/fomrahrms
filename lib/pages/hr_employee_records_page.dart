@@ -765,6 +765,36 @@ class EmployeeProfileDialog extends StatefulWidget {
 class EmployeeProfileDialogState extends State<EmployeeProfileDialog> {
   static const _undoWindow = Duration(minutes: 10);
   late AppUser _user;
+  bool _raisingOnroll = false;
+
+  /// HR/Management moving someone from probation to confirmed.
+  ///
+  /// Raising it counts as this stage's approval — asking HR to approve a
+  /// request HR just made is a signature with no meaning — so it goes
+  /// straight to the reporting manager and Management.
+  Future<void> _raiseOnroll() async {
+    setState(() => _raisingOnroll = true);
+    final err = await SupabaseService.requestOnrollForEmployee(_user.employeeId);
+    if (!mounted) return;
+    setState(() => _raisingOnroll = false);
+    if (err != null) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('Could not send: $err'),
+        backgroundColor: Colors.red.shade700));
+      return;
+    }
+    NotificationService.onrollRequested(
+      employeeName: _user.name,
+      reportingManagerName: _user.reportingManager,
+    );
+    if (mounted) {
+      Navigator.of(context).pop();
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('Confirmation for ${_user.name} sent to Management.'),
+        backgroundColor: Colors.teal.shade700));
+    }
+  }
+
   Timer? _onrollTimer;
   Timer? _elTimer;
   bool _saving = false;
@@ -2678,6 +2708,16 @@ class EmployeeProfileDialogState extends State<EmployeeProfileDialog> {
     final showOnrollSection = canSeeOnrollSection &&
         (_user.isOnroll || (_user.onrollRequestedAt.isNotEmpty && onrollEligibleByTenure));
 
+    // HR/Management can start the confirmation themselves. The section only
+    // appeared once a request EXISTED, so if the employee never raised one
+    // there was no way in — and nobody ever had: all 15 unconfirmed staff had
+    // a blank request date, including people who joined in 2010 and 2023,
+    // every one of them still on the reduced probation entitlement.
+    final canRaiseOnroll = (isHr || isManagement) &&
+        !_user.isOnroll &&
+        _user.onrollRequestedAt.isEmpty &&
+        onrollEligibleByTenure;
+
     return Dialog(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: ConstrainedBox(
@@ -2819,6 +2859,36 @@ class EmployeeProfileDialogState extends State<EmployeeProfileDialog> {
             ],
 
             // ── Employment status management ──────────────────────────────
+            if (canRaiseOnroll) ...[
+              const SizedBox(height: 14),
+              const Divider(),
+              const SizedBox(height: 10),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: _raisingOnroll ? null : _raiseOnroll,
+                  icon: _raisingOnroll
+                      ? const SizedBox(width: 14, height: 14,
+                          child: CircularProgressIndicator(strokeWidth: 2))
+                      : const Icon(Icons.verified_user_rounded, size: 16),
+                  label: Text(_raisingOnroll
+                      ? 'Sending…'
+                      : 'Move to Confirmed — send to Management'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.teal.shade700,
+                    side: BorderSide(color: Colors.teal.shade300),
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                '${_user.name} has completed '
+                '${fullMonthsSince(_user.dateOfJoining)} months. Raising this '
+                'counts as your approval; Management decides.',
+                style: const TextStyle(fontSize: 11, color: Color(0xFF6B7280)),
+              ),
+            ],
             if (showOnrollSection) ...[
               const SizedBox(height: 14),
               const Divider(),

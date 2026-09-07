@@ -72,6 +72,8 @@ class _LeaveBalancePageState extends State<LeaveBalancePage> {
             'used': (r['used'] as num?) ?? 0,
             'adjusted': (r['adjusted'] as num?) ?? 0,
             'available': (r['available'] as num?) ?? 0,
+            'usable': (r['usable'] as num?) ?? 0,
+            'cap': (r['cap'] as num?) ?? 9999,
           },
       };
 
@@ -143,6 +145,11 @@ class _LeaveBalancePageState extends State<LeaveBalancePage> {
                     entitled: ((_balance['CL']?['accrued'] ?? 0) +
                                (_balance['CL']?['adjusted'] ?? 0)).toDouble(),
                     used: (_balance['CL']?['used'] ?? 0).toDouble(),
+                    note: (_balance['CL']?['available'] ?? 0) >
+                            (_balance['CL']?['usable'] ?? 0)
+                        ? 'Carried forward, but only '
+                          '${_balance['CL']?['usable']} can be taken'
+                        : null,
                     color: AppTheme.primaryBlue,
                   ),
                   const SizedBox(height: 10),
