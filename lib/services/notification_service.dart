@@ -251,6 +251,35 @@ class NotificationService {
     );
   }
 
+  /// An approver has handed a request to Management as a policy exception.
+  ///
+  /// Management is told because it is now theirs to decide. The original
+  /// approver is not re-notified — they just did this — but HR is, because a
+  /// request leaving the normal chain is exactly the kind of thing HR needs
+  /// to know about rather than discover later.
+  static Future<void> escalated({
+    required String process,
+    required String employeeName,
+    required String escalatedBy,
+    required String reason,
+  }) async {
+    await _create(
+      type: 'approval_escalated',
+      title: 'Escalated for your decision',
+      body: '$escalatedBy escalated $employeeName\u2019s $process'
+          '${reason.isEmpty ? '' : ' — $reason'}',
+      route: '/management/approvals',
+      targetRole: 'Management',
+    );
+    await _create(
+      type: 'approval_escalated',
+      title: 'Request escalated to Management',
+      body: '$escalatedBy escalated $employeeName\u2019s $process',
+      route: '/hr/approvals',
+      targetRole: 'HR',
+    );
+  }
+
   static Future<void> leaveDecided({
     required String employeeEmail,
     required String leaveType,

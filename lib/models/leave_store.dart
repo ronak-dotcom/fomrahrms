@@ -18,7 +18,12 @@ class LeaveApplication {
   LeaveApprovalStatus managerStatus = LeaveApprovalStatus.pending;
   String decidedBy        = '';
   String rejectionComment = '';
+
   bool   isHalfDay        = false;
+  /// Handed to Management as a policy exception. Leaves the manager/HR queue
+  /// so it cannot be decided at the wrong level.
+  bool   escalated        = false;
+  String escalationReason = '';
   // Sickness proof attachment (Medical / Sick Leave) — URL in Supabase storage, empty if none.
   String proofUrl         = '';
 
@@ -41,6 +46,8 @@ class LeaveApplication {
       leaveBucket.isNotEmpty ? leaveBucket : LeaveStore.effectiveBucket(leaveType);
 
   // Aliases used by employee view (same field, kept for clarity)
+  /// managerStatus already carries the management decision where one exists:
+  /// the load path folds management_status into it and sets managementDecided.
   LeaveApprovalStatus get effectiveStatus => managerStatus;
   String get effectiveComment => rejectionComment;
 

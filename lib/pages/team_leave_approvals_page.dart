@@ -114,6 +114,10 @@ class _TeamLeaveApprovalsPageState extends State<TeamLeaveApprovalsPage>
     var src = _filtered.where((a) => !_isPermCompOff(a));
     // Manager only handles ≤ 2-day regular leaves; holidays go to Management
     if (!_isMgmt && !_showAll) src = src.where((a) => a.effectiveDays <= 2);
+    // Escalated requests are Management's to decide. Leaving them visible to
+    // the manager who escalated them would let the exception be approved at
+    // exactly the level that judged it needed a higher one.
+    if (!_isMgmt) src = src.where((a) => !a.escalated);
     return _sorted(src.toList());
   }
 
@@ -1309,6 +1313,66 @@ class _RequestRowState extends State<_RequestRow> {
   // practice it was not asked at all, and clashes surfaced later.
   List<String>? _clash;
 
+  /// Hands this request to Management with a reason.
+  Future<void> _escalate() async {
+    final ctrl = TextEditingController();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Escalate to Management?'),
+        content: Column(mainAxisSize: MainAxisSize.min, children: [
+          Text('${widget.request.employeeName} — ${widget.request.leaveType}',
+              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+          const SizedBox(height: 6),
+          const Text(
+            'Use this where the request sits outside policy. It leaves your '
+            'queue and only Management can decide it.',
+            style: TextStyle(fontSize: 12),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: ctrl,
+            autofocus: true,
+            decoration: const InputDecoration(
+                labelText: 'Why does this need Management?',
+                border: OutlineInputBorder()),
+          ),
+        ]),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.indigo.shade600, foregroundColor: Colors.white),
+            child: const Text('Escalate'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+
+    final err = await SupabaseService.escalateToManagement(
+      table: 'leave_applications',
+      id: widget.request.id,
+      reason: ctrl.text.trim(),
+    );
+    if (!mounted) return;
+    if (err == null) {
+      NotificationService.escalated(
+        process: widget.request.leaveType,
+        employeeName: widget.request.employeeName,
+        escalatedBy: UserSession.name,
+        reason: ctrl.text.trim(),
+      );
+    }
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(err == null
+          ? 'Sent to Management.'
+          : 'Could not escalate: $err'),
+      backgroundColor: err == null ? Colors.indigo.shade600 : Colors.red.shade700,
+    ));
+  }
+
   Future<void> _loadClash() async {
     if (widget.request.managerStatus != LeaveApprovalStatus.pending) return;
     final dept = widget.user?.department ?? '';
@@ -1452,6 +1516,21 @@ class _RequestRowState extends State<_RequestRow> {
       if (locked)
         Icon(Icons.lock_rounded, size: 16, color: Colors.grey.shade400)
       else if (status == LeaveApprovalStatus.pending) ...[
+        // Anything outside policy is Management's call. Without this an
+        // approver facing an exception could only approve it — setting a
+        // precedent they have no authority to set — or reject it and send the
+        // employee to ask someone else outside the system.
+        if (!widget.isManagement)
+          SizedBox(
+            height: 32,
+            child: TextButton.icon(
+              onPressed: _escalate,
+              icon: const Icon(Icons.arrow_upward_rounded, size: 14),
+              label: const Text('Escalate', style: TextStyle(fontSize: 12)),
+              style: TextButton.styleFrom(foregroundColor: Colors.indigo.shade600),
+            ),
+          ),
+        if (!widget.isManagement) const SizedBox(width: 4),
         SizedBox(
           height: 32,
           child: ElevatedButton(

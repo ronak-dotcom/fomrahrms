@@ -794,6 +794,8 @@ class SupabaseService {
           app.rejectionComment = (row['rejection_comment'] as String?) ?? '';
         }
         app.isHalfDay   = (row['is_half_day'] as bool?) ?? false;
+        app.escalated        = (row['escalated'] as bool?) ?? false;
+        app.escalationReason = (row['escalation_reason'] as String?) ?? '';
         app.proofUrl    = (row['proof_url']  as String?) ?? '';
         app.leaveBucket = (row['leave_bucket'] as String?) ?? '';
         return app;
@@ -3739,6 +3741,37 @@ class SupabaseService {
     } catch (e) {
       _writeFailed('fetchAttendanceConfirmations', e);
       return [];
+    }
+  }
+
+  /// Hands a request to Management as a policy exception.
+  ///
+  /// Anything outside policy is Management's decision, but an approver facing
+  /// an exception previously had only two options: approve it — quietly
+  /// setting a precedent they had no authority to set — or reject it and tell
+  /// the employee to ask someone else outside the system. Escalating makes
+  /// that a recorded action with a reason.
+  ///
+  /// [table] is one of leave_applications, on_duty_requests,
+  /// attendance_confirmations.
+  static Future<String?> escalateToManagement({
+    required String table,
+    required String id,
+    required String reason,
+  }) async {
+    try {
+      await _db?.from(table).update({
+        'escalated': true,
+        'escalated_by': UserSession.name,
+        'escalation_reason': reason,
+        if (table == 'leave_applications')
+          'escalated_at': DateTime.now().toUtc().toIso8601String(),
+      }).eq('id', id);
+      logAuditEvent('escalated_to_management', targetType: table, targetId: id);
+      return null;
+    } catch (e) {
+      _writeFailed('escalateToManagement', e);
+      return e.toString();
     }
   }
 
