@@ -197,20 +197,43 @@ class NotificationService {
     required String leaveType,
     required String reportingManagerName,
   }) async {
-    if (reportingManagerName.isNotEmpty) {
+    // Where the reporting manager is an oversight-only account they do not
+    // open the system, and requests sat unactioned — one casual leave was
+    // pending for a month. Those go to HR instead, who approves after asking
+    // the manager. HR already has the rights (see app_manages); this makes
+    // the notification match, and point at the screen where they can act
+    // rather than the generic leave page.
+    final mgr = await SupabaseService.userByName(reportingManagerName);
+    final managerIsOversightOnly = (mgr?['oversight_only'] as bool?) ?? false;
+
+    if (reportingManagerName.isNotEmpty && !managerIsOversightOnly) {
+      final prefix = switch ((mgr?['role'] as String?)?.toLowerCase()) {
+        'management' => '/management',
+        'hr' => '/hr',
+        _ => '/manager',
+      };
       await _create(
         type: 'leave_submitted',
         title: 'New leave request',
         body: '$employeeName requested $leaveType',
-        route: '/manager/leave/team-approvals',
+        route: '$prefix/leave/team-approvals',
         targetReportingManager: reportingManagerName,
       );
     }
     await _create(
       type: 'leave_submitted',
-      title: 'New leave request',
-      body: '$employeeName requested $leaveType',
-      route: '/leave-management',
+      title: managerIsOversightOnly
+          ? 'Leave request to approve'
+          : 'New leave request',
+      body: managerIsOversightOnly
+          ? '$employeeName requested $leaveType — their manager does not use '
+            'the system, so this is yours to decide'
+          : '$employeeName requested $leaveType',
+      // Team approvals, not the generic leave page: HR has to be able to act
+      // on it, and a link to a page with no buttons is why these stalled.
+      route: managerIsOversightOnly
+          ? '/hr/leave/team-approvals'
+          : '/leave-management',
       targetRole: 'HR',
     );
     await _create(

@@ -2888,6 +2888,21 @@ class SupabaseService {
     }
   }
 
+  /// Normalises a name for duplicate detection.
+  ///
+  /// Birthdays come from two sources — derived from joining forms, and a
+  /// manually maintained table — and were deduplicated on the raw name. Any
+  /// difference showed the person twice: "Chandru" beside "R. Chandru", and
+  /// "Prarthana Princy" beside "P. Prarthana Princy", both with identical
+  /// dates. Dropping initials, punctuation and spacing matches them.
+  static String _nameKey(String name) => name
+      .toLowerCase()
+      .replaceAll(RegExp(r'[^a-z\s]'), ' ')   // punctuation out
+      .split(RegExp(r'\s+'))
+      .where((w) => w.length > 1)             // single-letter initials out
+      .join(' ')
+      .trim();
+
   static Future<List<Map<String, dynamic>>> fetchBirthdaysForMonth(
       int month) async {
     final auto = await fetchOnboardingBirthdaysForMonth(month);
@@ -2901,12 +2916,10 @@ class SupabaseService {
         final d = DateTime.tryParse(row['birthday_date'] as String? ?? '');
         return d != null && d.month == month;
       });
-      final autoNames =
-          auto.map((r) => (r['name'] as String).trim().toLowerCase()).toSet();
+      final autoNames = auto.map((r) => _nameKey(r['name'] as String)).toSet();
       final merged = [
         ...auto,
-        ...manual.where((r) =>
-            !autoNames.contains((r['name'] as String? ?? '').trim().toLowerCase())),
+        ...manual.where((r) => !autoNames.contains(_nameKey((r['name'] as String?) ?? ''))),
       ];
       merged.sort((a, b) =>
           (DateTime.tryParse(a['birthday_date'] as String? ?? '') ?? DateTime.now())
@@ -3729,6 +3742,46 @@ class SupabaseService {
     }
   }
 
+  /// HR raises the confirmation request for an employee who has not done it
+  /// themselves.
+  ///
+  /// Nobody has ever raised one: all 15 unconfirmed staff show a blank
+  /// request date, including people who joined in 2010 and 2023. The flow
+  /// existed but depended entirely on the employee initiating it, so in
+  /// practice everyone stayed on probation indefinitely — and probation staff
+  /// get one leave per cycle instead of the full CL/ML/EL entitlement.
+  ///
+  /// HR raising it also counts as HR's own acceptance: requiring HR to
+  /// approve a request HR just made is a signature with no meaning. It still
+  /// needs the reporting manager and Management.
+  static Future<String?> requestOnrollForEmployee(String employeeId,
+      {String comment = ''}) async {
+    try {
+      final now = DateTime.now().toIso8601String();
+      await _db?.from('app_users').update({
+        'onroll_requested_at': now,
+        'onroll_hr_status': 'accepted',
+        // Who raised it goes in the comment: there is no decided_by column on
+        // the HR stage, and inventing one here would need a migration for a
+        // field only this path writes.
+        'onroll_hr_comment': comment.isEmpty
+            ? 'Raised by ${UserSession.name} (HR) on the employee\u2019s behalf'
+            : comment,
+        'onroll_hr_decided_at': now,
+        // Cleared so a previously denied request can be re-raised rather than
+        // staying dead.
+        'onroll_manager_status': 'pending',
+        'onroll_management_status': 'pending',
+      }).eq('employee_id', employeeId);
+      logAuditEvent('onroll_requested_by_hr',
+          targetType: 'app_users', targetId: employeeId);
+      return null;
+    } catch (e) {
+      _writeFailed('requestOnrollForEmployee', e);
+      return e.toString();
+    }
+  }
+
   /// Minimal lookup used when a notification must be routed to someone
   /// else's shell. A reporting manager can hold any role, and each role is
   /// confined to its own route prefix, so the recipient's role decides the
@@ -3738,7 +3791,9 @@ class SupabaseService {
     try {
       final rows = await _db
           ?.from('app_users')
-          .select('name, email, role')
+          // oversight_only included: leaveSubmitted() reads it to decide
+          // whether the manager actually works the queue.
+          .select('name, email, role, oversight_only')
           .ilike('name', name.trim())
           .limit(1);
       if (rows == null || (rows as List).isEmpty) return null;
