@@ -71,6 +71,16 @@ class _ApprovalsPageState extends State<ApprovalsPage> with SingleTickerProvider
     await _load();
   }
 
+  /// Null for Management — there is nowhere further to send it.
+  VoidCallback? _escalateActionFor(
+      Map<String, dynamic> r, void Function() refresh) {
+    if (UserSession.role == UserRole.management) return null;
+    return () async {
+      await _escalateOnDuty(r);
+      refresh();
+    };
+  }
+
   /// Hands an On Duty request to Management as a policy exception.
   Future<void> _escalateOnDuty(Map<String, dynamic> r) async {
     final ctrl = TextEditingController();
@@ -154,9 +164,12 @@ class _ApprovalsPageState extends State<ApprovalsPage> with SingleTickerProvider
                     onDeny: () async { await _decideOnDuty(r, false); refresh(); },
                     // Escalation is for the stage below Management; once it is
                     // theirs there is nowhere further to send it.
-                    onEscalate: UserSession.role == UserRole.management
-                        ? null
-                        : () async { await _escalateOnDuty(r); refresh(); },
+                    //
+                    // Built as an explicitly typed local rather than a ternary
+                    // in the argument: the conditional infers
+                    // Future<void> Function()? from the async closure, which
+                    // does not line up with VoidCallback?.
+                    onEscalate: _escalateActionFor(r, refresh),
                   ))
               .toList(),
         ),
