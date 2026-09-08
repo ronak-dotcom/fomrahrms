@@ -222,15 +222,22 @@ class _MyLeaveBalanceBlockState extends State<MyLeaveBalanceBlock> {
                   ] else ...[
                     _StatusChip(label: me.leaveStatus, color: AppTheme.success),
                     const SizedBox(height: 10),
-                    _MetricRow(label: 'Casual Leave', value: _left(me.monthlyCl, _usedCl)),
+                    _MetricRow(
+                        label: 'Casual Leave',
+                        value: LeaveStore.availableFor('CL')?.toString() ??
+                            _left(me.monthlyCl, _usedCl)),
                     const SizedBox(height: 8),
-                    _MetricRow(label: 'Medical Leave', value: _left(me.monthlyMl, _usedMl)),
+                    _MetricRow(
+                        label: 'Medical Leave',
+                        value: LeaveStore.availableFor('ML')?.toString() ??
+                            _left(me.monthlyMl, _usedMl)),
                     const SizedBox(height: 8),
                     // EL only accrues once eligible, so a plain "0" would
                     // look like it was used up rather than not yet earned.
                     _MetricRow(
                       label: 'Earned Leave',
-                      value: me.isElEligible ? _left(me.monthlyEl, _usedEl) : 'Not yet eligible',
+                      value: LeaveStore.availableFor('EL')?.toString() ??
+                          (me.isElEligible ? _left(me.monthlyEl, _usedEl) : 'Not yet eligible'),
                     ),
                   ],
                   const SizedBox(height: 12),

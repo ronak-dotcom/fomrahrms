@@ -99,7 +99,8 @@ class _MyLeaveBlockState extends State<MyLeaveBlock> {
       final pending = mine.where((a) => a.effectiveStatus == LeaveApprovalStatus.pending).length;
 
       if (mounted) setState(() {
-        _clAvail = user != null ? (user.monthlyCl - usedCl).clamp(0, 99).toInt() : null;
+        _clAvail = LeaveStore.availableFor('CL') ??
+            (user != null ? (user.monthlyCl - usedCl).clamp(0, 99).toInt() : null);
         _pending = pending;
         _loading = false;
       });

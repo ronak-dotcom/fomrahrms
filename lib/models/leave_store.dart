@@ -65,6 +65,29 @@ class LeaveApplication {
 }
 
 class LeaveStore {
+  /// Balances from leave_balance(), cached for the session.
+  ///
+  /// Five separate screens each worked theirs out from AppUser.monthlyCl —
+  /// the entitlement for ONE cycle — so a probation employee with 2 CL
+  /// accrued and carried forward was shown 0, and everyone else was
+  /// understated. They now read the same figures the balance page and the
+  /// apply screen use, so the number cannot differ depending on where you
+  /// look at it.
+  ///
+  /// Keyed by bucket: {'CL': {'available': 4, 'usable': 2}, ...}
+  static Map<String, Map<String, num>> balance = {};
+
+  /// Available for a bucket, or null when balances have not loaded yet —
+  /// callers show their existing fallback rather than a confident zero.
+  static int? availableFor(String bucket) {
+    final b = balance[bucket];
+    if (b == null) return null;
+    // usable, not available: CL carries forward but caps at 2 that may
+    // actually be taken, and showing the uncapped figure invites someone to
+    // apply for days the form will refuse.
+    return (b['usable'] ?? b['available'] ?? 0).round();
+  }
+
   static final List<LeaveApplication> applications = [];
   static int _counter = 0;
 

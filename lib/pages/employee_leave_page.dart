@@ -246,7 +246,10 @@ class _EmployeeLeavePageState extends State<EmployeeLeavePage> {
     final balanceAndActions = Row(mainAxisSize: MainAxisSize.min, children: [
       // ── Compact leave balance ─────────────────────────────────────
       if (user != null) _CompactBalance(
-        clAvail: (user.monthlyCl - _usedBucket('CL')).clamp(0, 99).toInt(),
+        // Shared figure first; the per-cycle subtraction is only a fallback
+        // for before balances have loaded.
+        clAvail: LeaveStore.availableFor('CL') ??
+            (user.monthlyCl - _usedBucket('CL')).clamp(0, 99).toInt(),
         mlAvail: user.isOnroll || user.isElEligible
             ? (user.monthlyMl - _usedBucket('ML')).clamp(0, 99).toInt()
             : -1,

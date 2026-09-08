@@ -4596,6 +4596,23 @@ class SupabaseService {
       UserSession.oversightOnly        = me.oversightOnly;
       UserSession.permissionMinutesQuota = me.permissionMinutesQuota;
       UserSession.department           = me.department;
+
+      // Loaded here so every screen shares one set of figures. Five screens
+      // previously each derived their own from monthlyCl — the entitlement
+      // for a single cycle — which showed 0 for probation staff who had days
+      // accrued and carried forward.
+      final rows = await fetchLeaveBalance(me.employeeId);
+      if (rows.isNotEmpty) {
+        LeaveStore.balance = {
+          for (final r in rows)
+            (r['bucket'] as String): {
+              'accrued': (r['accrued'] as num?) ?? 0,
+              'used': (r['used'] as num?) ?? 0,
+              'available': (r['available'] as num?) ?? 0,
+              'usable': (r['usable'] as num?) ?? 0,
+            },
+        };
+      }
       await SessionStorage.save();
     } catch (_) {
       // Never block startup on this — the cached values still work, they may
