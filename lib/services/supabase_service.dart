@@ -696,6 +696,10 @@ class SupabaseService {
         'reason':         app.reason,
         'applied_on':     app.appliedOn.toIso8601String(),
         'manager_status': app.managerStatus.name,
+        'permission_start_time': app.permissionStartTime,
+        'permission_end_time':   app.permissionEndTime,
+        'permission_minutes':    app.permissionMinutes,
+        'permission_lop_half_day': app.permissionLopHalfDay,
       });
     } catch (e) {
       // NEVER swallow this again. A rejected write here means the employee's
@@ -795,6 +799,10 @@ class SupabaseService {
         }
         app.isHalfDay   = (row['is_half_day'] as bool?) ?? false;
         app.escalated        = (row['escalated'] as bool?) ?? false;
+        app.permissionStartTime  = (row['permission_start_time'] as String?) ?? '';
+        app.permissionEndTime    = (row['permission_end_time']   as String?) ?? '';
+        app.permissionMinutes    = (row['permission_minutes'] as num?)?.toInt() ?? 0;
+        app.permissionLopHalfDay = (row['permission_lop_half_day'] as bool?) ?? false;
         app.escalationReason = (row['escalation_reason'] as String?) ?? '';
         app.proofUrl    = (row['proof_url']  as String?) ?? '';
         app.leaveBucket = (row['leave_bucket'] as String?) ?? '';
@@ -3742,6 +3750,37 @@ class SupabaseService {
       _writeFailed('fetchAttendanceConfirmations', e);
       return [];
     }
+  }
+
+  /// Permission allowance for the current cycle, and what a request of
+  /// [minutes] would do to it.
+  ///
+  /// The allowance is spent in minutes, not in number of requests — the old
+  /// form offered "30 Minutes / 1 Hour / 2 Hours" as a label and stored no
+  /// times, so three short permissions and three long ones counted the same.
+  static Future<({int quota, int used, int remaining, bool wouldExceed})>
+      permissionBalance(String employeeId, {int minutes = 0}) async {
+    try {
+      final rows = await _db?.rpc('permission_balance', params: {
+        'p_employee_id': employeeId,
+        'p_date': DateTime.now().toIso8601String().substring(0, 10),
+        'p_minutes': minutes,
+      });
+      if (rows is List && rows.isNotEmpty) {
+        final r = Map<String, dynamic>.from(rows.first as Map);
+        return (
+          quota: (r['quota'] as num?)?.toInt() ?? 120,
+          used: (r['used'] as num?)?.toInt() ?? 0,
+          remaining: (r['remaining'] as num?)?.toInt() ?? 0,
+          wouldExceed: r['would_exceed'] == true,
+        );
+      }
+    } catch (e) {
+      _writeFailed('permissionBalance', e);
+    }
+    // Fails open on the quota so a lookup problem cannot silently block a
+    // legitimate request; the database still records the real minutes.
+    return (quota: 120, used: 0, remaining: 120, wouldExceed: false);
   }
 
   /// Hands a request to Management as a policy exception.

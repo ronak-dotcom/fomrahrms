@@ -20,6 +20,14 @@ class LeaveApplication {
   String rejectionComment = '';
 
   bool   isHalfDay        = false;
+  /// Actual window the employee was away, and the minutes it consumed from
+  /// the monthly allowance. The old form stored only a label like "1 Hour".
+  String permissionStartTime = '';
+  String permissionEndTime   = '';
+  int    permissionMinutes   = 0;
+  /// Set when the request pushed them past the allowance: half a day of the
+  /// permission date is unpaid.
+  bool   permissionLopHalfDay = false;
   /// Handed to Management as a policy exception. Leaves the manager/HR queue
   /// so it cannot be decided at the wrong level.
   bool   escalated        = false;

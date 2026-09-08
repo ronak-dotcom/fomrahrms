@@ -23,6 +23,50 @@ class _ApplyPermissionPageState extends State<ApplyPermissionPage> {
 
   DateTime? _date;
   String _duration = '1 Hour';
+  // Actual times rather than a duration label. "1 Hour" recorded nothing
+  // about WHEN someone was away, and the monthly allowance was tracked by
+  // counting requests, so three short permissions cost the same as three
+  // long ones.
+  TimeOfDay? _startTime;
+  TimeOfDay? _endTime;
+  ({int quota, int used, int remaining, bool wouldExceed})? _permBalance;
+
+  int get _minutes {
+    final s = _startTime, e = _endTime;
+    if (s == null || e == null) return 0;
+    final mins = (e.hour * 60 + e.minute) - (s.hour * 60 + s.minute);
+    return mins > 0 ? mins : 0;
+  }
+
+  Future<void> _loadPermBalance() async {
+    final b = await SupabaseService.permissionBalance(
+        UserSession.employeeId, minutes: _minutes);
+    if (mounted) setState(() => _permBalance = b);
+  }
+
+  Future<void> _pickTime({required bool isStart}) async {
+    final picked = await showTimePicker(
+      context: context,
+      initialTime: (isStart ? _startTime : _endTime) ??
+          TimeOfDay.fromDateTime(DateTime.now()),
+    );
+    if (picked == null) return;
+    setState(() {
+      if (isStart) {
+        _startTime = picked;
+        // Keeps the pair sensible: an end before the start would compute
+        // negative minutes and silently read as zero.
+        if (_endTime != null && _minutes == 0) _endTime = null;
+      } else {
+        _endTime = picked;
+      }
+    });
+    _loadPermBalance();
+  }
+
+  static String _fmtTime(TimeOfDay? t) => t == null
+      ? '--:--'
+      : '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
   String _reason   = 'Doctor / Medical';
   final _otherController = TextEditingController();
   final _descController  = TextEditingController();
@@ -33,6 +77,9 @@ class _ApplyPermissionPageState extends State<ApplyPermissionPage> {
   void initState() {
     super.initState();
     _loadFormConfig();
+    // Loaded up front so the remaining allowance is visible before any time
+    // is chosen, not only after.
+    _loadPermBalance();
   }
 
   Future<void> _loadFormConfig() async {
@@ -91,36 +138,55 @@ class _ApplyPermissionPageState extends State<ApplyPermissionPage> {
       _snack('Please specify the reason.'); return;
     }
 
-    // Permission is a confirmed-employee benefit. The database refuses these
-    // outright (enforce_probation_leave_rules), so catch it here to give a
-    // clear reason rather than a rejected request.
-    if (!UserSession.hasFullLeaveEntitlement) {
-      _snack('Permission is not available during probation. '
-             'It becomes available once your employment is confirmed.');
-      return;
+    if (_startTime == null || _endTime == null) {
+      _snack('Please choose the start and end time.'); return;
+    }
+    final want = _minutes;
+    if (want <= 0) {
+      _snack('End time must be after the start time.'); return;
     }
 
-    // Permission limit per ATTENDANCE CYCLE (26th -> 25th), not calendar month
-    final name  = UserSession.name.isEmpty ? 'Employee' : UserSession.name;
-    final quota = UserSession.permissionMinutesQuota;
-    final used  = LeaveStore.permUsedThisCycle(name);
-    final want  = LeaveStore.permMinutesFromReason(_duration);
-    if (want == 0) {
-      _snack('Permission must be 30 minutes, 1 hour or 2 hours.');
-      return;
-    }
-    if (used + want > quota) {
-      final left = (quota - used).clamp(0, quota);
-      _snack(left == 0
-          ? 'Monthly permission limit (${quota ~/ 60}h ${quota % 60}m) reached.'
-          : 'Only ${left} min remaining this month. Cannot apply $_duration.');
-      return;
+    // Exceeding no longer blocks the request. Blocking meant an employee who
+    // genuinely needed the time simply took it without recording anything,
+    // which is worse than recording it and applying the deduction. Half a
+    // day's LOP lands on this date, and the cycle report flags it.
+    final bal = await SupabaseService.permissionBalance(
+        UserSession.employeeId, minutes: want);
+    if (!mounted) return;
+    final willLop = bal.wouldExceed;
+    if (willLop) {
+      final ok = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('This exceeds your permission time'),
+          content: Text(
+            'You have used ${bal.used} of ${bal.quota} minutes this cycle, and '
+            'this request is $want more.\n\n'
+            'It can still be submitted, but half a day will be marked as loss '
+            'of pay for ${_fmtDate(_date!)}.',
+            style: const TextStyle(fontSize: 13),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('Cancel')),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.orange.shade800,
+                  foregroundColor: Colors.white),
+              child: const Text('Submit with LOP')),
+          ],
+        ),
+      );
+      if (ok != true || !mounted) return;
     }
 
     final reasonText = _isOther ? _otherController.text.trim() : _reason;
     final desc       = _descController.text.trim();
-    final note = 'Permission: $_duration | $reasonText'
-        '${desc.isNotEmpty ? ' | $desc' : ''}';
+    final note = 'Permission: ${_fmtTime(_startTime)}–${_fmtTime(_endTime)} '
+        '($want min) | $reasonText'
+        '${desc.isNotEmpty ? ' | $desc' : ''}'
+        '${willLop ? ' | EXCEEDS ALLOWANCE — half-day LOP' : ''}';
 
     final app = LeaveApplication(
       id:           LeaveStore.generateId(),
@@ -132,7 +198,11 @@ class _ApplyPermissionPageState extends State<ApplyPermissionPage> {
       days:         1,
       reason:       note,
       appliedOn:    DateTime.now(),
-    )..isHalfDay = true;
+    )..isHalfDay = true
+     ..permissionStartTime = _fmtTime(_startTime)
+     ..permissionEndTime   = _fmtTime(_endTime)
+     ..permissionMinutes   = want
+     ..permissionLopHalfDay = willLop;
 
     // Awaited: the same fire-and-forget pattern lost a leave request today
     // while the employee was told it succeeded.
@@ -213,19 +283,66 @@ class _ApplyPermissionPageState extends State<ApplyPermissionPage> {
                   ),
                   const SizedBox(height: 16),
 
-                  // ── Off for (duration) ────────────────────────────────
-                  DropdownButtonFormField<String>(
-                    value: _duration,
-                    isExpanded: true,
-                    decoration: _deco('Off For', Icons.hourglass_bottom_rounded),
-                    items: _durations
-                        .map((d) => DropdownMenuItem(
-                              value: d,
-                              child: Text(d, style: const TextStyle(fontSize: 13)),
-                            ))
-                        .toList(),
-                    onChanged: (v) { if (v != null) setState(() => _duration = v); },
-                  ),
+                  // ── Start and end time ────────────────────────────────
+                  // Replaces a fixed 30min/1h/2h dropdown, which recorded
+                  // nothing about WHEN someone was away and made every
+                  // request cost the same against the allowance.
+                  Row(children: [
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: () => _pickTime(isStart: true),
+                        icon: const Icon(Icons.schedule_rounded, size: 16),
+                        label: Text('From ${_fmtTime(_startTime)}'),
+                        style: OutlinedButton.styleFrom(
+                          minimumSize: const Size(0, 48),
+                          alignment: Alignment.centerLeft,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: () => _pickTime(isStart: false),
+                        icon: const Icon(Icons.schedule_rounded, size: 16),
+                        label: Text('To ${_fmtTime(_endTime)}'),
+                        style: OutlinedButton.styleFrom(
+                          minimumSize: const Size(0, 48),
+                          alignment: Alignment.centerLeft,
+                        ),
+                      ),
+                    ),
+                  ]),
+                  const SizedBox(height: 8),
+                  // Shown before submitting, so the LOP warning is never the
+                  // first time someone hears they are over the allowance.
+                  Builder(builder: (_) {
+                    final b = _permBalance;
+                    if (b == null) return const SizedBox.shrink();
+                    final over = _minutes > 0 && (b.used + _minutes) > b.quota;
+                    return Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: over ? Colors.orange.shade50 : Colors.blue.shade50,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: over
+                            ? Colors.orange.shade200 : Colors.blue.shade200),
+                      ),
+                      child: Text(
+                        _minutes == 0
+                            ? '${b.remaining} of ${b.quota} minutes left this cycle.'
+                            : over
+                                ? 'This is $_minutes min. You have ${b.remaining} '
+                                  'left — submitting will mark half a day as loss of pay.'
+                                : 'This is $_minutes min. '
+                                  '${b.remaining - _minutes} min would remain.',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: over ? Colors.orange.shade900 : Colors.blue.shade900,
+                        ),
+                      ),
+                    );
+                  }),
                   const SizedBox(height: 16),
 
                   // ── Reason dropdown ───────────────────────────────────
