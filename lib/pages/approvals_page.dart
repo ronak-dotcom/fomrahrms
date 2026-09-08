@@ -452,6 +452,31 @@ class _ApprovalsPageState extends State<ApprovalsPage> with SingleTickerProvider
     );
   }
 
+  /// The screen this role can actually open.
+  ///
+  /// "View all" was hardcoded to /management/... on six cards. Each role is
+  /// confined to its own prefix, so pressing it as HR or a manager bounced
+  /// to the dashboard with no explanation — reported as the approvals page
+  /// going home.
+  String _viewAllRoute(String managementRoute) {
+    switch (UserSession.role) {
+      case UserRole.management:
+        return managementRoute;
+      case UserRole.hr:
+        // HR's equivalents live at these paths; the /management ones are not
+        // open to them.
+        if (managementRoute.contains('leave/overview')) return '/hr/leave/team-approvals';
+        if (managementRoute.contains('onroll')) return '/employee-management';
+        return '/hr/approvals';
+      case UserRole.reportingManager:
+        if (managementRoute.contains('leave/overview')) return '/manager/leave/team-approvals';
+        if (managementRoute.contains('onroll')) return '/manager/employee-management';
+        return '/manager/approvals';
+      case UserRole.employee:
+        return '/employee/attendance-leaves';
+    }
+  }
+
   Future<void> _load() async {
     if (mounted) setState(() => _loading = true);
     try {
@@ -662,7 +687,7 @@ class _ApprovalsPageState extends State<ApprovalsPage> with SingleTickerProvider
         approved: _historyLeave.where((a) => a.managerStatus == LeaveApprovalStatus.approved).length,
         rejected: _historyLeave.where((a) => a.managerStatus == LeaveApprovalStatus.denied).length,
         total: LeaveStore.applications.where((a) => !_isPermCompOff(a)).length,
-        onViewAll: () => context.push('/management/leave/overview'),
+        onViewAll: () => context.push(_viewAllRoute('/management/leave/overview')),
       );
 
   _CategoryInfo get _permissionCategory => _CategoryInfo(
@@ -673,7 +698,7 @@ class _ApprovalsPageState extends State<ApprovalsPage> with SingleTickerProvider
         approved: _historyPermission.where((a) => a.managerStatus == LeaveApprovalStatus.approved).length,
         rejected: _historyPermission.where((a) => a.managerStatus == LeaveApprovalStatus.denied).length,
         total: LeaveStore.applications.where((a) => a.leaveType == 'Permission').length,
-        onViewAll: () => context.push('/management/leave/overview'),
+        onViewAll: () => context.push(_viewAllRoute('/management/leave/overview')),
       );
 
   _CategoryInfo get _compOffCategory => _CategoryInfo(
@@ -684,7 +709,7 @@ class _ApprovalsPageState extends State<ApprovalsPage> with SingleTickerProvider
         approved: _historyCompOff.where((a) => a.managerStatus == LeaveApprovalStatus.approved).length,
         rejected: _historyCompOff.where((a) => a.managerStatus == LeaveApprovalStatus.denied).length,
         total: LeaveStore.applications.where((a) => a.leaveType == 'Comp Off').length,
-        onViewAll: () => context.push('/management/leave/overview'),
+        onViewAll: () => context.push(_viewAllRoute('/management/leave/overview')),
       );
 
   _CategoryInfo get _onrollCategory {
@@ -698,7 +723,7 @@ class _ApprovalsPageState extends State<ApprovalsPage> with SingleTickerProvider
       approved: approved,
       rejected: rejected,
       total: approved + rejected + _pendingOnroll.length,
-      onViewAll: () => context.push('/management/onroll-approvals'),
+      onViewAll: () => context.push(_viewAllRoute('/management/onroll-approvals')),
     );
   }
 
@@ -824,7 +849,7 @@ class _ApprovalsPageState extends State<ApprovalsPage> with SingleTickerProvider
         approved: _kraDocs.where((d) => d.isApproved).length,
         rejected: _kraDocs.where((d) => d.isRejected).length,
         total: _kraDocs.length,
-        onViewAll: () => context.push('/management/kra-approvals'),
+        onViewAll: () => context.push(_viewAllRoute('/management/kra-approvals')),
       );
 
   _CategoryInfo _formCategory(String label, List<Map<String, dynamic>> versions) => _CategoryInfo(
@@ -835,7 +860,7 @@ class _ApprovalsPageState extends State<ApprovalsPage> with SingleTickerProvider
         approved: versions.where((v) => (v['status'] as String?) == 'approved').length,
         rejected: versions.where((v) => (v['status'] as String?) == 'rejected').length,
         total: versions.length,
-        onViewAll: () => context.push('/management/form-approvals'),
+        onViewAll: () => context.push(_viewAllRoute('/management/form-approvals')),
       );
 
   _CategoryInfo get _leaveFormCategory =>

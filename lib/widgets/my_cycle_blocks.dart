@@ -70,7 +70,6 @@ class _MyCycleSummaryBlockState extends State<MyCycleSummaryBlock> {
   Widget build(BuildContext context) {
     final lop = _int('lop_days');
     final lates = _int('late_count');
-    final graceLates = _int('grace_late_count');
     final permissions = _int('permission_count');
 
     return InfoCard(
@@ -100,11 +99,14 @@ class _MyCycleSummaryBlockState extends State<MyCycleSummaryBlock> {
                   const SizedBox(height: 8),
                   _MetricRow(
                     label: 'Late Arrivals',
-                    // Grace-window lates are shown separately rather than
-                    // hidden: they don't cost anything, but someone
-                    // repeatedly at the edge of the window benefits from
-                    // knowing before it becomes a deduction.
-                    value: graceLates > 0 ? '$lates (+$graceLates in grace)' : '$lates',
+                    // Only the lates that count. The grace figure was shown
+                    // alongside as "(+5 in grace)", which reads as five more
+                    // lates and caused exactly that confusion — arriving
+                    // within the grace window is on time, so presenting it as
+                    // a form of lateness is misleading. HR still sees the
+                    // grace column in the cycle report, where it is useful for
+                    // spotting someone repeatedly at the edge of the window.
+                    value: '$lates',
                     highlight: lates > 0,
                   ),
                   const SizedBox(height: 8),
