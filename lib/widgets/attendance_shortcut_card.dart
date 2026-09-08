@@ -1,6 +1,5 @@
 import 'dart:async';
 import '../utils/checkin_location.dart';
-import '../models/attendance_policy_store.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../models/attendance_store.dart';

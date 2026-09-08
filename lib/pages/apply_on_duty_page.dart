@@ -77,6 +77,11 @@ class _ApplyOnDutyPageState extends State<ApplyOnDutyPage> {
 
   Future<void> _submit() async {
     if (_date == null) { _snack('Please select the date.'); return; }
+    // Captured once. _date is a mutable field so Dart cannot promote it past
+    // the null check, and it is set back to null further down this same
+    // method — reading it again after the await would be reading a value that
+    // is about to change.
+    final date = _date!;
     if (_isOthers && _detailController.text.trim().isEmpty) {
       _snack('Please describe the work.'); return;
     }
@@ -87,7 +92,7 @@ class _ApplyOnDutyPageState extends State<ApplyOnDutyPage> {
     final err = await SupabaseService.requestOnDuty(
       employeeId: UserSession.employeeId,
       employeeName: UserSession.name,
-      date: _date!,
+      date: date,
       reason: reason,
     );
     if (!mounted) return;
@@ -102,7 +107,7 @@ class _ApplyOnDutyPageState extends State<ApplyOnDutyPage> {
     // and the day still read as a late arrival.
     NotificationService.onDutyRequested(
       employeeName: UserSession.name,
-      dateLabel: _fmt(_date),
+      dateLabel: _fmt(date),
       reason: reason,
       reportingManagerName: UserSession.reportingManager,
     );
