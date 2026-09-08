@@ -55,8 +55,78 @@ class _ApprovalsPageState extends State<ApprovalsPage> with SingleTickerProvider
   Future<void> _decideOnDuty(Map<String, dynamic> r, bool approve) async {
     await SupabaseService.decideOnDutyRequest(
         r['id'].toString(), approve, decidedBy: UserSession.email);
+    // The employee was never told the outcome, so they had no way to know
+    // whether the night they worked would count.
+    final email = _users
+        .where((u) => u.name == (r['employee_name'] ?? '').toString())
+        .map((u) => u.email)
+        .firstOrNull ?? '';
+    NotificationService.onDutyDecided(
+      employeeEmail: email,
+      employeeName: (r['employee_name'] ?? '').toString(),
+      dateLabel: (r['date_iso'] ?? '').toString(),
+      approved: approve,
+      employeeRoutePrefix: '/employee',
+    );
     await _load();
   }
+
+  /// Hands an On Duty request to Management as a policy exception.
+  Future<void> _escalateOnDuty(Map<String, dynamic> r) async {
+    final ctrl = TextEditingController();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Escalate to Management?'),
+        content: Column(mainAxisSize: MainAxisSize.min, children: [
+          Text('${r['employee_name']} — ${r['date_iso']}',
+              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+          const SizedBox(height: 6),
+          const Text(
+            'Use this where the request sits outside policy. It leaves your '
+            'queue and only Management can decide it.',
+            style: TextStyle(fontSize: 12)),
+          const SizedBox(height: 12),
+          TextField(
+            controller: ctrl,
+            autofocus: true,
+            decoration: const InputDecoration(
+                labelText: 'Why does this need Management?',
+                border: OutlineInputBorder()),
+          ),
+        ]),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.indigo.shade600, foregroundColor: Colors.white),
+            child: const Text('Escalate')),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    final err = await SupabaseService.escalateToManagement(
+      table: 'on_duty_requests', id: r['id'].toString(), reason: ctrl.text.trim());
+    if (err == null) {
+      NotificationService.escalated(
+        process: 'On Duty request',
+        employeeName: (r['employee_name'] ?? '').toString(),
+        escalatedBy: UserSession.name,
+        reason: ctrl.text.trim(),
+      );
+    }
+    await _load();
+  }
+
+  List<Map<String, dynamic>> get _visibleOnDuty =>
+      UserSession.role == UserRole.management
+          ? _onDutyRequests
+          // Leaving an escalated request visible would let the exception be
+          // approved at exactly the level that judged it needed a higher one.
+          : _onDutyRequests
+              .where((r) => !((r['escalated'] as bool?) ?? false))
+              .toList();
 
   _CategoryInfo get _onDutyCategory => _CategoryInfo(
         icon: Icons.work_history_rounded,
@@ -65,18 +135,28 @@ class _ApprovalsPageState extends State<ApprovalsPage> with SingleTickerProvider
         pending: _onDutyRequests.length,
         approved: 0,
         rejected: 0,
-        total: _onDutyRequests.length,
+        total: _visibleOnDuty.length,
         onViewAll: () => _showPendingSheet(
           label: 'On Duty Requests',
           color: Colors.orange.shade700,
-          buildCards: (refresh) => _onDutyRequests
+          buildCards: (refresh) => _visibleOnDuty
               .map((r) => _ApprovalCard(
                     title: (r['employee_name'] ?? '').toString(),
                     subtitle: (r['date_iso'] ?? '').toString(),
-                    details: [(r['reason'] ?? '').toString()],
+                    details: [
+                      (r['reason'] ?? '').toString(),
+                      if ((r['escalated'] as bool?) ?? false)
+                        'Escalated by ${r['escalated_by']} — '
+                            '${r['escalation_reason']}',
+                    ],
                     meta: _fmtIso((r['requested_at'] ?? '').toString()),
                     onApprove: () async { await _decideOnDuty(r, true); refresh(); },
                     onDeny: () async { await _decideOnDuty(r, false); refresh(); },
+                    // Escalation is for the stage below Management; once it is
+                    // theirs there is nowhere further to send it.
+                    onEscalate: UserSession.role == UserRole.management
+                        ? null
+                        : () async { await _escalateOnDuty(r); refresh(); },
                   ))
               .toList(),
         ),
@@ -1267,6 +1347,9 @@ class _ApprovalCard extends StatelessWidget {
   final String meta;
   final VoidCallback? onApprove;
   final VoidCallback? onDeny;
+  /// Hands the request to Management. Absent on Management's own cards —
+  /// there is nowhere further to send it.
+  final VoidCallback? onEscalate;
   /// 'Deny' for a pending request; 'Overturn' where the decision is already
   /// made and Management is reversing it.
   final String denyLabel;
@@ -1277,6 +1360,7 @@ class _ApprovalCard extends StatelessWidget {
     required this.meta,
     this.onApprove,
     this.onDeny,
+    this.onEscalate,
     this.denyLabel = 'Deny',
   });
 
@@ -1316,6 +1400,23 @@ class _ApprovalCard extends StatelessWidget {
                 // action showed the other greyed out and looking broken. The
                 // Management oversight card has no Approve: the request is
                 // already approved, it can only be overturned.
+                // Escalate first: it is the option someone reaches for when
+                // neither Approve nor Deny is theirs to choose, and burying it
+                // behind them invites the wrong decision.
+                if (onEscalate != null) ...[
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: onEscalate,
+                      icon: const Icon(Icons.arrow_upward_rounded, size: 14),
+                      label: const Text('Escalate'),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.indigo.shade600,
+                        side: BorderSide(color: Colors.indigo.shade200),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                ],
                 if (onDeny != null)
                 Expanded(
                   child: OutlinedButton.icon(

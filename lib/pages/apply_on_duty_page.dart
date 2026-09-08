@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../models/user_session.dart';
+import '../services/notification_service.dart';
 import '../services/supabase_service.dart';
 import '../widgets/back_button.dart';
 
@@ -96,7 +97,16 @@ class _ApplyOnDutyPageState extends State<ApplyOnDutyPage> {
       _snack('Could not submit: $err');
       return;
     }
-    _snack('On Duty request submitted for approval.');
+    // Without this the request sat in the database and the manager only found
+    // it if they happened to open Approvals — so night work went unapproved
+    // and the day still read as a late arrival.
+    NotificationService.onDutyRequested(
+      employeeName: UserSession.name,
+      dateLabel: _fmt(_date),
+      reason: reason,
+      reportingManagerName: UserSession.reportingManager,
+    );
+    _snack('Sent to your reporting manager for approval.');
     setState(() { _date = null; _reason = _reasons.first; });
     _detailController.clear();
     _loadMine();

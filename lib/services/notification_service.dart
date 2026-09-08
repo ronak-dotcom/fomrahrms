@@ -251,6 +251,71 @@ class NotificationService {
     );
   }
 
+  /// Raised when an employee asks for a day to be recorded as On Duty —
+  /// night work, BTL activity, a client site.
+  ///
+  /// The request previously notified nobody: it saved to the database and the
+  /// manager only found it if they happened to open Approvals, so in practice
+  /// night work went unapproved and the day was reported as a late arrival.
+  static Future<void> onDutyRequested({
+    required String employeeName,
+    required String dateLabel,
+    required String reason,
+    required String reportingManagerName,
+  }) async {
+    final mgr = await SupabaseService.userByName(reportingManagerName);
+    final managerIsOversightOnly = (mgr?['oversight_only'] as bool?) ?? false;
+
+    if (reportingManagerName.isNotEmpty && !managerIsOversightOnly) {
+      final prefix = switch ((mgr?['role'] as String?)?.toLowerCase()) {
+        'management' => '/management',
+        'hr' => '/hr',
+        _ => '/manager',
+      };
+      await _create(
+        type: 'on_duty_requested',
+        title: 'On Duty request',
+        body: '$employeeName — $reason on $dateLabel',
+        route: '$prefix/approvals',
+        targetReportingManager: reportingManagerName,
+      );
+    }
+    // HR either way: as the approver when the manager does not work the
+    // queue, and for visibility otherwise.
+    await _create(
+      type: 'on_duty_requested',
+      title: managerIsOversightOnly ? 'On Duty request to approve' : 'On Duty request',
+      body: '$employeeName — $reason on $dateLabel',
+      route: '/hr/approvals',
+      targetRole: 'HR',
+    );
+  }
+
+  static Future<void> onDutyDecided({
+    required String employeeEmail,
+    required String employeeName,
+    required String dateLabel,
+    required bool approved,
+    required String employeeRoutePrefix,
+  }) async {
+    await _create(
+      type: 'on_duty_decided',
+      title: approved ? 'On Duty approved' : 'On Duty declined',
+      body: dateLabel,
+      route: '$employeeRoutePrefix/on-duty',
+      targetEmail: employeeEmail,
+    );
+    // HR is told because an approved On Duty day changes how attendance and
+    // punctuality read for that date.
+    await _create(
+      type: 'on_duty_decided',
+      title: approved ? 'On Duty approved' : 'On Duty declined',
+      body: '$employeeName — $dateLabel',
+      route: '/hr/approvals',
+      targetRole: 'HR',
+    );
+  }
+
   /// An approver has handed a request to Management as a policy exception.
   ///
   /// Management is told because it is now theirs to decide. The original
