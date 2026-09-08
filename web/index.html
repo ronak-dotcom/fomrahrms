@@ -50,6 +50,75 @@
       document.getElementById('loading').remove();
     });
   </script>
+  <!-- Install prompt.
+       Installing matters here for a practical reason, not polish: an installed
+       PWA keeps its camera and location permissions instead of re-asking, and
+       on Android it runs outside the browser tab where the camera has been
+       failing. Chrome only offers installation through a buried menu item, so
+       almost nobody finds it — this surfaces it once, when it is available. -->
+  <style>
+    #installBar{position:fixed;left:12px;right:12px;bottom:12px;z-index:9999;
+      display:none;align-items:center;gap:10px;padding:12px 14px;border-radius:12px;
+      background:#0D47A1;color:#fff;font:14px/1.35 system-ui,-apple-system,sans-serif;
+      box-shadow:0 6px 20px rgba(0,0,0,.25)}
+    #installBar b{display:block;font-size:14px}
+    #installBar span{display:block;font-size:12px;opacity:.85}
+    #installBar button{border:0;border-radius:8px;padding:9px 14px;font-weight:600;
+      font-size:13px;cursor:pointer}
+    #installYes{background:#fff;color:#0D47A1}
+    #installNo{background:transparent;color:#fff;opacity:.8}
+  </style>
+  <div id="installBar">
+    <div style="flex:1">
+      <b>Install FOMRA HRMS</b>
+      <span>Fewer camera and location problems when checking in</span>
+    </div>
+    <button id="installNo">Later</button>
+    <button id="installYes">Install</button>
+  </div>
+  <script>
+    (function () {
+      var deferred = null;
+      var bar = document.getElementById('installBar');
+      // Dismissal is remembered so the bar does not nag on every visit.
+      if (localStorage.getItem('installDismissed') === '1') return;
+      window.addEventListener('beforeinstallprompt', function (e) {
+        e.preventDefault();
+        deferred = e;
+        bar.style.display = 'flex';
+      });
+      document.getElementById('installYes').addEventListener('click', function () {
+        bar.style.display = 'none';
+        if (deferred) { deferred.prompt(); deferred = null; }
+      });
+      document.getElementById('installNo').addEventListener('click', function () {
+        bar.style.display = 'none';
+        localStorage.setItem('installDismissed', '1');
+      });
+      // Already installed: nothing to offer.
+      window.addEventListener('appinstalled', function () {
+        bar.style.display = 'none';
+        localStorage.setItem('installDismissed', '1');
+      });
+
+      // iOS Safari never fires beforeinstallprompt and has no programmatic
+      // install, so the banner above would never appear there — on the exact
+      // devices where the camera has been failing worst. Shown with
+      // instructions instead, and only when not already running installed.
+      var isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+      var standalone = window.navigator.standalone === true ||
+        window.matchMedia('(display-mode: standalone)').matches;
+      if (isIOS && !standalone) {
+        bar.querySelector('b').textContent = 'Add FOMRA HRMS to your Home Screen';
+        bar.querySelector('span').textContent =
+          'Tap Share, then "Add to Home Screen" — fewer camera problems';
+        document.getElementById('installYes').style.display = 'none';
+        document.getElementById('installNo').textContent = 'Got it';
+        bar.style.display = 'flex';
+      }
+    })();
+  </script>
+
   <!-- Used to shrink PDF resumes/documents before upload (see _compressPdf in
        candidate_application_form_page.dart / onboarding_form_page.dart). -->
   <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
