@@ -29,34 +29,13 @@ class SessionStorage {
   /// clears it immediately.
   static const _duration = Duration(days: 30);
 
-  /// Daily re-authentication point, chosen deliberately at 15:00.
-  ///
-  /// A session that simply never expires would let anyone holding the phone
-  /// check in or out as that person indefinitely. But putting the login at a
-  /// fixed clock time beats an elapsed-time expiry, which lands wherever the
-  /// previous login happened to fall — often 09:00, exactly when people are
-  /// rushing to check in, which is what was making them late.
-  ///
-  /// 15:00 sits between the two moments that matter: after everyone has
-  /// checked in, and well before check-out at 18:30. The one login of the day
-  /// therefore happens when nobody is against the clock.
-  static const _dailyResetHour = 15;
-
-  /// The next 15:00 after [from]. Sessions never outlive this.
-  static DateTime _nextDailyReset(DateTime from) {
-    final todayReset =
-        DateTime(from.year, from.month, from.day, _dailyResetHour);
-    return from.isBefore(todayReset)
-        ? todayReset
-        : todayReset.add(const Duration(days: 1));
-  }
-
-  /// Whichever comes first: the rolling window, or the next 15:00.
-  static DateTime _expiryFrom(DateTime now, Duration window) {
-    final rolling = now.add(window);
-    final reset = _nextDailyReset(now);
-    return rolling.isBefore(reset) ? rolling : reset;
-  }
+  // A 15:00 daily sign-out was tried so re-authentication landed when nobody
+  // was rushing. It only works if logging back in is easy, and it is not:
+  // Flutter web draws text fields on a canvas, so password managers often
+  // cannot see them and staff had to type credentials in full — every day.
+  // That is worse than the problem it solved, so the session is back to a
+  // rolling 30-day window renewed on every open. In practice a regular user
+  // signs in about once a month.
   // Housekeeping/Support Staff stay logged in far longer — they share
   // devices and re-entering credentials each shift is impractical.
   static const _staffPortalDuration = Duration(days: 180);
@@ -78,12 +57,8 @@ class SessionStorage {
     await kvSetString(_kExemptTiming, UserSession.exemptFromTiming ? '1' : '0');
     final duration =
         UserSession.isStaffPortal ? _staffPortalDuration : _duration;
-    // Staff portal keeps its long window untouched: it is a shared device
-    // that nobody would be present to sign back in at 15:00.
-    final expiry = UserSession.isStaffPortal
-        ? DateTime.now().add(duration)
-        : _expiryFrom(DateTime.now(), duration);
-    await kvSetString(_kExpiry, expiry.millisecondsSinceEpoch.toString());
+    await kvSetString(_kExpiry,
+        DateTime.now().add(duration).millisecondsSinceEpoch.toString());
   }
 
   static Future<bool> restore() async {
@@ -123,12 +98,12 @@ class SessionStorage {
       // would otherwise read stale. Without renewal a 30-day window still
       // evicts a daily user, just less often — the same interruption, harder
       // to predict.
+      // Renewed on every open, so someone using the app regularly should not
+      // meet the login screen at all.
       final renewal =
           UserSession.isStaffPortal ? _staffPortalDuration : _duration;
-      final renewed = UserSession.isStaffPortal
-          ? DateTime.now().add(renewal)
-          : _expiryFrom(DateTime.now(), renewal);
-      await kvSetString(_kExpiry, renewed.millisecondsSinceEpoch.toString());
+      await kvSetString(_kExpiry,
+          DateTime.now().add(renewal).millisecondsSinceEpoch.toString());
 
       // Photo URL is fetched from main() once Supabase has finished
       // initializing (fetching it here would race Supabase.initialize()
