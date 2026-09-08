@@ -385,7 +385,14 @@ class _MgmtStatStrip extends StatelessWidget {
       for (final r in records)
         if (r.checkInTime.isNotEmpty) r.employeeName: r,
     };
-    final sortedUsers = [...users]..sort((a, b) => a.name.compareTo(b.name));
+    // Same filter as the absent COUNT above. Without it the count excluded
+    // oversight-only and attendance-exempt accounts but the list behind the
+    // card did not, so a super-admin who has no attendance appeared under
+    // Absent Today every day while the number beside it said otherwise.
+    final sortedUsers = users
+        .where((u) => u.active && u.countsInHeadcount && !u.exemptFromAttendance)
+        .toList()
+      ..sort((a, b) => a.name.compareTo(b.name));
     final presentList = presentByName.values.toList()
       ..sort((a, b) => a.employeeName.compareTo(b.employeeName));
     final absentUsers = sortedUsers.where((u) => !presentByName.containsKey(u.name)).toList();
