@@ -1,6 +1,6 @@
 import 'dart:async';
 import 'dart:html' as html;
-import 'dart:js_util' as js_util;
+import 'dart:convert';
 import 'dart:typed_data';
 import 'dart:ui_web' as ui_web;
 
@@ -108,13 +108,14 @@ class WebCamera {
       ..scale(-1, 1);
     ctx.drawImage(video, 0, 0);
 
-    final blob = await canvas.toBlob('image/png');
-    final reader = html.FileReader()..readAsArrayBuffer(blob);
-    await reader.onLoadEnd.first;
-    final result = reader.result;
-    if (result is Uint8List) return result;
-    if (result is ByteBuffer) return result.asUint8List();
-    return null;
+    // toDataUrl rather than toBlob: dart:html's toBlob signature has varied
+    // between SDK versions and the callback form needs a FileReader round
+    // trip, which is two more things to get wrong on the path that has to be
+    // reliable. A data URL is synchronous and the base64 decode is exact.
+    final dataUrl = canvas.toDataUrl('image/png');
+    final comma = dataUrl.indexOf(',');
+    if (comma < 0) return null;
+    return base64Decode(dataUrl.substring(comma + 1));
   }
 
   /// Whether this browser can do in-page capture at all. Checked before
@@ -122,8 +123,10 @@ class WebCamera {
   /// rather than showing a preview that never starts.
   static bool get isSupported {
     try {
-      final md = html.window.navigator.mediaDevices;
-      return md != null && js_util.hasProperty(md, 'getUserMedia');
+      // mediaDevices is only exposed in a secure context, so its presence is
+      // the check that matters. Avoids a js_util probe, which is another
+      // thing that can throw on the path that must not.
+      return html.window.navigator.mediaDevices != null;
     } catch (_) {
       return false;
     }

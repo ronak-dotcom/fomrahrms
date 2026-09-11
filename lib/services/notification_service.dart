@@ -198,6 +198,25 @@ class NotificationService {
     }
   }
 
+  /// What to call this request in a notification title.
+  ///
+  /// Every title said "leave" regardless, so a permission arrived as "New
+  /// leave request" — wrong, and it makes an inbox impossible to triage when
+  /// permission, comp off and leave all have different rules and approvers.
+  static String _processName(String leaveType) {
+    final t = leaveType.toLowerCase();
+    if (t.contains('permission')) return 'permission';
+    if (t.contains('comp')) return 'comp off';
+    if (t.contains('duty')) return 'on duty';
+    return 'leave';
+  }
+
+  /// Same word, capitalised for the start of a title.
+  static String _processTitle(String leaveType) {
+    final n = _processName(leaveType);
+    return n[0].toUpperCase() + n.substring(1);
+  }
+
   static Future<void> leaveSubmitted({
     required String employeeName,
     required String leaveType,
@@ -220,7 +239,7 @@ class NotificationService {
       };
       await _create(
         type: 'leave_submitted',
-        title: 'New leave request',
+        title: 'New ${_processName(leaveType)} request',
         body: '$employeeName requested $leaveType',
         route: '$prefix/leave/team-approvals',
         targetReportingManager: reportingManagerName,
@@ -229,8 +248,8 @@ class NotificationService {
     await _create(
       type: 'leave_submitted',
       title: managerIsOversightOnly
-          ? 'Leave request to approve'
-          : 'New leave request',
+          ? '${_processTitle(leaveType)} request to approve'
+          : 'New ${_processName(leaveType)} request',
       body: managerIsOversightOnly
           ? '$employeeName requested $leaveType — their manager does not use '
             'the system, so this is yours to decide'
@@ -354,7 +373,9 @@ class NotificationService {
   }) async {
     await _create(
       type: 'leave_decided',
-      title: approved ? 'Leave approved' : 'Leave rejected',
+      title: approved
+          ? '${_processTitle(leaveType)} approved'
+          : '${_processTitle(leaveType)} rejected',
       body: leaveType,
       route: '$employeeRoutePrefix/attendance-leaves',
       targetEmail: employeeEmail,
