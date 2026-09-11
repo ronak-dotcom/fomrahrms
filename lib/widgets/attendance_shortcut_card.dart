@@ -909,6 +909,11 @@ class _AttendanceSheetState extends State<_AttendanceSheet> {
   /// nothing about which step was slow, and the steps are genuinely slow:
   /// a location fix takes up to 14s and the camera up to 60s.
   String _busyLabel = '';
+  /// Selfie failures this session. The offer of manager confirmation appears
+  /// from the second, not the first — one failure is often just a slow
+  /// camera, and offering a workaround immediately would train people to
+  /// skip the selfie.
+  int _selfieFailures = 0;
   // Minutes granted by a same-day approved Permission; 0 if none. See
   // checkin_status.dart's approvedPermissionMinutesFor.
   int _permissionMinutes = 0;
@@ -943,6 +948,79 @@ class _AttendanceSheetState extends State<_AttendanceSheet> {
 
   static String _fmtDate(DateTime d) =>
       '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}';
+
+  /// Offered after repeated selfie failures: raises the manager-confirmation
+  /// request directly, rather than sending the employee to a form they must
+  /// fill in themselves at the moment they are already stuck and late.
+  ///
+  /// The time is taken from now, and the reason from the actual capture
+  /// failure, so the approver sees what went wrong rather than a blank claim.
+  Future<void> _offerManagerConfirmation(CheckInLocation loc) async {
+    final now = DateTime.now();
+    final timeStr = '${now.hour.toString().padLeft(2, '0')}:'
+        '${now.minute.toString().padLeft(2, '0')}';
+
+    final ok = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Camera not working?'),
+        content: Column(mainAxisSize: MainAxisSize.min, children: [
+          Text(
+            'The selfie has failed twice. You can ask your reporting manager '
+            'to confirm you were here at $timeStr instead.',
+            style: const TextStyle(fontSize: 13),
+          ),
+          const SizedBox(height: 10),
+          const Text(
+            'Your attendance is not recorded until they approve it, so do '
+            'this rather than leaving it — an unrecorded day counts as absent.',
+            style: TextStyle(fontSize: 12, color: Color(0xFF6B7280)),
+          ),
+        ]),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Try again'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.orange.shade800,
+                foregroundColor: Colors.white),
+            child: const Text('Ask my manager'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+
+    final err = await SupabaseService.requestAttendanceConfirmation(
+      date: now,
+      claimedTime: timeStr,
+      employeeNote: 'Selfie could not be captured after repeated attempts.',
+      failureReason: SelfieCaptureService.lastFailure ?? 'camera unavailable',
+      lat: loc.lat,
+      lng: loc.lng,
+      accuracy: loc.accuracy,
+    );
+    if (!mounted) return;
+
+    if (err == null) {
+      NotificationService.attendanceConfirmationRequested(
+        employeeName: UserSession.name,
+        dateLabel: _fmtDate(now),
+        reportingManagerName: UserSession.reportingManager,
+      );
+    }
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(err == null
+          ? 'Sent. Your manager will confirm your attendance for $timeStr.'
+          : 'Could not send: $err'),
+      backgroundColor: err == null ? Colors.teal.shade700 : Colors.red.shade700,
+      duration: const Duration(seconds: 6),
+    ));
+  }
 
   Future<void> _checkIn() async {
     setState(() { _submitting = true; _busyLabel = 'Getting your location…'; });
@@ -1008,7 +1086,18 @@ class _AttendanceSheetState extends State<_AttendanceSheet> {
     );
     if (!mounted) return;
     if (selfiePath == null && selfieRequiredForCurrentUser) {
-      setState(() { _submitting = false; _busyLabel = ''; });
+      setState(() { _submitting = false; _busyLabel = ''; _selfieFailures++; });
+
+      // A 10-second snackbar was the only route out, and it led to a form the
+      // employee still had to fill in. One person failed twice this morning,
+      // stopped trying, and was still unrecorded five hours later because
+      // nobody was told. From the second failure the offer is a dialog that
+      // does not disappear, and raising it takes one tap.
+      if (_selfieFailures >= 2) {
+        await _offerManagerConfirmation(loc);
+        return;
+      }
+
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         content: Text('Selfie required to check in. ${SelfieCaptureService.lastFailure ?? "Please try again."}'),
         duration: const Duration(seconds: 10),
