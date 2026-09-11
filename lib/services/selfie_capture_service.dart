@@ -5,7 +5,9 @@ import '../models/user_session.dart';
 
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:flutter/widgets.dart';
 import 'package:image_picker/image_picker.dart';
+import 'web_camera.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../utils/image_compress.dart';
@@ -88,9 +90,40 @@ class SelfieCaptureService {
   /// even though both are watermarked identically.
   static bool lastUsedFallback = false;
 
-  static Future<Uint8List?> capture({required String label}) async {
+  /// [context] enables the in-page camera. Optional so existing callers keep
+  /// working, but without it capture falls straight through to image_picker
+  /// and the backgrounding problem it causes.
+  static Future<Uint8List?> capture({
+    required String label,
+    BuildContext? context,
+  }) async {
     lastFailure = null;
     lastUsedFallback = false;
+
+    // Tried FIRST, because it is the mechanism that does not break: the
+    // preview runs inside the page, so the browser is never backgrounded and
+    // there is no OS callback to lose. image_picker remains below for
+    // browsers without getUserMedia, and for when permission is refused.
+    if (context != null && context.mounted && WebCamera.isSupported) {
+      String? camErr;
+      final bytes = await WebCamera.capture(
+        context: context,
+        label: label,
+        onUnavailable: (r) => camErr = r,
+      );
+      if (bytes != null) {
+        await _clearPickerUnavailable();
+        return _finish(bytes, label);
+      }
+      // A refusal is the employee's choice and must not silently fall through
+      // to a second camera prompt — that reads as the app ignoring them.
+      if (camErr == null) {
+        lastFailure = 'Photo cancelled.';
+        return null;
+      }
+      // Otherwise the camera could not start at all; image_picker may still
+      // work, so carry on rather than stopping here.
+    }
 
     // A device that failed before is retried, just faster.
     //
@@ -149,7 +182,6 @@ class SelfieCaptureService {
       if (shot == null) return null;
     }
 
-    final pos = await GpsTrackingService.getCurrentLocation();
     final Uint8List rawBytes;
     try {
       rawBytes = await shot.readAsBytes();
@@ -157,7 +189,14 @@ class SelfieCaptureService {
       lastFailure = 'Could not read the photo: $e';
       return null;
     }
+    return _finish(rawBytes, label);
+  }
 
+  /// Watermark, stamp and compress. Shared so a photo from the in-page camera
+  /// and one from the picker are processed identically — otherwise the two
+  /// routes could produce differently marked evidence.
+  static Future<Uint8List?> _finish(Uint8List rawBytes, String label) async {
+    final pos = await GpsTrackingService.getCurrentLocation();
     Uint8List watermarked;
     try {
       watermarked = await _drawWatermark(rawBytes, _lines(label, DateTime.now(), pos));
@@ -185,8 +224,9 @@ class SelfieCaptureService {
     required String date, // 'dd/MM/yyyy'
     required String kind, // 'checkin' | 'checkout'
     required String label, // 'Check-In' | 'Check-Out'
+    BuildContext? context,
   }) async {
-    final bytes = await capture(label: label);
+    final bytes = await capture(label: label, context: context);
     if (bytes == null) {
       // capture() has already set lastFailure with the specific step.
       unawaited(SupabaseService.logCheckInAttempt(

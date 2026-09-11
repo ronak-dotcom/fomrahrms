@@ -176,6 +176,7 @@ class _CheckOutPageState extends State<CheckOutPage> {
     final selfiePath = !selfieRequiredForCurrentUser
         ? ''   // Management: no selfie required
         : await SelfieCaptureService.captureAndUpload(
+      context: context,
       employeeId: UserSession.employeeId,
       date: date,
       kind: 'checkout',

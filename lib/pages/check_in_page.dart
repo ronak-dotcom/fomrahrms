@@ -229,6 +229,7 @@ class _CheckInPageState extends State<CheckInPage> {
     final selfiePath = !selfieRequiredForCurrentUser
         ? ''   // Management: no selfie required
         : await SelfieCaptureService.captureAndUpload(
+      context: context,
       employeeId: UserSession.employeeId,
       date: date,
       kind: 'checkin',

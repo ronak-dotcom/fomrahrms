@@ -140,6 +140,7 @@ class _EmployeeAttendancePageState extends State<EmployeeAttendancePage> {
     final selfiePath = !selfieRequiredForCurrentUser
         ? ''   // Management: no selfie required
         : await SelfieCaptureService.captureAndUpload(
+      context: context,
       employeeId: UserSession.employeeId,
       date: date,
       kind: 'checkin',
@@ -238,6 +239,7 @@ class _EmployeeAttendancePageState extends State<EmployeeAttendancePage> {
     final selfiePath = !selfieRequiredForCurrentUser
         ? ''   // Management: no selfie required
         : await SelfieCaptureService.captureAndUpload(
+      context: context,
       employeeId: UserSession.employeeId,
       date: date,
       kind: 'checkout',
