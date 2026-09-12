@@ -3593,6 +3593,57 @@ class SupabaseService {
   /// Computed in the database rather than the client so the export cannot
   /// disagree with what the screens show — the same rules for lateness,
   /// exemptions and non-working days apply in one place.
+  /// What a cycle's unabsorbed lates cost each employee, after HR's decision.
+  ///
+  /// Half a day's pay is a blunt outcome for someone late once after their
+  /// permission ran out, and HR usually knows something the system does not.
+  /// This reports the raw figure alongside what it was converted to, so a
+  /// concession is visible rather than an unexplained gap in the pay run.
+  static Future<Map<String, Map<String, dynamic>>> fetchLateCosts(
+      List<String> employeeIds, DateTime cycleEnd) async {
+    final out = <String, Map<String, dynamic>>{};
+    try {
+      for (final id in employeeIds) {
+        final rows = await _db?.rpc('late_cost_for_cycle', params: {
+          'p_employee_id': id,
+          'p_date': cycleEnd.toIso8601String().substring(0, 10),
+        });
+        if (rows is List && rows.isNotEmpty) {
+          out[id] = Map<String, dynamic>.from(rows.first as Map);
+        }
+      }
+    } catch (e) {
+      _writeFailed('fetchLateCosts', e);
+    }
+    return out;
+  }
+
+  /// Records how a cycle's lates should be treated: 'lop', a leave bucket
+  /// ('CL'/'ML'/'EL'), or 'waive'.
+  static Future<String?> setLateDecision({
+    required String employeeId,
+    required String cycleLabel,
+    required String action,
+    String note = '',
+  }) async {
+    try {
+      await _db?.from('late_lop_decisions').upsert({
+        'employee_id': employeeId,
+        'cycle_label': cycleLabel,
+        'action': action,
+        'note': note,
+        'decided_by': UserSession.name,
+        'decided_at': DateTime.now().toUtc().toIso8601String(),
+      }, onConflict: 'employee_id,cycle_label');
+      logAuditEvent('late_decision_set',
+          targetType: 'late_lop_decisions', targetId: '$employeeId/$cycleLabel');
+      return null;
+    } catch (e) {
+      _writeFailed('setLateDecision', e);
+      return e.toString();
+    }
+  }
+
   static Future<List<Map<String, dynamic>>> fetchCycleReport(
       DateTime cycleEnd, {List<String>? employeeIds}) async {
     try {

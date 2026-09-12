@@ -47,6 +47,7 @@ const _navGroups = <_NavGroup>[
     // list, and Form Approvals was hidden inside the Edit Forms submenu —
     // so "what needs my decision?" meant checking four unrelated spots.
     (label: 'All Approvals',       icon: Icons.inbox_rounded,         route: '/management/approvals'),
+    (label: 'Late Review',         icon: Icons.running_with_errors_rounded, route: '/management/late-review'),
     (label: 'Leave Approvals',     icon: Icons.event_available_rounded, route: '/management/leave/team-approvals'),
     (label: 'On-Roll Approvals',   icon: Icons.verified_user_rounded, route: '/management/onroll-approvals'),
     (label: 'KRA Approvals',       icon: Icons.flag_rounded,          route: '/management/kra-approvals'),

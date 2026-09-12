@@ -17,6 +17,7 @@ import 'pages/check_in_page.dart';
 import 'pages/check_out_page.dart';
 import 'pages/gps_tracking_page.dart';
 import 'pages/late_coming_page.dart';
+import 'pages/late_review_page.dart';
 import 'pages/leave_management_page.dart';
 import 'pages/management_leave_page.dart';
 import 'pages/apply_leave_page.dart';
@@ -365,6 +366,7 @@ final _router = GoRouter(
         // "My Team" — only shown/relevant when UserSession.isReportingManager (see app_shell.dart).
         GoRoute(path: '/hr/leave/team-approvals',   builder: (_, __) => const TeamLeaveApprovalsPage()),
         GoRoute(path: '/hr/approvals',              builder: (_, __) => const ApprovalsPage()),
+        GoRoute(path: '/late-review',               builder: (_, __) => const LateReviewPage()),
         GoRoute(path: '/hr/interview-review',       builder: (_, __) => const ManagerInterviewReviewPage()),
         GoRoute(path: '/hr/appraisal',               builder: (_, __) =>
             const EmployeeAppraisalRequestPage(formRoute: '/hr/appraisal/form')),
@@ -600,6 +602,7 @@ final _router = GoRouter(
         }),
         GoRoute(path: '/management/maintenance-management', builder: (_, __) => const MaintenanceManagementPage()),
         GoRoute(path: '/management/approvals',              builder: (_, __) => const ApprovalsPage()),
+        GoRoute(path: '/management/late-review',            builder: (_, __) => const LateReviewPage()),
         GoRoute(path: '/management/notifications',          builder: (_, __) => const NotificationsPage()),
         GoRoute(path: '/management/reports-analytics',      builder: (_, __) => const ReportsAnalyticsPage()),
         GoRoute(path: '/management/administration',         builder: (_, __) => const AdministrationPage()),

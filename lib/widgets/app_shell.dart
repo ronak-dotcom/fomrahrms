@@ -37,6 +37,7 @@ const _navItems = [
   _NavItem('Attendance Management', Icons.access_time_rounded, '/attendance-management'),
   _NavItem('Leave Management', Icons.event_available_rounded, '/leave-management'),
   _NavItem('Approvals',        Icons.approval_rounded,        '/hr/approvals'),
+  _NavItem('Late Review',      Icons.running_with_errors_rounded, '/late-review'),
   _NavItem('Staff Portal Approvals', Icons.cleaning_services_rounded, '/leave/staff-portal-approvals'),
   _NavItem('Task Management', Icons.task_alt_rounded, '/task-management'),
   _NavItem('Appraisals', Icons.fact_check_rounded, '/appraisals'),
