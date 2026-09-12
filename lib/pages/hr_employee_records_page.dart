@@ -767,6 +767,148 @@ class EmployeeProfileDialogState extends State<EmployeeProfileDialog> {
   late AppUser _user;
   bool _raisingOnroll = false;
   List<Map<String, dynamic>> _balanceRows = const [];
+  Map<String, dynamic>? _salary;
+
+  Future<void> _loadSalary() async {
+    final row = await SupabaseService.fetchSalaryStructure(_user.employeeId);
+    if (mounted) setState(() => _salary = row);
+  }
+
+  /// Edits the salary components.
+  ///
+  /// Each is entered rather than derived from gross. The existing sheet does
+  /// not follow one formula — basic and HRA do, DA is a slab, and whichever
+  /// component is left over absorbs the rounding — so deriving them would
+  /// produce figures that differ from what people have actually been paid.
+  /// A live total against gross catches mistakes without imposing a rule that
+  /// does not hold.
+  Future<void> _editSalary() async {
+    final fields = <String, TextEditingController>{
+      'actual_gross':    TextEditingController(text: _sal('actual_gross')),
+      'basic':           TextEditingController(text: _sal('basic')),
+      'da':              TextEditingController(text: _sal('da')),
+      'hra':             TextEditingController(text: _sal('hra')),
+      'conveyance':      TextEditingController(text: _sal('conveyance')),
+      'other_allowance': TextEditingController(text: _sal('other_allowance')),
+      'educational':     TextEditingController(text: _sal('educational')),
+      'lta':             TextEditingController(text: _sal('lta')),
+      'professional_tax':TextEditingController(text: _sal('professional_tax', fallback: '208')),
+    };
+    const labels = {
+      'actual_gross': 'Gross (monthly)', 'basic': 'Basic', 'da': 'DA',
+      'hra': 'HRA', 'conveyance': 'Conveyance', 'other_allowance': 'Other Allowance',
+      'educational': 'Educational', 'lta': 'LTA', 'professional_tax': 'Professional Tax',
+    };
+
+    double num_(String k) => double.tryParse(fields[k]!.text.trim()) ?? 0;
+    double componentsTotal() =>
+        num_('basic') + num_('da') + num_('hra') + num_('conveyance') +
+        num_('other_allowance') + num_('educational') + num_('lta');
+
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setS) {
+          final diff = num_('actual_gross') - componentsTotal();
+          return AlertDialog(
+            title: Text('Salary — ${_user.name}'),
+            content: SizedBox(
+              width: 380,
+              child: SingleChildScrollView(
+                child: Column(mainAxisSize: MainAxisSize.min, children: [
+                  for (final e in fields.entries)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: TextField(
+                        controller: e.value,
+                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        onChanged: (_) => setS(() {}),
+                        decoration: InputDecoration(
+                          labelText: labels[e.key],
+                          isDense: true,
+                          border: const OutlineInputBorder(),
+                        ),
+                      ),
+                    ),
+                  // Shown while typing, not on save: a structure that does not
+                  // add up produces a wrong payslip every month afterwards,
+                  // and it would surface as a pay query rather than an error.
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(9),
+                    decoration: BoxDecoration(
+                      color: diff.abs() < 1 ? Colors.green.shade50 : Colors.orange.shade50,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      diff.abs() < 1
+                          ? 'Components add up to gross.'
+                          : 'Components total ${componentsTotal().toStringAsFixed(2)} '
+                            'against gross ${num_('actual_gross').toStringAsFixed(2)} '
+                            '— out by ${diff.toStringAsFixed(2)}.',
+                      style: TextStyle(
+                        fontSize: 11.5,
+                        color: diff.abs() < 1 ? Colors.green.shade900 : Colors.orange.shade900,
+                      ),
+                    ),
+                  ),
+                ]),
+              ),
+            ),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx, false),
+                  child: const Text('Cancel')),
+              ElevatedButton(onPressed: () => Navigator.pop(ctx, true),
+                  child: const Text('Save')),
+            ],
+          );
+        },
+      ),
+    );
+    if (ok != true || !mounted) return;
+
+    final diff = num_('actual_gross') - componentsTotal();
+    // A gap under a rupee is the rounding the existing sheet already carries,
+    // so it is allowed; anything larger is a typo worth stopping.
+    if (diff.abs() >= 1) {
+      final proceed = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Components do not match gross'),
+          content: Text('Out by ${diff.toStringAsFixed(2)}. Saving this will '
+              'make every payslip from it wrong. Save anyway?'),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('Go back')),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.orange.shade800,
+                  foregroundColor: Colors.white),
+              child: const Text('Save anyway')),
+          ],
+        ),
+      );
+      if (proceed != true || !mounted) return;
+    }
+
+    final err = await SupabaseService.saveSalaryStructure(
+      employeeId: _user.employeeId,
+      components: {for (final k in fields.keys) k: num_(k)},
+    );
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(err == null ? 'Salary saved.' : 'Could not save: $err'),
+      backgroundColor: err == null ? Colors.teal.shade700 : Colors.red.shade700));
+    if (err == null) _loadSalary();
+  }
+
+  String _sal(String key, {String fallback = ''}) {
+    final v = _salary?[key];
+    if (v == null) return fallback;
+    final d = (v as num).toDouble();
+    return d == d.roundToDouble() ? d.toInt().toString() : d.toString();
+  }
 
   Future<void> _loadBalance() async {
     final rows = await SupabaseService.fetchLeaveBalance(_user.employeeId);
@@ -914,6 +1056,7 @@ class EmployeeProfileDialogState extends State<EmployeeProfileDialog> {
     if (UserSession.role == UserRole.hr ||
         UserSession.role == UserRole.management) {
       _loadBalance();
+      _loadSalary();
     }
   }
 
@@ -2961,6 +3104,47 @@ class EmployeeProfileDialogState extends State<EmployeeProfileDialog> {
             ],
 
             // ── Employment status management ──────────────────────────────
+            // Salary, for HR/Management only. Sits with leave balance because
+            // that is where HR already comes to adjust someone's entitlements;
+            // a separate screen would be one more place to remember.
+            if (canEdit) ...[
+              const SizedBox(height: 14),
+              const Divider(),
+              const SizedBox(height: 10),
+              Row(children: [
+                const Icon(Icons.payments_rounded, size: 14, color: Color(0xFF6B7280)),
+                const SizedBox(width: 6),
+                const Text('Salary',
+                    style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700)),
+                const Spacer(),
+                TextButton.icon(
+                  onPressed: _editSalary,
+                  icon: Icon(_salary == null ? Icons.add_rounded : Icons.edit_rounded, size: 15),
+                  label: Text(_salary == null ? 'Set' : 'Edit',
+                      style: const TextStyle(fontSize: 12)),
+                ),
+              ]),
+              if (_salary == null)
+                const Text(
+                  'No salary structure set — payroll will skip this employee.',
+                  style: TextStyle(fontSize: 11.5, color: Color(0xFFB45309)),
+                )
+              else
+                Wrap(spacing: 14, runSpacing: 4, children: [
+                  Text('Gross: ${_sal('actual_gross')}',
+                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                  Text('Basic: ${_sal('basic')}', style: const TextStyle(fontSize: 12)),
+                  Text('DA: ${_sal('da')}', style: const TextStyle(fontSize: 12)),
+                  Text('HRA: ${_sal('hra')}', style: const TextStyle(fontSize: 12)),
+                  if (_sal('conveyance') != '0' && _sal('conveyance').isNotEmpty)
+                    Text('Conv: ${_sal('conveyance')}', style: const TextStyle(fontSize: 12)),
+                  if (_sal('other_allowance') != '0' && _sal('other_allowance').isNotEmpty)
+                    Text('Other: ${_sal('other_allowance')}', style: const TextStyle(fontSize: 12)),
+                  if (_sal('lta') != '0' && _sal('lta').isNotEmpty)
+                    Text('LTA: ${_sal('lta')}', style: const TextStyle(fontSize: 12)),
+                ]),
+            ],
+
             // Leave balance, for HR/Management only. Balances are derived
             // from accrual minus usage, so there is no stored total to type
             // over — corrections are posted as ledger entries instead, each

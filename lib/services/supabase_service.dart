@@ -3605,6 +3605,47 @@ class SupabaseService {
   /// Computed in the database rather than the client so the export cannot
   /// disagree with what the screens show — the same rules for lateness,
   /// exemptions and non-working days apply in one place.
+  /// The employee's salary components. Null when none has been set — payroll
+  /// skips those employees rather than guessing, so an empty result is the
+  /// signal to enter one.
+  static Future<Map<String, dynamic>?> fetchSalaryStructure(
+      String employeeId) async {
+    try {
+      final rows = await _db
+          ?.from('salary_structures')
+          .select()
+          .eq('employee_id', employeeId)
+          .limit(1);
+      if (rows == null || (rows as List).isEmpty) return null;
+      return Map<String, dynamic>.from(rows.first as Map);
+    } catch (e) {
+      _writeFailed('fetchSalaryStructure', e);
+      return null;
+    }
+  }
+
+  /// Saves a structure. Every change is kept in salary_structure_history by a
+  /// database trigger, so a revision can always be traced to who made it.
+  static Future<String?> saveSalaryStructure({
+    required String employeeId,
+    required Map<String, double> components,
+  }) async {
+    try {
+      await _db?.from('salary_structures').upsert({
+        'employee_id': employeeId,
+        ...components,
+        'updated_by': UserSession.name,
+        'updated_at': DateTime.now().toUtc().toIso8601String(),
+      }, onConflict: 'employee_id');
+      logAuditEvent('salary_structure_saved',
+          targetType: 'salary_structures', targetId: employeeId);
+      return null;
+    } catch (e) {
+      _writeFailed('saveSalaryStructure', e);
+      return e.toString();
+    }
+  }
+
   /// What a cycle's unabsorbed lates cost each employee, after HR's decision.
   ///
   /// Half a day's pay is a blunt outcome for someone late once after their
