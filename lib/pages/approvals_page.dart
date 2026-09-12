@@ -71,25 +71,21 @@ class _ApprovalsPageState extends State<ApprovalsPage> with SingleTickerProvider
     await _load();
   }
 
-  /// Null for Management — there is nowhere further to send it.
-  VoidCallback? _escalateActionFor(
-      Map<String, dynamic> r, void Function() refresh) {
-    if (UserSession.role == UserRole.management) return null;
-    return () async {
-      await _escalateOnDuty(r);
-      refresh();
-    };
-  }
-
-  /// Hands an On Duty request to Management as a policy exception.
-  Future<void> _escalateOnDuty(Map<String, dynamic> r) async {
+  /// Hands any request to Management with a reason. Shared across processes:
+  /// three near-identical dialogs would drift apart, and an approver should
+  /// not meet a different form depending on what they are looking at.
+  Future<void> _escalateRow({
+    required String table,
+    required Map<String, dynamic> r,
+    required String process,
+  }) async {
     final ctrl = TextEditingController();
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Escalate to Management?'),
         content: Column(mainAxisSize: MainAxisSize.min, children: [
-          Text('${r['employee_name']} — ${r['date_iso']}',
+          Text('${r['employee_name']} — ${r['date_iso'] ?? ''}',
               style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
           const SizedBox(height: 6),
           const Text(
@@ -102,31 +98,46 @@ class _ApprovalsPageState extends State<ApprovalsPage> with SingleTickerProvider
             autofocus: true,
             decoration: const InputDecoration(
                 labelText: 'Why does this need Management?',
-                border: OutlineInputBorder()),
-          ),
+                border: OutlineInputBorder())),
         ]),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          TextButton(onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel')),
           ElevatedButton(
             onPressed: () => Navigator.pop(ctx, true),
             style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.indigo.shade600, foregroundColor: Colors.white),
+                backgroundColor: Colors.indigo.shade600,
+                foregroundColor: Colors.white),
             child: const Text('Escalate')),
         ],
       ),
     );
     if (ok != true) return;
     final err = await SupabaseService.escalateToManagement(
-      table: 'on_duty_requests', id: r['id'].toString(), reason: ctrl.text.trim());
+        table: table, id: r['id'].toString(), reason: ctrl.text.trim());
     if (err == null) {
       NotificationService.escalated(
-        process: 'On Duty request',
+        process: process,
         employeeName: (r['employee_name'] ?? '').toString(),
         escalatedBy: UserSession.name,
         reason: ctrl.text.trim(),
       );
     }
     await _load();
+  }
+
+  /// Null for Management — there is nowhere further to send it.
+  VoidCallback? _escalateActionFor(Map<String, dynamic> r, void Function() refresh,
+      [String table = 'on_duty_requests', String process = 'On Duty request']) {
+    // Management is the destination, so there is nowhere further for them to
+    // send it. Built as a typed local rather than a ternary at the call site:
+    // a conditional on an async closure infers Future<void> Function()?, which
+    // does not match VoidCallback?.
+    if (UserSession.role == UserRole.management) return null;
+    return () async {
+      await _escalateRow(table: table, r: r, process: process);
+      refresh();
+    };
   }
 
   List<Map<String, dynamic>> get _visibleOnDuty =>
@@ -183,7 +194,13 @@ class _ApprovalsPageState extends State<ApprovalsPage> with SingleTickerProvider
   List<Map<String, dynamic>> _attendanceConfirmations = const [];
 
   List<Map<String, dynamic>> get _pendingManagerVouch =>
-      _attendanceConfirmations.where((r) => (r['status'] ?? '') == 'pending').toList();
+      _attendanceConfirmations.where((r) =>
+          (r['status'] ?? '') == 'pending' &&
+          // Escalated ones are Management's. Leaving them here would let the
+          // exception be decided at the level that judged it needed a higher
+          // one.
+          (UserSession.role == UserRole.management ||
+           !((r['escalated'] as bool?) ?? false))).toList();
 
   // Reaches HR only once the manager has confirmed.
   //
@@ -224,6 +241,8 @@ class _ApprovalsPageState extends State<ApprovalsPage> with SingleTickerProvider
           color: Colors.indigo.shade700,
           buildCards: (refresh) => _vouchNeedingManagement
               .map((r) => _vouchCard(r, hrStage: true,
+                  onEscalate: _escalateActionFor(r, refresh, 'attendance_confirmations',
+                      'attendance confirmation'),
                   onApprove: () async { await _hrDecideVouch(r, true); refresh(); },
                   onDeny: () async { await _hrDecideVouch(r, false); refresh(); }))
               .toList(),
@@ -264,7 +283,8 @@ class _ApprovalsPageState extends State<ApprovalsPage> with SingleTickerProvider
   }
 
   Widget _vouchCard(Map<String, dynamic> r,
-      {required VoidCallback onApprove, required VoidCallback onDeny, bool hrStage = false}) {
+      {required VoidCallback onApprove, required VoidCallback onDeny,
+       bool hrStage = false, VoidCallback? onEscalate}) {
     return _ApprovalCard(
       title: (r['employee_name'] ?? '').toString(),
       subtitle: '${r['date_iso'] ?? ''} · claims ${r['claimed_time'] ?? ''}',
@@ -277,10 +297,13 @@ class _ApprovalsPageState extends State<ApprovalsPage> with SingleTickerProvider
         if (hrStage && (r['decided_by_name'] ?? '').toString().isNotEmpty)
           'Confirmed by ${r['decided_by_name']}',
         'No GPS or selfie for this day — it will be recorded as manager-confirmed.',
+        if ((r['escalated'] as bool?) ?? false)
+          'Escalated by ${r['escalated_by']} — ${r['escalation_reason']}',
       ],
       meta: _fmtIso((r['requested_at'] ?? '').toString()),
       onApprove: onApprove,
       onDeny: onDeny,
+      onEscalate: onEscalate,
     );
   }
 
@@ -296,6 +319,8 @@ class _ApprovalsPageState extends State<ApprovalsPage> with SingleTickerProvider
           color: Colors.indigo.shade600,
           buildCards: (refresh) => _pendingManagerVouch
               .map((r) => _vouchCard(r,
+                  onEscalate: _escalateActionFor(r, refresh, 'attendance_confirmations',
+                      'attendance confirmation'),
                   onApprove: () async { await _decideVouch(r, true); refresh(); },
                   onDeny: () async { await _decideVouch(r, false); refresh(); }))
               .toList(),
