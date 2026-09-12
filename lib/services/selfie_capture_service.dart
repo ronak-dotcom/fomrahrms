@@ -250,7 +250,13 @@ class SelfieCaptureService {
       path = null;
     }
     if (path == null) {
-      lastFailure = 'Photo taken but upload failed';
+      // Names the actual storage error rather than a generic failure. One
+      // employee could not check out for three days and the log said only
+      // "upload failed", which told nobody anything actionable.
+      final why = SupabaseService.lastSelfieUploadError;
+      lastFailure = why == null || why.isEmpty
+          ? 'Photo taken but upload failed — check your connection and retry.'
+          : 'Photo taken but upload failed: $why';
       unawaited(SupabaseService.logCheckInAttempt(
         kind: kind == 'checkout' ? 'check_out' : 'check_in',
         outcome: 'selfie_failed',

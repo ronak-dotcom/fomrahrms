@@ -1123,6 +1123,10 @@ class SupabaseService {
 
   static const _selfieBucket = 'attendance-selfies';
 
+  /// Why the last selfie upload failed, for the message shown to the employee.
+  /// Without it the only signal was a generic "upload failed".
+  static String? lastSelfieUploadError;
+
   /// Uploads an already-watermarked, already-compressed selfie and returns
   /// its storage path (not a URL) for storing on the attendance row, or
   /// null on failure.
@@ -1143,7 +1147,15 @@ class SupabaseService {
         fileOptions: const FileOptions(contentType: 'image/jpeg'),
       );
       return path;
-    } catch (_) {
+    } catch (e) {
+      // Was `catch (_) { return null; }`. The caller then reported only
+      // "Photo taken but upload failed", so an employee could be blocked from
+      // checking out for days with no way to find out why — which is exactly
+      // what happened. Storage errors are specific and worth keeping: a
+      // missing bucket, an expired token and a policy refusal all look
+      // identical from the outside but need different fixes.
+      _writeFailed('uploadSelfieBytes', e);
+      lastSelfieUploadError = e.toString();
       return null;
     }
   }
