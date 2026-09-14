@@ -437,6 +437,30 @@ class _ApprovalsPageState extends State<ApprovalsPage> with SingleTickerProvider
   /// it is the thing that is broken.
   List<Map<String, dynamic>> _pendingWork = const [];
 
+  /// Where this particular request can be decided, for this viewer.
+  ///
+  /// Leave and permission live on the team-approvals screen, not Leave
+  /// Management — that one lists requests without approve or reject, which is
+  /// why people believed approvals had stopped working.
+  String _routeForPending(Map<String, dynamic> p) {
+    final process = (p['process'] ?? '').toString();
+    final prefix = switch (UserSession.role) {
+      UserRole.management => '/management',
+      UserRole.hr => '/hr',
+      UserRole.reportingManager => '/manager',
+      UserRole.employee => '/employee',
+    };
+    if (process == 'Leave') return '$prefix/leave/team-approvals';
+    if (process == 'Confirmation') {
+      return UserSession.role == UserRole.hr
+          ? '/employee-management'
+          : '$prefix/employee-management';
+    }
+    // Attendance, On Duty and Onboarding are all decided on the approvals
+    // screen the person is already looking at.
+    return '$prefix/approvals';
+  }
+
   Widget _pendingWorkBanner() {
     if (_pendingWork.isEmpty) return const SizedBox.shrink();
     return Container(
@@ -458,13 +482,27 @@ class _ApprovalsPageState extends State<ApprovalsPage> with SingleTickerProvider
                   color: Colors.amber.shade900)),
         ]),
         const SizedBox(height: 6),
+        // Tappable. The banner listed what was waiting and left the person to
+        // work out where to act on it — several went to Leave Management,
+        // which shows requests but has no approve or reject buttons, and
+        // concluded approvals were broken. Each row now opens the screen where
+        // that particular request can actually be decided.
         for (final p in _pendingWork.take(8))
-          Padding(
-            padding: const EdgeInsets.only(top: 2),
-            child: Text(
-              '${p['process']} · ${p['raised_by']} — ${p['detail']} '
-              '→ ${p['waiting_on']}',
-              style: TextStyle(fontSize: 11.5, color: Colors.amber.shade900),
+          InkWell(
+            onTap: () => context.push(_routeForPending(p)),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 3),
+              child: Row(children: [
+                Expanded(
+                  child: Text(
+                    '${p['process']} · ${p['raised_by']} — ${p['detail']} '
+                    '→ ${p['waiting_on']}',
+                    style: TextStyle(fontSize: 11.5, color: Colors.amber.shade900),
+                  ),
+                ),
+                Icon(Icons.chevron_right_rounded,
+                    size: 16, color: Colors.amber.shade900),
+              ]),
             ),
           ),
         if (_pendingWork.length > 8)

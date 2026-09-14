@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
+import '../models/user_session.dart';
 import '../models/leave_store.dart';
 import '../services/supabase_service.dart';
 import '../utils/month_picker.dart';
@@ -449,6 +451,30 @@ class _DecisionRow extends StatelessWidget {
             style: TextStyle(
                 fontSize: 11, color: c, fontWeight: FontWeight.w700),
           ),
+          // This screen lists requests but cannot decide them, and people
+          // arriving from a notification reasonably expected to act here —
+          // several concluded approvals had stopped working. Points at the
+          // screen that does, rather than leaving them to find it.
+          if (status == LeaveApprovalStatus.pending &&
+              (UserSession.role == UserRole.hr ||
+               UserSession.role == UserRole.management ||
+               UserSession.isReportingManager)) ...[
+            const Spacer(),
+            TextButton(
+              onPressed: () => context.push(switch (UserSession.role) {
+                UserRole.management => '/management/leave/team-approvals',
+                UserRole.hr => '/hr/leave/team-approvals',
+                _ => '/manager/leave/team-approvals',
+              }),
+              style: TextButton.styleFrom(
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                minimumSize: const Size(0, 28),
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+              child: const Text('Approve / Reject',
+                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600)),
+            ),
+          ],
         ]),
         if (status == LeaveApprovalStatus.denied && comment.isNotEmpty) ...[
           const SizedBox(height: 4),
