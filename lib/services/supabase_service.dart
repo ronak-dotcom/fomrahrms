@@ -4739,6 +4739,17 @@ class SupabaseService {
       UserSession.oversightOnly        = me.oversightOnly;
       UserSession.permissionMinutesQuota = me.permissionMinutesQuota;
       UserSession.department           = me.department;
+      // The employee id was never refreshed, so a session opened before an id
+      // change kept the old one forever. That is not cosmetic: the selfie
+      // storage policy requires the upload folder to match the CURRENT id, so
+      // every check-out silently failed with a 403 for an employee whose id had
+      // been changed — which is exactly what happened after FHIPL-08 became
+      // FD-04, and the only visible symptom was "upload failed".
+      //
+      // The name is refreshed for the same reason: several queues match on it.
+      UserSession.employeeId           = me.employeeId;
+      UserSession.name                 = me.name;
+      UserSession.reportingManager     = me.reportingManager;
 
       // Loaded here so every screen shares one set of figures. Five screens
       // previously each derived their own from monthlyCl — the entitlement
