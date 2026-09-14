@@ -60,9 +60,14 @@ class _NotificationsPageState extends State<NotificationsPage> {
     // Only navigate if the route actually resolves to a registered page —
     // a stale/misrouted notification should do nothing rather than land on
     // the router's "Page not found" screen.
-    if (n.route.isNotEmpty &&
-        !GoRouter.of(context).configuration.findMatch(n.route).isError) {
-      context.go(n.route);
+    // Resolved against THIS user's role. The prefix cannot be decided when the
+    // notification is written, because that lookup runs as the sender and RLS
+    // often stops them reading the recipient's row — the role comes back null
+    // and the link points at a prefix the recipient's role cannot open.
+    final route = NotificationService.resolveRoute(n.route);
+    if (route.isNotEmpty &&
+        !GoRouter.of(context).configuration.findMatch(route).isError) {
+      context.go(route);
     }
   }
 

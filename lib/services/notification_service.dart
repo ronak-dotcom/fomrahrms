@@ -24,6 +24,20 @@ class NotificationService {
   static String routeForPayslips(String prefix) =>
       prefix == '/employee' ? '/my-payslips' : '$prefix/my-payslips';
 
+  /// Placeholder for "whatever prefix the person opening this needs".
+  ///
+  /// Routes were resolved at creation time from a lookup of the recipient,
+  /// which RLS frequently blocks — the sender cannot read their manager's row,
+  /// the lookup returns null, and the route falls back to /manager. A
+  /// Management or HR reporting manager then taps a link their role cannot
+  /// open and is silently returned to their dashboard.
+  static const rolePrefixToken = '{prefix}';
+
+  /// Resolves [rolePrefixToken] against the CURRENT user, at open time.
+  static String resolveRoute(String route) => route.contains(rolePrefixToken)
+      ? route.replaceAll(rolePrefixToken, routePrefixForRole(UserSession.role))
+      : route;
+
   static String routePrefixForRole(UserRole role) => switch (role) {
         UserRole.hr => '/hr',
         UserRole.employee => '/employee',
@@ -122,17 +136,12 @@ class NotificationService {
       // '/manager/approvals' bounced him to his dashboard: the notification
       // arrived and tapping it appeared to do nothing.
       final mgr = await SupabaseService.userByName(reportingManagerName);
-      final prefix = switch ((mgr?['role'] as String?)?.toLowerCase()) {
-        'management' => '/management',
-        'hr' => '/hr',
-        _ => '/manager',
-      };
       await _create(
         type: 'attendance_confirmation_requested',
         title: 'Attendance confirmation needed',
         body: '$employeeName could not check in on $dateLabel and has asked '
             'you to confirm they were present',
-        route: '$prefix/approvals',
+        route: '$rolePrefixToken/approvals',
         targetReportingManager: reportingManagerName,
       );
     } else {
@@ -232,16 +241,11 @@ class NotificationService {
     final managerIsOversightOnly = (mgr?['oversight_only'] as bool?) ?? false;
 
     if (reportingManagerName.isNotEmpty && !managerIsOversightOnly) {
-      final prefix = switch ((mgr?['role'] as String?)?.toLowerCase()) {
-        'management' => '/management',
-        'hr' => '/hr',
-        _ => '/manager',
-      };
       await _create(
         type: 'leave_submitted',
         title: 'New ${_processName(leaveType)} request',
         body: '$employeeName requested $leaveType',
-        route: '$prefix/leave/team-approvals',
+        route: '$rolePrefixToken/leave/team-approvals',
         targetReportingManager: reportingManagerName,
       );
     }
@@ -286,16 +290,11 @@ class NotificationService {
     final managerIsOversightOnly = (mgr?['oversight_only'] as bool?) ?? false;
 
     if (reportingManagerName.isNotEmpty && !managerIsOversightOnly) {
-      final prefix = switch ((mgr?['role'] as String?)?.toLowerCase()) {
-        'management' => '/management',
-        'hr' => '/hr',
-        _ => '/manager',
-      };
       await _create(
         type: 'on_duty_requested',
         title: 'On Duty request',
         body: '$employeeName — $reason on $dateLabel',
-        route: '$prefix/approvals',
+        route: '$rolePrefixToken/approvals',
         targetReportingManager: reportingManagerName,
       );
     }
@@ -441,20 +440,13 @@ class NotificationService {
     final mgr = await SupabaseService.userByName(reportingManagerName);
     if (reportingManagerName.isNotEmpty &&
         !((mgr?['oversight_only'] as bool?) ?? false)) {
-      final prefix = switch ((mgr?['role'] as String?)?.toLowerCase()) {
-        'management' => '/management',
-        'hr' => '/hr',
-        _ => '/manager',
-      };
       await _create(
         type: 'onroll_manager_pending',
         title: 'On-roll confirmation pending',
         body: '$employeeName requested on-roll confirmation',
         // HR's copy of this screen is unprefixed; only manager and management
         // have a role-prefixed variant.
-        route: prefix == '/hr'
-            ? '/employee-management'
-            : '$prefix/employee-management',
+        route: '${rolePrefixToken}/employee-management',
         targetReportingManager: reportingManagerName,
       );
     }
