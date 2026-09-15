@@ -1022,6 +1022,32 @@ class _GeneratePayslipPageState extends State<GeneratePayslipPage> {
     _lopDaysCtrl = TextEditingController();
     _daysWorkedCtrl = TextEditingController();
     _load();
+    _loadStructure();
+  }
+
+  /// Fills the components from the saved salary structure.
+  ///
+  /// The payslip derived basic, HRA and the allowances from its own formulas
+  /// in PayslipCalc, so whatever HR entered under Salary on the employee
+  /// record was ignored — they saved a change and the payslip came out
+  /// unchanged. The stored structure is the figure people are actually paid,
+  /// so it wins; the fields stay editable for a one-off month.
+  Future<void> _loadStructure() async {
+    final row =
+        await SupabaseService.fetchSalaryStructure(widget.user.employeeId);
+    if (row == null || !mounted) return;
+    double v(String k) => ((row[k] as num?) ?? 0).toDouble();
+    setState(() {
+      _basic       = v('basic');
+      _educational = v('educational');
+      _lta         = v('lta');
+      _conveyance  = v('conveyance');
+      // Overrides rather than defaults, so the structure's figures survive the
+      // formula getters below instead of being recomputed over.
+      _hraOverride             = v('hra');
+      _otherAllowanceOverride  = v('other_allowance');
+      _professionalTaxOverride = v('professional_tax');
+    });
   }
 
   @override
