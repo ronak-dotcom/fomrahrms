@@ -781,7 +781,15 @@ class SupabaseService {
           leaveType:    (row['leave_type'] as String?) ?? '',
           from:         DateTime.parse(row['from_date'] as String),
           to:           DateTime.parse(row['to_date'] as String),
-          days:         row['days'] as int,
+          // `as int` threw: days is NUMERIC in the database and arrives as
+          // 1.0 or 0.5. The cast is inside a .map over the whole result, so a
+          // single half-day request made the entire fetch throw — every leave
+          // list in the app went empty, for every role, and Pending showed 0
+          // while the requests sat there in the database.
+          //
+          // Rounded rather than truncated: a half day is closer to 1 than 0,
+          // and effectiveDays handles the halving from isHalfDay separately.
+          days:         ((row['days'] as num?) ?? 0).round(),
           reason:       (row['reason'] as String?) ?? '',
           appliedOn:    DateTime.parse(row['applied_on'] as String),
         );
