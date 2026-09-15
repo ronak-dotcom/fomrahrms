@@ -255,6 +255,24 @@ class NotificationService {
         sourceId: leaveId,
       );
     }
+    // Where the requester IS the HR holder and their manager is oversight-only,
+    // routing to HR means routing to themselves — and self-approval is blocked,
+    // so the request is approvable by nobody. It goes to Management instead.
+    // Jose's own test request sat exactly here: raised, visible to him, and
+    // impossible for anyone to decide.
+    final selfIsOnlyApprover =
+        managerIsOversightOnly && UserSession.role == UserRole.hr;
+    if (selfIsOnlyApprover) {
+      await _create(
+        type: 'leave_submitted',
+        title: '${_processTitle(leaveType)} request to approve',
+        body: '$employeeName requested $leaveType — HR cannot approve their '
+            'own request, so this is yours to decide',
+        route: '/management/leave/team-approvals',
+        targetRole: 'Management',
+        sourceId: leaveId,
+      );
+    }
     await _create(
       type: 'leave_submitted',
       title: managerIsOversightOnly
