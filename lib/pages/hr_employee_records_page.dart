@@ -793,14 +793,23 @@ class EmployeeProfileDialogState extends State<EmployeeProfileDialog> {
       'educational':     TextEditingController(text: _sal('educational')),
       'lta':             TextEditingController(text: _sal('lta')),
       'professional_tax':TextEditingController(text: _sal('professional_tax', fallback: '208')),
+      // EPF was a hardcoded 1800 for everyone. It does not apply to all staff,
+      // so it has to be per-employee and zero has to be enterable.
+      'epf':             TextEditingController(text: _sal('epf', fallback: '0')),
+      'esi':             TextEditingController(text: _sal('esi', fallback: '0')),
+      'tds':             TextEditingController(text: _sal('tds', fallback: '0')),
     };
     const labels = {
       'actual_gross': 'Gross (monthly)', 'basic': 'Basic', 'da': 'DA',
       'hra': 'HRA', 'conveyance': 'Conveyance', 'other_allowance': 'Other Allowance',
       'educational': 'Educational', 'lta': 'LTA', 'professional_tax': 'Professional Tax',
+      'epf': 'EPF (0 if not applicable)', 'esi': 'ESI (0 if not applicable)',
+      'tds': 'TDS (0 if none)',
     };
 
     double num_(String k) => double.tryParse(fields[k]!.text.trim()) ?? 0;
+    // Earnings only. EPF, ESI, TDS and PT are deductions and must not be
+    // counted toward gross, or the balance check would never pass.
     double componentsTotal() =>
         num_('basic') + num_('da') + num_('hra') + num_('conveyance') +
         num_('other_allowance') + num_('educational') + num_('lta');

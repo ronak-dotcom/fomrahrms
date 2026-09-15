@@ -999,6 +999,10 @@ class _GeneratePayslipPageState extends State<GeneratePayslipPage> {
   late final TextEditingController _cugCtrl = TextEditingController();
 
   double _basic = 0, _educational = 0, _lta = 0, _conveyance = 0;
+  /// Dearness allowance. It is in the master sheet and in salary_structures,
+  /// but the payslip never had it — so gross came out short by the whole DA
+  /// for every employee, between 6,062 and 7,353 a month.
+  double _da = 0;
   List<LeaveDetailRow> _leaveDetails = [];
 
   // CL/ML/EL days taken beyond the employee's balance for the month.
@@ -1039,6 +1043,7 @@ class _GeneratePayslipPageState extends State<GeneratePayslipPage> {
     double v(String k) => ((row[k] as num?) ?? 0).toDouble();
     setState(() {
       _basic       = v('basic');
+      _da          = v('da');
       _educational = v('educational');
       _lta         = v('lta');
       _conveyance  = v('conveyance');
@@ -1047,6 +1052,11 @@ class _GeneratePayslipPageState extends State<GeneratePayslipPage> {
       _hraOverride             = v('hra');
       _otherAllowanceOverride  = v('other_allowance');
       _professionalTaxOverride = v('professional_tax');
+      // Null means nobody has set it; only an explicit value overrides the
+      // old constant, so an unset structure keeps the previous behaviour
+      // rather than silently dropping to zero.
+      if (row['epf'] != null) _epfOverride = (row['epf'] as num).toDouble();
+      if (row['tds'] != null) _tdsOverride = (row['tds'] as num).toDouble();
     });
   }
 
@@ -1189,7 +1199,8 @@ class _GeneratePayslipPageState extends State<GeneratePayslipPage> {
   double get _cug => double.tryParse(_cugCtrl.text.trim()) ?? 0;
 
   double get _actualGrossPay =>
-      _basic + _hra + _educational + _lta + _otherAllowance + _conveyance + _special;
+      _basic + _da + _hra + _educational + _lta + _otherAllowance +
+      _conveyance + _special;
   double get _totalDeductions =>
       _epf + _professionalTax + _tds + _lateDeduction + _excessLeaveDeduction + _cug;
   double get _netPay => _actualGrossPay - _totalDeductions;
@@ -1413,6 +1424,17 @@ class _GeneratePayslipPageState extends State<GeneratePayslipPage> {
                   grossPay: _grossPay,
                   basic: _basic,
                   onChanged: (v) => setState(() => _basic = v),
+                ),
+                // DA sits between Basic and HRA, as it does on the master
+                // sheet. It was absent from this screen entirely, so gross
+                // was short by the whole DA for every employee.
+                _EditableAmount(
+                  label: 'Dearness Allowance (DA)',
+                  autoValue: _da,
+                  overrideValue: null,
+                  // Null is the widget's "reset to auto" signal; DA has no
+                  // formula to reset to, so it keeps the structure's figure.
+                  onChanged: (v) => setState(() => _da = v ?? _da),
                 ),
                 _EditableAmount(
                   label: 'House Rent Allowance (50% of Basic)',
