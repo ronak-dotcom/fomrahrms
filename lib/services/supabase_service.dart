@@ -3632,6 +3632,73 @@ class SupabaseService {
     }
   }
 
+  /// Raises a salary change for Management to approve.
+  ///
+  /// HR used to write straight to salary_structures. Payroll reads that
+  /// directly, so a salary could change with no second signature and the
+  /// first anyone knew was the payslip. Management decides; the database
+  /// enforces it, so this is not merely a hidden button.
+  static Future<String?> requestSalaryChange({
+    required String employeeId,
+    required Map<String, dynamic> proposed,
+    required String reason,
+  }) async {
+    try {
+      final current = await fetchSalaryStructure(employeeId);
+      await _db?.from('salary_change_requests').insert({
+        'employee_id': employeeId,
+        'proposed': proposed,
+        'current_value': current,
+        'reason': reason,
+        'requested_by': UserSession.name,
+      });
+      logAuditEvent('salary_change_requested',
+          targetType: 'salary_change_requests', targetId: employeeId);
+      return null;
+    } catch (e) {
+      _writeFailed('requestSalaryChange', e);
+      return e.toString();
+    }
+  }
+
+  static Future<List<Map<String, dynamic>>> fetchSalaryChangeRequests(
+      {String status = 'pending'}) async {
+    try {
+      final rows = await _db
+          ?.from('salary_change_requests')
+          .select()
+          .eq('status', status)
+          .order('requested_at', ascending: false);
+      return List<Map<String, dynamic>>.from(rows ?? []);
+    } catch (e) {
+      _writeFailed('fetchSalaryChangeRequests', e);
+      return [];
+    }
+  }
+
+  /// Management's decision. Approving applies the change via a database
+  /// trigger, so the approval and its effect cannot drift apart.
+  static Future<String?> decideSalaryChange({
+    required String id,
+    required bool approve,
+    String note = '',
+  }) async {
+    try {
+      await _db?.from('salary_change_requests').update({
+        'status': approve ? 'approved' : 'rejected',
+        'decided_by': UserSession.name,
+        'decided_at': DateTime.now().toUtc().toIso8601String(),
+        'decision_note': note,
+      }).eq('id', id);
+      logAuditEvent('salary_change_decided',
+          targetType: 'salary_change_requests', targetId: id);
+      return null;
+    } catch (e) {
+      _writeFailed('decideSalaryChange', e);
+      return e.toString();
+    }
+  }
+
   /// Saves a structure. Every change is kept in salary_structure_history by a
   /// database trigger, so a revision can always be traced to who made it.
   static Future<String?> saveSalaryStructure({

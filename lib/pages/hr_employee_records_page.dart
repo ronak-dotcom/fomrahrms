@@ -807,12 +807,25 @@ class EmployeeProfileDialogState extends State<EmployeeProfileDialog> {
       'tds': 'TDS (0 if none)',
     };
 
+    // Whatever else this package contains. Negative is a deduction, so one
+    // mechanism covers "add a site allowance" and "recover an advance".
+    final custom = <({TextEditingController label, TextEditingController amount})>[
+      for (final c in ((_salary?['custom_components'] as List?) ?? const []))
+        (
+          label: TextEditingController(text: (c['label'] ?? '').toString()),
+          amount: TextEditingController(text: (c['amount'] ?? '').toString()),
+        ),
+    ];
+
     double num_(String k) => double.tryParse(fields[k]!.text.trim()) ?? 0;
+    double customTotal() => custom.fold<double>(
+        0, (t, c) => t + (double.tryParse(c.amount.text.trim()) ?? 0));
     // Earnings only. EPF, ESI, TDS and PT are deductions and must not be
     // counted toward gross, or the balance check would never pass.
     double componentsTotal() =>
         num_('basic') + num_('da') + num_('hra') + num_('conveyance') +
-        num_('other_allowance') + num_('educational') + num_('lta');
+        num_('other_allowance') + num_('educational') + num_('lta') +
+        customTotal();
 
     final ok = await showDialog<bool>(
       context: context,
@@ -839,6 +852,56 @@ class EmployeeProfileDialogState extends State<EmployeeProfileDialog> {
                         ),
                       ),
                     ),
+                  // Extra components, each removable. Nothing about a package
+                  // is fixed, so the form must not assume a set of fields.
+                  for (var i = 0; i < custom.length; i++)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: Row(children: [
+                        Expanded(
+                          flex: 3,
+                          child: TextField(
+                            controller: custom[i].label,
+                            decoration: const InputDecoration(
+                                labelText: 'Component',
+                                isDense: true,
+                                border: OutlineInputBorder()),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          flex: 2,
+                          child: TextField(
+                            controller: custom[i].amount,
+                            keyboardType: const TextInputType.numberWithOptions(
+                                decimal: true, signed: true),
+                            onChanged: (_) => setS(() {}),
+                            decoration: const InputDecoration(
+                                labelText: 'Amount',
+                                helperText: '- to deduct',
+                                isDense: true,
+                                border: OutlineInputBorder()),
+                          ),
+                        ),
+                        IconButton(
+                          onPressed: () => setS(() => custom.removeAt(i)),
+                          icon: const Icon(Icons.close_rounded, size: 18),
+                          tooltip: 'Remove',
+                        ),
+                      ]),
+                    ),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: TextButton.icon(
+                      onPressed: () => setS(() => custom.add((
+                            label: TextEditingController(),
+                            amount: TextEditingController(),
+                          ))),
+                      icon: const Icon(Icons.add_rounded, size: 16),
+                      label: const Text('Add component',
+                          style: TextStyle(fontSize: 12)),
+                    ),
+                  ),
                   // Shown while typing, not on save: a structure that does not
                   // add up produces a wrong payslip every month afterwards,
                   // and it would surface as a pay query rather than an error.
@@ -867,8 +930,10 @@ class EmployeeProfileDialogState extends State<EmployeeProfileDialog> {
             actions: [
               TextButton(onPressed: () => Navigator.pop(ctx, false),
                   child: const Text('Cancel')),
+              // Not "Save": nothing is saved until Management approves, and
+              // labelling it Save would imply the change had taken effect.
               ElevatedButton(onPressed: () => Navigator.pop(ctx, true),
-                  child: const Text('Save')),
+                  child: const Text('Request change')),
             ],
           );
         },
@@ -901,13 +966,63 @@ class EmployeeProfileDialogState extends State<EmployeeProfileDialog> {
       if (proceed != true || !mounted) return;
     }
 
-    final err = await SupabaseService.saveSalaryStructure(
+    // A reason is required. A salary change gets questioned months later, and
+    // Management needs something to decide on beyond a pair of numbers.
+    final reasonCtrl = TextEditingController();
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Send to Management'),
+        content: Column(mainAxisSize: MainAxisSize.min, children: [
+          const Text(
+            'Salary changes take effect only once Management approves. '
+            'Nothing changes until then.',
+            style: TextStyle(fontSize: 12.5),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: reasonCtrl,
+            autofocus: true,
+            decoration: const InputDecoration(
+                labelText: 'Reason for this change',
+                border: OutlineInputBorder()),
+          ),
+        ]),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel')),
+          ElevatedButton(onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Send')),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    if (reasonCtrl.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('A reason is needed for a salary change.')));
+      return;
+    }
+
+    final err = await SupabaseService.requestSalaryChange(
       employeeId: _user.employeeId,
-      components: {for (final k in fields.keys) k: num_(k)},
+      proposed: {
+        for (final k in fields.keys) k: num_(k),
+        'custom_components': [
+          for (final c in custom)
+            if (c.label.text.trim().isNotEmpty)
+              {
+                'label': c.label.text.trim(),
+                'amount': double.tryParse(c.amount.text.trim()) ?? 0,
+              },
+        ],
+      },
+      reason: reasonCtrl.text.trim(),
     );
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text(err == null ? 'Salary saved.' : 'Could not save: $err'),
+      content: Text(err == null
+          ? 'Sent to Management. The current salary is unchanged until they decide.'
+          : 'Could not send: $err'),
       backgroundColor: err == null ? Colors.teal.shade700 : Colors.red.shade700));
     if (err == null) _loadSalary();
   }
