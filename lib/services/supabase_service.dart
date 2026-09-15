@@ -4748,6 +4748,13 @@ class SupabaseService {
       //
       // The name is refreshed for the same reason: several queues match on it.
       UserSession.employeeId           = me.employeeId;
+      // Role and the reporting-manager flag were never refreshed either, and
+      // with a 30-day session that means a promotion or a role correction is
+      // invisible until the person happens to sign out. Role decides which URL
+      // prefix they may open, so a stale one sends them to screens their
+      // current role should not see — and hides the ones it should.
+      UserSession.role                 = AppUser.userRoleFor(me.role);
+      UserSession.isReportingManager   = me.isReportingManager;
       UserSession.name                 = me.name;
       UserSession.reportingManager     = me.reportingManager;
 
