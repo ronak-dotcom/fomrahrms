@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import '../models/leave_store.dart';
 import '../models/notification_category.dart';
 import '../models/notification_store.dart';
 import '../models/user_session.dart';
@@ -51,6 +52,110 @@ class _NotificationsPageState extends State<NotificationsPage> {
       ..addAll(list);
     NotificationStore.recomputeUnread();
     if (mounted) setState(() => _loading = false);
+  }
+
+  /// Whether this notification announces a leave request the viewer can
+  /// decide. Restricted to leave because that is where the request id is
+  /// carried; other processes still open their screen.
+  bool _canDecide(AppNotification n) {
+    if (n.type != 'leave_submitted' || n.sourceId.isEmpty) return false;
+    if (UserSession.role == UserRole.employee) return false;
+    // Already decided ones stay in the list as a record, so the buttons must
+    // not reappear on them.
+    final app = LeaveStore.applications
+        .where((a) => a.id == n.sourceId)
+        .firstOrNull;
+    return app != null && app.managerStatus == LeaveApprovalStatus.pending;
+  }
+
+  Future<void> _decide(AppNotification n, String action) async {
+    final app = LeaveStore.applications
+        .where((a) => a.id == n.sourceId)
+        .firstOrNull;
+    if (app == null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('That request could not be found — it may have been '
+              'withdrawn.')));
+      return;
+    }
+
+    // A reason is required to refuse or escalate, and optional to approve:
+    // the person affected needs to know why, and an escalation without one
+    // gives Management nothing to act on.
+    String reason = '';
+    if (action != 'approve') {
+      final ctrl = TextEditingController();
+      final ok = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: Text(action == 'reject' ? 'Reject request' : 'Escalate to Management'),
+          content: Column(mainAxisSize: MainAxisSize.min, children: [
+            Text('${app.employeeName} — ${app.leaveType}',
+                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+            const SizedBox(height: 10),
+            TextField(
+              controller: ctrl,
+              autofocus: true,
+              decoration: const InputDecoration(
+                  labelText: 'Reason', border: OutlineInputBorder()),
+            ),
+          ]),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('Cancel')),
+            ElevatedButton(onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('Confirm')),
+          ],
+        ),
+      );
+      if (ok != true || !mounted) return;
+      if (ctrl.text.trim().isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('A reason is needed.')));
+        return;
+      }
+      reason = ctrl.text.trim();
+    }
+
+    String? err;
+    if (action == 'escalate') {
+      err = await SupabaseService.escalateToManagement(
+          table: 'leave_applications', id: app.id, reason: reason);
+      if (err == null) {
+        NotificationService.escalated(
+          process: app.leaveType,
+          employeeName: app.employeeName,
+          escalatedBy: UserSession.name,
+          reason: reason,
+        );
+      }
+    } else {
+      final approved = action == 'approve';
+      final newStatus =
+          approved ? LeaveApprovalStatus.approved : LeaveApprovalStatus.denied;
+      // Management's decision is written to its own columns so a manager's is
+      // never overwritten; using the manager path for Management would put the
+      // decision in the wrong place and leave it looking undecided.
+      if (UserSession.role == UserRole.management) {
+        await SupabaseService.updateLeaveManagementStatus(app.id, newStatus,
+            decidedBy: UserSession.name, rejectionComment: reason);
+      } else {
+        await SupabaseService.updateLeaveManagerStatus(app.id, newStatus,
+            decidedBy: UserSession.name, rejectionComment: reason);
+      }
+      app.managerStatus = newStatus;
+      app.decidedBy = UserSession.name;
+      app.rejectionComment = reason;
+    }
+
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(err == null
+          ? '${app.employeeName}\u2019s ${app.leaveType} — $action done.'
+          : 'Could not complete: $err'),
+      backgroundColor: err == null ? Colors.teal.shade700 : Colors.red.shade700,
+    ));
+    if (err == null) setState(() {});
   }
 
   Future<void> _open(AppNotification n) async {
@@ -235,6 +340,9 @@ class _NotificationsPageState extends State<NotificationsPage> {
                             itemBuilder: (_, i) => _NotificationTile(
                               notification: items[i],
                               onTap: () => _open(items[i]),
+                              onDecide: _canDecide(items[i])
+                                  ? (action) => _decide(items[i], action)
+                                  : null,
                             ),
                           ),
                         ),
@@ -470,7 +578,31 @@ class _EmptyState extends StatelessWidget {
 class _NotificationTile extends StatelessWidget {
   final AppNotification notification;
   final VoidCallback onTap;
-  const _NotificationTile({required this.notification, required this.onTap});
+  /// Non-null only where this notification announces something the viewer can
+  /// actually decide — an approver seeing buttons they cannot use is worse
+  /// than none at all.
+  final void Function(String action)? onDecide;
+  const _NotificationTile({
+    required this.notification,
+    required this.onTap,
+    this.onDecide,
+  });
+
+  static Widget _act(String label, Color color, VoidCallback onPressed) =>
+      SizedBox(
+        height: 30,
+        child: OutlinedButton(
+          onPressed: onPressed,
+          style: OutlinedButton.styleFrom(
+            foregroundColor: color,
+            side: BorderSide(color: color.withValues(alpha: 0.4)),
+            padding: const EdgeInsets.symmetric(horizontal: 10),
+            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          ),
+          child: Text(label,
+              style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600)),
+        ),
+      );
 
   IconData get _icon => categoryFor(notification.type).icon;
 
@@ -534,6 +666,23 @@ class _NotificationTile extends StatelessWidget {
                     const SizedBox(height: 4),
                     Text(_relativeTime,
                         style: TextStyle(fontSize: 11, color: AppTheme.textSecondary)),
+                    // Decided here rather than by navigating. Two similarly
+                    // named leave screens meant people repeatedly landed on
+                    // the view-only one and concluded approvals were broken;
+                    // the decision belongs where the request is announced.
+                    if (onDecide != null) ...[
+                      const SizedBox(height: 8),
+                      Row(children: [
+                        _act('Approve', Colors.green.shade700,
+                            () => onDecide!('approve')),
+                        const SizedBox(width: 6),
+                        _act('Reject', Colors.red.shade700,
+                            () => onDecide!('reject')),
+                        const SizedBox(width: 6),
+                        _act('Escalate', Colors.indigo.shade600,
+                            () => onDecide!('escalate')),
+                      ]),
+                    ],
                   ],
                 ),
               ),

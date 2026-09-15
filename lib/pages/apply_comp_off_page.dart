@@ -129,6 +129,7 @@ class _ApplyCompOffPageState extends State<ApplyCompOffPage> {
         employeeName: app.employeeName,
         leaveType: app.leaveType,
         reportingManagerName: UserSession.reportingManager,
+        leaveId: app.id,
       );
     }
 

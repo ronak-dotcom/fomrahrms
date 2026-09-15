@@ -216,6 +216,7 @@ class _ApplyPermissionPageState extends State<ApplyPermissionPage> {
         employeeName: app.employeeName,
         leaveType: app.leaveType,
         reportingManagerName: UserSession.reportingManager,
+        leaveId: app.id,
       );
     }
 

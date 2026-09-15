@@ -454,6 +454,7 @@ class _ApplyLeavePageState extends State<ApplyLeavePage> {
         employeeName: app.employeeName,
         leaveType: app.leaveType,
         reportingManagerName: UserSession.reportingManager,
+        leaveId: app.id,
       );
     }
 

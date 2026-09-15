@@ -226,10 +226,15 @@ class NotificationService {
     return n[0].toUpperCase() + n.substring(1);
   }
 
+  /// [leaveId] lets the notification carry Approve, Reject and Escalate
+  /// directly. Without it the recipient has to find the right screen, and two
+  /// similarly named ones meant people repeatedly landed on the view-only
+  /// page and concluded approvals were broken.
   static Future<void> leaveSubmitted({
     required String employeeName,
     required String leaveType,
     required String reportingManagerName,
+    String leaveId = '',
   }) async {
     // Where the reporting manager is an oversight-only account they do not
     // open the system, and requests sat unactioned — one casual leave was
@@ -247,6 +252,7 @@ class NotificationService {
         body: '$employeeName requested $leaveType',
         route: '$rolePrefixToken/leave/team-approvals',
         targetReportingManager: reportingManagerName,
+        sourceId: leaveId,
       );
     }
     await _create(
