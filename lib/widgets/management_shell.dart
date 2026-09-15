@@ -48,7 +48,7 @@ const _navGroups = <_NavGroup>[
     // so "what needs my decision?" meant checking four unrelated spots.
     (label: 'All Approvals',       icon: Icons.inbox_rounded,         route: '/management/approvals'),
     (label: 'Late Review',         icon: Icons.running_with_errors_rounded, route: '/management/late-review'),
-    (label: 'Leave Approvals',     icon: Icons.event_available_rounded, route: '/management/leave/team-approvals'),
+    (label: 'Leave Approvals (approve / reject)',     icon: Icons.event_available_rounded, route: '/management/leave/team-approvals'),
     (label: 'On-Roll Approvals',   icon: Icons.verified_user_rounded, route: '/management/onroll-approvals'),
     (label: 'KRA Approvals',       icon: Icons.flag_rounded,          route: '/management/kra-approvals'),
     (label: 'Form Approvals',      icon: Icons.fact_check_rounded,    route: '/management/form-approvals'),
@@ -68,7 +68,7 @@ const _navGroups = <_NavGroup>[
     (label: 'Late Coming',         icon: Icons.watch_later_rounded,    route: '/management/attendance/late-coming'),
     (label: 'GPS Tracking',        icon: Icons.my_location_rounded,    route: '/management/attendance/gps-tracking'),
     (label: 'Location History',    icon: Icons.travel_explore_rounded, route: '/management/location-history'),
-    (label: 'Leave Management',    icon: Icons.event_available_rounded, route: '/management/leave-management'),
+    (label: 'Leave Records (view only)',    icon: Icons.event_available_rounded, route: '/management/leave-management'),
   ]),
   _NavGroup('Operations', Icons.work_outline_rounded, [
     (label: 'Task Management',     icon: Icons.task_alt_rounded,       route: '/management/task-management'),

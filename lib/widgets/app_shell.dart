@@ -35,7 +35,7 @@ const _navItems = [
   _NavItem('Dashboard', Icons.dashboard_rounded, '/dashboard'),
   _NavItem('Employee Management', Icons.people_rounded, '/employee-management'),
   _NavItem('Attendance Management', Icons.access_time_rounded, '/attendance-management'),
-  _NavItem('Leave Management', Icons.event_available_rounded, '/leave-management'),
+  _NavItem('Leave Records (view only)', Icons.event_available_rounded, '/leave-management'),
   _NavItem('Approvals',        Icons.approval_rounded,        '/hr/approvals'),
   _NavItem('Late Review',      Icons.running_with_errors_rounded, '/late-review'),
   _NavItem('Staff Portal Approvals', Icons.cleaning_services_rounded, '/leave/staff-portal-approvals'),
@@ -68,7 +68,7 @@ const _personalNavItems = [
 // had none of an RM's team-facing views. Mirrors manager_shell.dart's
 // equivalent items.
 const _myTeamNavItems = [
-  _NavItem('Team Leave Approvals', Icons.group_rounded,       '/hr/leave/team-approvals'),
+  _NavItem('Leave Approvals (approve / reject)', Icons.group_rounded, '/hr/leave/team-approvals'),
   _NavItem('Interview Review',     Icons.rate_review_rounded, '/hr/interview-review'),
   _NavItem('Appraisal Received',   Icons.fact_check_rounded,  '/hr/appraisal-received'),
 ];
