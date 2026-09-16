@@ -1025,8 +1025,11 @@ class _GeneratePayslipPageState extends State<GeneratePayslipPage> {
     _workingDaysCtrl = TextEditingController();
     _lopDaysCtrl = TextEditingController();
     _daysWorkedCtrl = TextEditingController();
-    _load();
-    _loadStructure();
+    // Awaited in order. _load() finishes with a setState that rebuilds the
+    // component fields, and those recompute themselves from gross — so a
+    // structure applied before it was immediately overwritten. Only DA
+    // survived, because it is the one field with no formula behind it.
+    _load().then((_) => _loadStructure());
   }
 
   /// Fills the components from the saved salary structure.
@@ -1041,7 +1044,14 @@ class _GeneratePayslipPageState extends State<GeneratePayslipPage> {
         await SupabaseService.fetchSalaryStructure(widget.user.employeeId);
     if (row == null || !mounted) return;
     double v(String k) => ((row[k] as num?) ?? 0).toDouble();
-    setState(() {
+
+    // Applied after the current frame as well. The option dropdowns emit
+    // their computed value whenever gross changes, which happens during the
+    // rebuild this setState triggers — so without the second pass the
+    // formulas win again and HR's figures vanish a second time.
+    void apply() {
+      if (!mounted) return;
+      setState(() {
       _basic       = v('basic');
       _da          = v('da');
       _educational = v('educational');
@@ -1057,7 +1067,11 @@ class _GeneratePayslipPageState extends State<GeneratePayslipPage> {
       // rather than silently dropping to zero.
       if (row['epf'] != null) _epfOverride = (row['epf'] as num).toDouble();
       if (row['tds'] != null) _tdsOverride = (row['tds'] as num).toDouble();
-    });
+      });
+    }
+
+    apply();
+    WidgetsBinding.instance.addPostFrameCallback((_) => apply());
   }
 
   @override
