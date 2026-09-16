@@ -1341,27 +1341,14 @@ class EmployeeProfileDialogState extends State<EmployeeProfileDialog> {
     }
   }
 
-  Future<void> _requestGrossPayChange() async {
-    final v = await _promptAmount('Request Gross Pay Change',
-        initial: _user.grossPay.toStringAsFixed(0));
-    if (v == null) return;
-    setState(() => _saving = true);
-    _user.grossPayPending = v;
-    _user.grossPayRequestedAt = DateTime.now().toIso8601String();
-    try {
-      await widget.onSave(_user);
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text('Failed to save: $e'),
-          backgroundColor: Colors.red.shade700,
-          behavior: SnackBarBehavior.floating,
-        ));
-      }
-    } finally {
-      if (mounted) setState(() => _saving = false);
-    }
-  }
+  /// Opens the salary editor.
+  ///
+  /// This used to write gross_pay on app_users with its own pending-approval
+  /// flow, separate from salary_structures. Two routes changing pay meant a
+  /// payslip could take its gross from one and its components from the other,
+  /// each approved by a different person. There is one approval route now,
+  /// and it covers every component rather than gross alone.
+  Future<void> _requestGrossPayChange() => _editSalary();
 
   Future<void> _decideGrossPay(bool approve) async {
     setState(() => _saving = true);
