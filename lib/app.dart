@@ -18,6 +18,7 @@ import 'pages/check_out_page.dart';
 import 'pages/gps_tracking_page.dart';
 import 'pages/late_coming_page.dart';
 import 'pages/late_review_page.dart';
+import 'pages/salary_approvals_page.dart';
 import 'pages/leave_management_page.dart';
 import 'pages/management_leave_page.dart';
 import 'pages/apply_leave_page.dart';
@@ -603,6 +604,7 @@ final _router = GoRouter(
         GoRoute(path: '/management/maintenance-management', builder: (_, __) => const MaintenanceManagementPage()),
         GoRoute(path: '/management/approvals',              builder: (_, __) => const ApprovalsPage()),
         GoRoute(path: '/management/late-review',            builder: (_, __) => const LateReviewPage()),
+        GoRoute(path: '/management/salary-approvals',       builder: (_, __) => const SalaryApprovalsPage()),
         GoRoute(path: '/management/notifications',          builder: (_, __) => const NotificationsPage()),
         GoRoute(path: '/management/reports-analytics',      builder: (_, __) => const ReportsAnalyticsPage()),
         GoRoute(path: '/management/administration',         builder: (_, __) => const AdministrationPage()),

@@ -3661,6 +3661,24 @@ class SupabaseService {
     }
   }
 
+  /// Past salary revisions, newest first. Every change is kept; [limit] only
+  /// controls how many are shown before "show all".
+  static Future<List<Map<String, dynamic>>> fetchSalaryHistory(
+      String employeeId, {int limit = 5}) async {
+    try {
+      final rows = await _db
+          ?.from('salary_structure_history')
+          .select()
+          .eq('employee_id', employeeId)
+          .order('changed_at', ascending: false)
+          .limit(limit);
+      return List<Map<String, dynamic>>.from(rows ?? []);
+    } catch (e) {
+      _writeFailed('fetchSalaryHistory', e);
+      return [];
+    }
+  }
+
   static Future<List<Map<String, dynamic>>> fetchSalaryChangeRequests(
       {String status = 'pending'}) async {
     try {
