@@ -358,6 +358,25 @@ class NotificationService {
     );
   }
 
+  /// A salary change awaiting Management.
+  ///
+  /// Nothing told them it existed, so a change could sit indefinitely while HR
+  /// believed it was with Management — and payroll reads the structure
+  /// directly, so an unapproved change simply never takes effect.
+  static Future<void> salaryChangeRequested({
+    required String employeeName,
+    required String requestedBy,
+    required String summary,
+  }) async {
+    await _create(
+      type: 'salary_change_requested',
+      title: 'Salary change to approve',
+      body: '$requestedBy proposed a change for $employeeName — $summary',
+      route: '/management/salary-approvals',
+      targetRole: 'Management',
+    );
+  }
+
   /// An approver has handed a request to Management as a policy exception.
   ///
   /// Management is told because it is now theirs to decide. The original

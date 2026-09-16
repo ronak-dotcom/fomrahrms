@@ -46,13 +46,12 @@ const _navGroups = <_NavGroup>[
     // Leave Approvals were top-level, KRA Approvals was elsewhere in the
     // list, and Form Approvals was hidden inside the Edit Forms submenu —
     // so "what needs my decision?" meant checking four unrelated spots.
-    (label: 'All Approvals',       icon: Icons.inbox_rounded,         route: '/management/approvals'),
+    // The single approvals destination. Everything - leave, salary, on-roll,
+    // KRA, forms, attendance - is a category inside it with its own count,
+    // so there is one place to answer "what needs me".
+    (label: 'Approvals',           icon: Icons.inbox_rounded,         route: '/management/approvals'),
     (label: 'Late Review',         icon: Icons.running_with_errors_rounded, route: '/management/late-review'),
-    (label: 'Salary Approvals',    icon: Icons.payments_rounded,      route: '/management/salary-approvals'),
     (label: 'Leave Approvals (approve / reject)',     icon: Icons.event_available_rounded, route: '/management/leave/team-approvals'),
-    (label: 'On-Roll Approvals',   icon: Icons.verified_user_rounded, route: '/management/onroll-approvals'),
-    (label: 'KRA Approvals',       icon: Icons.flag_rounded,          route: '/management/kra-approvals'),
-    (label: 'Form Approvals',      icon: Icons.fact_check_rounded,    route: '/management/form-approvals'),
   ]),
   _NavGroup('People', Icons.people_rounded, [
     (label: 'Employee Management', icon: Icons.badge_rounded,          route: '/management/employee-management'),

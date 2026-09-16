@@ -1019,6 +1019,16 @@ class EmployeeProfileDialogState extends State<EmployeeProfileDialog> {
       reason: reasonCtrl.text.trim(),
     );
     if (!mounted) return;
+    if (err == null) {
+      // Without this the request sat in the queue with nobody told, and HR
+      // believed it was with Management.
+      NotificationService.salaryChangeRequested(
+        employeeName: _user.name,
+        requestedBy: UserSession.name,
+        summary: 'gross ${_sal('actual_gross')} → '
+            '${num_('actual_gross').toStringAsFixed(0)}',
+      );
+    }
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
       content: Text(err == null
           ? 'Sent to Management. The current salary is unchanged until they decide.'

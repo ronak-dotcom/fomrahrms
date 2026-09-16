@@ -381,6 +381,19 @@ class _ApprovalsPageState extends State<ApprovalsPage> with SingleTickerProvider
     await _load();
   }
 
+  /// Salary changes awaiting Management. Surfaced here because Approvals is
+  /// now the single destination — removing the separate menu entry would
+  /// otherwise have hidden them.
+  _CategoryInfo get _salaryCategory => _CategoryInfo(
+        icon: Icons.payments_rounded,
+        color: Colors.deepPurple.shade400,
+        label: 'Salary Changes',
+        pending: _pendingSalary.length,
+        approved: 0, rejected: 0,
+        total: _pendingSalary.length,
+        onViewAll: () => context.push('/management/salary-approvals'),
+      );
+
   _CategoryInfo get _vouchOversightCategory => _CategoryInfo(
         icon: Icons.visibility_rounded,
         color: Colors.blueGrey.shade600,
@@ -436,6 +449,7 @@ class _ApprovalsPageState extends State<ApprovalsPage> with SingleTickerProvider
   /// above, so an item appears even when the code that should have surfaced
   /// it is the thing that is broken.
   List<Map<String, dynamic>> _pendingWork = const [];
+  List<Map<String, dynamic>> _pendingSalary = const [];
 
   /// Where this particular request can be decided, for this viewer.
   ///
@@ -555,6 +569,7 @@ class _ApprovalsPageState extends State<ApprovalsPage> with SingleTickerProvider
         SupabaseService.fetchOnDutyRequests(status: 'pending'),
         SupabaseService.fetchAttendanceConfirmations(),
         SupabaseService.fetchPendingApprovals(),
+        SupabaseService.fetchSalaryChangeRequests(),
       ]);
       final leaves = results[0] as List<LeaveApplication>;
       if (leaves.isNotEmpty) {
@@ -575,6 +590,7 @@ class _ApprovalsPageState extends State<ApprovalsPage> with SingleTickerProvider
         _onDutyRequests = results[8] as List<Map<String, dynamic>>;
         _attendanceConfirmations = results[9] as List<Map<String, dynamic>>;
         _pendingWork = results[10] as List<Map<String, dynamic>>;
+        _pendingSalary = results[11] as List<Map<String, dynamic>>;
         _loading = false;
       });
     } catch (_) {
@@ -944,6 +960,7 @@ class _ApprovalsPageState extends State<ApprovalsPage> with SingleTickerProvider
         // a required signature. On other roles it would be a card with
         // nothing to do.
         if (UserSession.role == UserRole.management) ...[
+          _salaryCategory,
           _vouchMgmtApprovalCategory,
           _vouchOversightCategory,
         ],
