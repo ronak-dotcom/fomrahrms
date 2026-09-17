@@ -9,19 +9,18 @@ class ManagementLeavePage extends StatelessWidget {
   static const _color = Color(0xFF111827);
 
   static List<_Topic> get _topics => [
+    // One card, not two. These pointed at the same screen under different
+    // names — "Leave Management" and "Team Leave Approvals" — so whichever a
+    // person picked, they got the same page and could not tell whether they
+    // were in the right place. That is a large part of why approvals kept
+    // looking broken.
     _Topic(
-      'Leave Management',
-      Icons.folder_shared_rounded,
-      AppTheme.primaryBlue,
-      '/management/leave/overview',
-      'All employee leaves — approve, deny, or edit any decision company-wide.',
-    ),
-    _Topic(
-      'Team Leave Approvals',
+      'Leave Approvals',
       Icons.group_rounded,
-      Color(0xFF111827),
+      AppTheme.primaryBlue,
       '/management/leave/team-approvals',
-      'Leave requests from employees reporting directly to you.',
+      'Every employee\u2019s leave — approve, reject, escalate, or change a '
+      'decision already made.',
     ),
     _Topic(
       'Edit Leave Forms',

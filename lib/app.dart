@@ -26,7 +26,6 @@ import 'pages/apply_permission_page.dart';
 import 'pages/apply_comp_off_page.dart';
 import 'pages/apply_on_duty_page.dart';
 import 'pages/request_attendance_confirmation_page.dart';
-import 'pages/leave_approvals_page.dart';
 import 'pages/leave_balance_page.dart';
 import 'pages/task_management_page.dart';
 import 'pages/add_task_page.dart';
@@ -294,7 +293,9 @@ final _router = GoRouter(
         GoRoute(path: '/leave/apply',                     builder: (_, __) => const ApplyLeavePage()),
         GoRoute(path: '/leave/permission',                builder: (_, __) => const ApplyPermissionPage()),
         GoRoute(path: '/leave/compoff',                   builder: (_, __) => const ApplyCompOffPage()),
-        GoRoute(path: '/leave/approvals',                 builder: (_, __) => const LeaveApprovalsPage()),
+        // Superseded by TeamLeaveApprovalsPage. Kept as a route so an old link
+        // still lands somewhere that works.
+        GoRoute(path: '/leave/approvals',                 builder: (_, __) => const TeamLeaveApprovalsPage()),
         GoRoute(path: '/leave/balance',                   builder: (_, __) => const LeaveBalancePage()),
         GoRoute(path: '/leave/employee-records',          builder: (_, __) => const HrLeaveRecordsPage()),
         GoRoute(path: '/leave/staff-portal-approvals',    builder: (_, __) => const TeamLeaveApprovalsPage(
@@ -545,7 +546,7 @@ final _router = GoRouter(
         GoRoute(path: '/management/leave/apply',            builder: (_, __) => const ApplyLeavePage()),
         GoRoute(path: '/management/leave/permission',       builder: (_, __) => const ApplyPermissionPage()),
         GoRoute(path: '/management/leave/compoff',          builder: (_, __) => const ApplyCompOffPage()),
-        GoRoute(path: '/management/leave/approvals',        builder: (_, __) => const LeaveApprovalsPage()),
+        GoRoute(path: '/management/leave/approvals',        builder: (_, __) => const TeamLeaveApprovalsPage(isManagement: true, showAll: false)),
         GoRoute(path: '/management/leave/balance',          builder: (_, __) => const LeaveBalancePage()),
         GoRoute(path: '/management/leave/team-approvals',   builder: (_, __) => const TeamLeaveApprovalsPage(isManagement: true, showAll: false)),
         GoRoute(path: '/management/leave/employee-records', builder: (_, __) => const HrLeaveRecordsPage()),
