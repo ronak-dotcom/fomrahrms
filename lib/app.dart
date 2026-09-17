@@ -17,6 +17,7 @@ import 'pages/check_in_page.dart';
 import 'pages/check_out_page.dart';
 import 'pages/gps_tracking_page.dart';
 import 'pages/late_coming_page.dart';
+import 'pages/attendance_range_page.dart';
 import 'pages/late_review_page.dart';
 import 'pages/salary_approvals_page.dart';
 import 'pages/leave_management_page.dart';
@@ -369,6 +370,7 @@ final _router = GoRouter(
         GoRoute(path: '/hr/leave/team-approvals',   builder: (_, __) => const TeamLeaveApprovalsPage()),
         GoRoute(path: '/hr/approvals',              builder: (_, __) => const ApprovalsPage()),
         GoRoute(path: '/late-review',               builder: (_, __) => const LateReviewPage()),
+        GoRoute(path: '/attendance-range',          builder: (_, __) => const AttendanceRangePage()),
         GoRoute(path: '/hr/interview-review',       builder: (_, __) => const ManagerInterviewReviewPage()),
         GoRoute(path: '/hr/appraisal',               builder: (_, __) =>
             const EmployeeAppraisalRequestPage(formRoute: '/hr/appraisal/form')),
@@ -501,6 +503,7 @@ final _router = GoRouter(
         GoRoute(path: '/manager/employee-onboarding',     builder: (_, __) => const MyOnboardingFormPage()),
         GoRoute(path: '/manager/maintenance-management',  builder: (_, __) => const MaintenanceManagementPage()),
         GoRoute(path: '/manager/approvals',               builder: (_, __) => const ApprovalsPage()),
+        GoRoute(path: '/manager/attendance-range',        builder: (_, __) => const AttendanceRangePage()),
         GoRoute(path: '/manager/notifications',           builder: (_, __) => const NotificationsPage()),
         GoRoute(path: '/manager/reports-analytics',       builder: (_, __) => const ReportsAnalyticsPage()),
         // Personal pages
@@ -605,6 +608,7 @@ final _router = GoRouter(
         GoRoute(path: '/management/maintenance-management', builder: (_, __) => const MaintenanceManagementPage()),
         GoRoute(path: '/management/approvals',              builder: (_, __) => const ApprovalsPage()),
         GoRoute(path: '/management/late-review',            builder: (_, __) => const LateReviewPage()),
+        GoRoute(path: '/management/attendance-range',       builder: (_, __) => const AttendanceRangePage()),
         GoRoute(path: '/management/salary-approvals',       builder: (_, __) => const SalaryApprovalsPage()),
         GoRoute(path: '/management/notifications',          builder: (_, __) => const NotificationsPage()),
         GoRoute(path: '/management/reports-analytics',      builder: (_, __) => const ReportsAnalyticsPage()),

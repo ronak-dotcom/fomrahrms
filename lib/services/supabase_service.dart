@@ -3661,6 +3661,31 @@ class SupabaseService {
     }
   }
 
+  /// Attendance for any date range, for one employee or several.
+  ///
+  /// The records screen shows a single day and the cycle report is locked to
+  /// the 26th-to-25th window, so a question spanning arbitrary dates across
+  /// several people had to be assembled by hand. Passing null for
+  /// [employeeIds] returns everyone.
+  static Future<List<Map<String, dynamic>>> fetchAttendanceRange({
+    required DateTime from,
+    required DateTime to,
+    List<String>? employeeIds,
+  }) async {
+    try {
+      final rows = await _db?.rpc('attendance_range_report', params: {
+        'p_from': from.toIso8601String().substring(0, 10),
+        'p_to': to.toIso8601String().substring(0, 10),
+        'p_employee_ids':
+            (employeeIds == null || employeeIds.isEmpty) ? null : employeeIds,
+      });
+      return List<Map<String, dynamic>>.from(rows ?? []);
+    } catch (e) {
+      _writeFailed('fetchAttendanceRange', e);
+      return [];
+    }
+  }
+
   /// Past salary revisions, newest first. Every change is kept; [limit] only
   /// controls how many are shown before "show all".
   static Future<List<Map<String, dynamic>>> fetchSalaryHistory(

@@ -51,6 +51,7 @@ const _navGroups = <_NavGroup>[
     // so there is one place to answer "what needs me".
     (label: 'Approvals',           icon: Icons.inbox_rounded,         route: '/management/approvals'),
     (label: 'Late Review',         icon: Icons.running_with_errors_rounded, route: '/management/late-review'),
+    (label: 'Attendance by Date Range', icon: Icons.date_range_rounded, route: '/management/attendance-range'),
     (label: 'Leave Approvals (approve / reject)',     icon: Icons.event_available_rounded, route: '/management/leave/team-approvals'),
   ]),
   _NavGroup('People', Icons.people_rounded, [
