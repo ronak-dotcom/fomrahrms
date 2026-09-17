@@ -1,4 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:printing/printing.dart';
+
+import '../utils/csv_export.dart';
 
 import '../models/app_user.dart';
 import '../services/supabase_service.dart';
@@ -56,6 +60,159 @@ class _AttendanceRangePageState extends State<AttendanceRangePage> {
     );
     if (picked != null) setState(() => _range = picked);
   }
+
+  Future<void> _pickEmployees() async {
+    // Edited on a copy so Cancel genuinely cancels rather than leaving half a
+    // selection behind.
+    final working = Set<String>.from(_selected);
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setS) => AlertDialog(
+          title: const Text('Select employees'),
+          content: SizedBox(
+            width: 340,
+            height: 400,
+            child: Column(children: [
+              Row(children: [
+                TextButton(
+                  onPressed: () => setS(working.clear),
+                  child: const Text('All employees', style: TextStyle(fontSize: 12)),
+                ),
+                const Spacer(),
+                Text('${working.length} selected',
+                    style: const TextStyle(fontSize: 11.5, color: Color(0xFF6B7280))),
+              ]),
+              const Divider(height: 1),
+              Expanded(
+                child: ListView(
+                  children: [
+                    for (final u in _users)
+                      CheckboxListTile(
+                        dense: true,
+                        value: working.contains(u.employeeId),
+                        title: Text(u.name, style: const TextStyle(fontSize: 13)),
+                        subtitle: Text(u.employeeId,
+                            style: const TextStyle(fontSize: 11)),
+                        onChanged: (on) => setS(() => on == true
+                            ? working.add(u.employeeId)
+                            : working.remove(u.employeeId)),
+                      ),
+                  ],
+                ),
+              ),
+            ]),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('Cancel')),
+            ElevatedButton(onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('Done')),
+          ],
+        ),
+      ),
+    );
+    if (ok == true) {
+      setState(() {
+        _selected
+          ..clear()
+          ..addAll(working);
+      });
+    }
+  }
+
+  /// Rows as CSV. Excel opens this directly.
+  String _csv() {
+    String esc(Object? v) {
+      final t = (v ?? '').toString();
+      // Quote anything containing a separator, or a name with a comma splits
+      // into two columns and every column after it shifts.
+      return t.contains(',') || t.contains('"') || t.contains('\n')
+          ? '"${t.replaceAll('"', '""')}"'
+          : t;
+    }
+
+    final b = StringBuffer()
+      ..writeln('Employee,Employee ID,Department,Date,Day,Check In,Check Out,'
+          'Hours,Status,Verification,Note');
+    for (final r in _rows) {
+      b.writeln([
+        esc(r['employee_name']), esc(r['employee_id']), esc(r['department']),
+        esc(r['date_iso']), esc(r['day_name']),
+        esc(r['check_in_time']), esc(r['check_out_time']),
+        esc(r['hours_worked']), esc(r['status']),
+        esc(r['verification']), esc(r['note']),
+      ].join(','));
+    }
+    return b.toString();
+  }
+
+  Future<void> _exportCsv() async {
+    await exportCsv(
+      'attendance_${_fileStamp(_range.start)}_to_${_fileStamp(_range.end)}.csv',
+      _csv(),
+    );
+  }
+
+  Future<void> _exportPdf() async {
+    final doc = pw.Document();
+    // Grouped by person in the PDF as well, so a printed copy reads the same
+    // way as the screen.
+    final byPerson = <String, List<Map<String, dynamic>>>{};
+    for (final r in _rows) {
+      byPerson.putIfAbsent((r['employee_name'] ?? '').toString(), () => []).add(r);
+    }
+    doc.addPage(
+      pw.MultiPage(
+        build: (_) => [
+          pw.Header(
+            level: 0,
+            child: pw.Text(
+              'Attendance  ${_d(_range.start)} – ${_d(_range.end)}',
+              style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold),
+            ),
+          ),
+          for (final e in byPerson.entries) ...[
+            pw.SizedBox(height: 10),
+            pw.Text(
+              '${e.key}   '
+              '${e.value.where((r) => r['status'] == 'Present').length}P  '
+              '${e.value.where((r) => r['status'] == 'Late').length}L  '
+              '${e.value.where((r) => r['status'] == 'Absent').length}A',
+              style: pw.TextStyle(fontSize: 11, fontWeight: pw.FontWeight.bold),
+            ),
+            pw.SizedBox(height: 4),
+            pw.TableHelper.fromTextArray(
+              cellStyle: const pw.TextStyle(fontSize: 8),
+              headerStyle:
+                  pw.TextStyle(fontSize: 8, fontWeight: pw.FontWeight.bold),
+              headers: const ['Date', 'Day', 'In', 'Out', 'Hours', 'Status'],
+              data: [
+                for (final r in e.value)
+                  [
+                    (r['date_iso'] ?? '').toString(),
+                    (r['day_name'] ?? '').toString(),
+                    (r['check_in_time'] ?? '').toString(),
+                    (r['check_out_time'] ?? '').toString(),
+                    (r['hours_worked'] ?? '').toString(),
+                    (r['status'] ?? '').toString(),
+                  ],
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+    await Printing.sharePdf(
+      bytes: await doc.save(),
+      filename:
+          'attendance_${_fileStamp(_range.start)}_to_${_fileStamp(_range.end)}.pdf',
+    );
+  }
+
+  static String _fileStamp(DateTime d) =>
+      '${d.year}-${d.month.toString().padLeft(2, '0')}-'
+      '${d.day.toString().padLeft(2, '0')}';
 
   Future<void> _run() async {
     setState(() => _loading = true);
@@ -140,29 +297,60 @@ class _AttendanceRangePageState extends State<AttendanceRangePage> {
             ]),
           ),
           const SizedBox(height: 10),
-          // Chips rather than a dropdown: picking three people from a list of
-          // sixteen is the whole point, and a single-select control was what
-          // made this impossible before.
-          SizedBox(
-            height: 40,
-            child: ListView(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              children: [
-                for (final u in _users)
-                  Padding(
-                    padding: const EdgeInsets.only(right: 6),
-                    child: FilterChip(
-                      label: Text(u.name, style: const TextStyle(fontSize: 11.5)),
-                      selected: _selected.contains(u.employeeId),
-                      onSelected: (on) => setState(() => on
-                          ? _selected.add(u.employeeId)
-                          : _selected.remove(u.employeeId)),
-                    ),
-                  ),
-              ],
+          // A picker rather than a row of chips: sixteen chips scroll off
+          // screen, so you cannot see who you have already selected — which
+          // defeats the point when the task is choosing three specific people.
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: OutlinedButton.icon(
+              onPressed: _pickEmployees,
+              icon: const Icon(Icons.people_alt_outlined, size: 16),
+              label: Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  _selected.isEmpty
+                      ? 'All employees'
+                      : _users
+                          .where((u) => _selected.contains(u.employeeId))
+                          .map((u) => u.name)
+                          .join(', '),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 12.5),
+                ),
+              ),
+              style: OutlinedButton.styleFrom(
+                minimumSize: const Size(double.infinity, 44),
+                alignment: Alignment.centerLeft,
+              ),
             ),
           ),
+          // Only once there is something to export. Buttons that produce an
+          // empty file are worse than no buttons.
+          if (_ran && _rows.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Row(children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: _exportCsv,
+                    icon: const Icon(Icons.table_view_rounded, size: 16),
+                    label: const Text('Excel (CSV)',
+                        style: TextStyle(fontSize: 12)),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: _exportPdf,
+                    icon: const Icon(Icons.picture_as_pdf_rounded, size: 16),
+                    label: const Text('PDF', style: TextStyle(fontSize: 12)),
+                  ),
+                ),
+              ]),
+            ),
+          ],
           const SizedBox(height: 8),
           if (_loading)
             const Expanded(child: Center(child: CircularProgressIndicator()))
