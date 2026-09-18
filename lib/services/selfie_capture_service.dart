@@ -90,6 +90,10 @@ class SelfieCaptureService {
   /// even though both are watermarked identically.
   static bool lastUsedFallback = false;
 
+  /// Why getUserMedia refused, when it did. NotAllowedError means the employee
+  /// or the browser blocked the camera; NotFoundError means there is none.
+  static String? lastCameraError;
+
   /// [context] enables the in-page camera. Optional so existing callers keep
   /// working, but without it capture falls straight through to image_picker
   /// and the backgrounding problem it causes.
@@ -121,6 +125,13 @@ class SelfieCaptureService {
         lastFailure = 'Photo cancelled.';
         return null;
       }
+      // Kept for the failure message and the diagnostics. Without it the only
+      // record was the generic "this browser will not open the camera", which
+      // is the same text whether permission was refused, no camera exists or
+      // the page is not on a secure origin — three problems with three
+      // different remedies, indistinguishable in the log.
+      lastCameraError = camErr;
+
       // Otherwise the camera could not start at all; image_picker may still
       // work, so carry on rather than stopping here.
     }
@@ -287,7 +298,8 @@ class SelfieCaptureService {
       await _markPickerUnavailable();
       lastFailure = 'This browser will not open the camera or photo library. '
           'Use "Attendance Issue" in the menu to have your manager confirm '
-          'your attendance, or try a different browser.';
+          'your attendance, or try a different browser.'
+          '${lastCameraError == null ? '' : ' [camera: $lastCameraError]'}';
       return null;
     } catch (e) {
       lastFailure = 'Could not open the camera or photo picker: $e';

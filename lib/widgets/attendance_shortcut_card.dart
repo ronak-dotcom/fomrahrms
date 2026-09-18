@@ -1105,7 +1105,22 @@ class _AttendanceSheetState extends State<_AttendanceSheet> {
         action: SnackBarAction(
           label: 'Get help',
           textColor: Colors.white,
-          onPressed: () => context.push('/employee/attendance-confirmation'),
+          // Logged before navigating. Someone pressing Get help is the
+          // clearest signal we get that they are stuck, and until now it left
+          // no trace — the diagnostics showed the failures but not that the
+          // person had given up and gone looking for a way round.
+          onPressed: () {
+            unawaited(SupabaseService.logCheckInAttempt(
+              kind: 'check_in',
+              outcome: 'help_requested',
+              reason: 'Pressed "Get help" after: '
+                  '${SelfieCaptureService.lastFailure ?? "selfie failed"}',
+              lat: loc.lat,
+              lng: loc.lng,
+              accuracy: loc.accuracy,
+            ));
+            context.push('/employee/attendance-confirmation');
+          },
         ),
         backgroundColor: Colors.orange.shade700,
         behavior: SnackBarBehavior.floating,
