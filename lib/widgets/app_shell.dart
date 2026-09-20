@@ -33,21 +33,37 @@ const _editFormItems = <_SubItem>[
 
 const _navItems = [
   _NavItem('Dashboard', Icons.dashboard_rounded, '/dashboard'),
-  _NavItem('Employee Management', Icons.people_rounded, '/employee-management'),
-  _NavItem('Attendance Management', Icons.access_time_rounded, '/attendance-management'),
-  _NavItem('Leave Records (view only)', Icons.event_available_rounded, '/leave-management'),
+
+  // Approvals together. They were scattered through the list, so "what needs
+  // me" meant scanning eighteen items for the four that were decisions.
   _NavItem('Approvals',        Icons.approval_rounded,        '/hr/approvals'),
-  _NavItem('Late Review',      Icons.running_with_errors_rounded, '/late-review'),
-  _NavItem('Attendance by Date Range', Icons.date_range_rounded, '/attendance-range'),
   _NavItem('Staff Portal Approvals', Icons.cleaning_services_rounded, '/leave/staff-portal-approvals'),
-  _NavItem('Task Management', Icons.task_alt_rounded, '/task-management'),
-  _NavItem('Appraisals', Icons.fact_check_rounded, '/appraisals'),
-  _NavItem('Payroll Management', Icons.account_balance_wallet_rounded, '/payroll-management'),
-  _NavItem('Interview Process', Icons.record_voice_over_rounded, '/interview-process'),
+  _NavItem('Late Review',      Icons.running_with_errors_rounded, '/late-review'),
+
+  // Attendance and leave: the daily work.
+  _NavItem('Attendance Management', Icons.access_time_rounded, '/attendance-management'),
+  _NavItem('Attendance by Date Range', Icons.date_range_rounded, '/attendance-range'),
+  // event_available reads as "free to book"; these are records of leave taken.
+  _NavItem('Leave Records (view only)', Icons.event_note_rounded, '/leave-management'),
+
+  // People, from hiring through to review.
+  _NavItem('Employee Management', Icons.people_rounded, '/employee-management'),
   _NavItem('Employee Onboarding', Icons.how_to_reg_rounded, '/employee-onboarding'),
-  _NavItem('Lead Management', Icons.leaderboard_rounded, '/lead-management'),
+  _NavItem('Interview Process', Icons.record_voice_over_rounded, '/interview-process'),
+  _NavItem('Appraisals', Icons.fact_check_rounded, '/appraisals'),
+  // flag says nothing; KRAs are tracked objectives.
+  _NavItem('KRA', Icons.track_changes_rounded, '/kra-management'),
+
+  // Money. payments matches the icon used for salary elsewhere, so the same
+  // idea does not wear two faces.
+  _NavItem('Payroll Management', Icons.payments_rounded, '/payroll-management'),
+
+  // Everything else that is run rather than decided.
+  _NavItem('Task Management', Icons.task_alt_rounded, '/task-management'),
+  // leaderboard implies a ranking; these are sales leads.
+  _NavItem('Lead Management', Icons.contact_phone_rounded, '/lead-management'),
   _NavItem('Maintenance Management', Icons.build_rounded, '/maintenance-management'),
-  _NavItem('KRA', Icons.flag_rounded, '/kra-management'),
+
   _NavItem('Notifications', Icons.notifications_rounded, '/notifications'),
   _NavItem('Reports & Analytics', Icons.bar_chart_rounded, '/reports-analytics'),
 ];

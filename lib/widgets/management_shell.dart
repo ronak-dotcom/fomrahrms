@@ -52,7 +52,7 @@ const _navGroups = <_NavGroup>[
     (label: 'Approvals',           icon: Icons.inbox_rounded,         route: '/management/approvals'),
     (label: 'Late Review',         icon: Icons.running_with_errors_rounded, route: '/management/late-review'),
     (label: 'Attendance by Date Range', icon: Icons.date_range_rounded, route: '/management/attendance-range'),
-    (label: 'Leave Approvals (approve / reject)',     icon: Icons.event_available_rounded, route: '/management/leave/team-approvals'),
+    (label: 'Leave Approvals (approve / reject)',     icon: Icons.approval_rounded, route: '/management/leave/team-approvals'),
   ]),
   _NavGroup('People', Icons.people_rounded, [
     (label: 'Employee Management', icon: Icons.badge_rounded,          route: '/management/employee-management'),
@@ -60,7 +60,7 @@ const _navGroups = <_NavGroup>[
     (label: 'Interview Process',   icon: Icons.record_voice_over_rounded, route: '/management/interview-process'),
     (label: 'Interview Review',    icon: Icons.rate_review_rounded,    route: '/management/interview-review'),
     (label: 'Appraisals',          icon: Icons.workspace_premium_rounded, route: '/management/appraisals'),
-    (label: 'KRA',                 icon: Icons.flag_rounded,           route: '/management/kra-management'),
+    (label: 'KRA',                 icon: Icons.track_changes_rounded,           route: '/management/kra-management'),
   ]),
   _NavGroup('Time & Attendance', Icons.access_time_rounded, [
     // Late Coming and GPS Tracking are live routes that were missing from
@@ -69,13 +69,13 @@ const _navGroups = <_NavGroup>[
     (label: 'Late Coming',         icon: Icons.watch_later_rounded,    route: '/management/attendance/late-coming'),
     (label: 'GPS Tracking',        icon: Icons.my_location_rounded,    route: '/management/attendance/gps-tracking'),
     (label: 'Location History',    icon: Icons.travel_explore_rounded, route: '/management/location-history'),
-    (label: 'Leave Records (view only)',    icon: Icons.event_available_rounded, route: '/management/leave-management'),
+    (label: 'Leave Records (view only)',    icon: Icons.event_note_rounded, route: '/management/leave-management'),
   ]),
   _NavGroup('Operations', Icons.work_outline_rounded, [
     (label: 'Task Management',     icon: Icons.task_alt_rounded,       route: '/management/task-management'),
-    (label: 'Lead Management',     icon: Icons.leaderboard_rounded,    route: '/management/lead-management'),
+    (label: 'Lead Management',     icon: Icons.contact_phone_rounded,    route: '/management/lead-management'),
     (label: 'Maintenance',         icon: Icons.build_rounded,          route: '/management/maintenance-management'),
-    (label: 'Payroll Management',  icon: Icons.account_balance_wallet_rounded, route: '/management/payroll-management'),
+    (label: 'Payroll Management',  icon: Icons.payments_rounded, route: '/management/payroll-management'),
   ]),
   _NavGroup('Setup', Icons.settings_rounded, [
     (label: 'Administration',      icon: Icons.admin_panel_settings_rounded, route: '/management/administration'),
@@ -83,7 +83,7 @@ const _navGroups = <_NavGroup>[
     (label: 'Settings',            icon: Icons.tune_rounded,           route: '/management/settings'),
   ]),
   _NavGroup('Edit Forms', Icons.edit_note_rounded, [
-    (label: 'Edit Leave Form',       icon: Icons.event_available_rounded, route: '/management/edit-leave-form'),
+    (label: 'Edit Leave Form',       icon: Icons.edit_calendar_rounded, route: '/management/edit-leave-form'),
     (label: 'Edit Permission Form',  icon: Icons.access_time_rounded,     route: '/management/edit-leave-form'),
     (label: 'Edit Comp Off Form',    icon: Icons.swap_horiz_rounded,      route: '/management/edit-leave-form'),
     (label: 'Edit Interview Form',   icon: Icons.assignment_rounded,      route: '/management/edit-form'),
