@@ -40,6 +40,25 @@ Color get _mgmtColor => AppTheme.primaryBlueDark;
 const _dashboardItem =
     _NavItem('Dashboard', Icons.dashboard_rounded, '/management/dashboard');
 
+/// Pinned above the groups.
+///
+/// Every group starts collapsed, so anything inside one costs two clicks:
+/// open the group, then pick the item. For the handful of screens opened
+/// daily that is a tax paid every single time. These four are the ones
+/// actually reached most — the approvals inbox and the three places a
+/// decision is made — so they sit at the top rather than behind a group.
+/// They remain in their groups too: someone looking under Approvals should
+/// still find them there.
+const _pinnedItems = <_NavItem>[
+  _NavItem('Approvals', Icons.inbox_rounded, '/management/approvals'),
+  _NavItem('Leave Approvals', Icons.approval_rounded,
+      '/management/leave/team-approvals'),
+  _NavItem('Salary Approvals', Icons.payments_rounded,
+      '/management/salary-approvals'),
+  _NavItem('Attendance by Date Range', Icons.date_range_rounded,
+      '/management/attendance-range'),
+];
+
 const _navGroups = <_NavGroup>[
   _NavGroup('Approvals', Icons.approval_rounded, [
     // All four approval queues in one place. Previously: Approvals and Team
@@ -114,6 +133,9 @@ const _flatTailItems = [
 // of every reachable destination regardless of how the sidebar groups them.
 List<BreadcrumbSection> get _breadcrumbSections => [
       (label: _dashboardItem.label, route: _dashboardItem.route),
+      // Pinned items included: Salary Approvals sits only here, so without
+      // this its page would render with no breadcrumb label.
+      for (final i in _pinnedItems) (label: i.label, route: i.route),
       for (final g in _navGroups)
         for (final i in g.items) (label: i.label, route: i.route),
       for (final i in _flatTailItems) (label: i.label, route: i.route),
@@ -128,6 +150,13 @@ List<Widget> _buildNavChildren(String location, {required bool closeDrawer}) {
       selected: location == _dashboardItem.route,
       closeDrawer: closeDrawer,
     ),
+    for (final item in _pinnedItems)
+      _SidebarTile(
+        item: item,
+        selected: location == item.route,
+        closeDrawer: closeDrawer,
+      ),
+    const Divider(height: 14, thickness: 1, color: Colors.white12),
     for (final group in _navGroups)
       _ExpandableNavGroup(
         label: group.label,
