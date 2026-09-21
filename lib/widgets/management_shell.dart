@@ -50,75 +50,75 @@ const _dashboardItem =
 /// They remain in their groups too: someone looking under Approvals should
 /// still find them there.
 const _pinnedItems = <_NavItem>[
-  _NavItem('Approvals', Icons.inbox_rounded, '/management/approvals'),
-  _NavItem('Leave Approvals', Icons.approval_rounded,
+  _NavItem('All Approvals', Icons.inbox_rounded, '/management/approvals'),
+  _NavItem('Leave Approvals', Icons.event_available_rounded,
       '/management/leave/team-approvals'),
-  _NavItem('Salary Approvals', Icons.payments_rounded,
+  _NavItem('Salary Approvals', Icons.request_quote_rounded,
       '/management/salary-approvals'),
   _NavItem('Attendance by Date Range', Icons.date_range_rounded,
       '/management/attendance-range'),
 ];
 
 const _navGroups = <_NavGroup>[
-  _NavGroup('Approvals', Icons.approval_rounded, [
-    // All four approval queues in one place. Previously: Approvals and Team
-    // Leave Approvals were top-level, KRA Approvals was elsewhere in the
-    // list, and Form Approvals was hidden inside the Edit Forms submenu —
-    // so "what needs my decision?" meant checking four unrelated spots.
-    // The single approvals destination. Everything - leave, salary, on-roll,
-    // KRA, forms, attendance - is a category inside it with its own count,
-    // so there is one place to answer "what needs me".
-    (label: 'Approvals',           icon: Icons.inbox_rounded,         route: '/management/approvals'),
+  // Seven groups became five, with every screen kept. Setup and Edit Forms
+  // were both configuration and are now one group; Attendance by Date Range
+  // sat under Approvals although it decides nothing; Payroll sat under
+  // Operations although it is the one money screen. Each item now lives
+  // where someone would look for it first.
+
+  // Decisions waiting on Management.
+  _NavGroup('Approvals', Icons.inbox_rounded, [
+    (label: 'All Approvals',       icon: Icons.inbox_rounded,              route: '/management/approvals'),
+    (label: 'Leave Approvals',     icon: Icons.event_available_rounded,    route: '/management/leave/team-approvals'),
+    (label: 'Salary Approvals',    icon: Icons.request_quote_rounded,      route: '/management/salary-approvals'),
     (label: 'Late Review',         icon: Icons.running_with_errors_rounded, route: '/management/late-review'),
-    (label: 'Attendance by Date Range', icon: Icons.date_range_rounded, route: '/management/attendance-range'),
-    (label: 'Leave Approvals (approve / reject)',     icon: Icons.approval_rounded, route: '/management/leave/team-approvals'),
   ]),
-  _NavGroup('People', Icons.people_rounded, [
-    (label: 'Employee Management', icon: Icons.badge_rounded,          route: '/management/employee-management'),
-    (label: 'Employee Onboarding', icon: Icons.how_to_reg_rounded,     route: '/management/employee-onboarding'),
-    (label: 'Interview Process',   icon: Icons.record_voice_over_rounded, route: '/management/interview-process'),
-    (label: 'Interview Review',    icon: Icons.rate_review_rounded,    route: '/management/interview-review'),
+
+  // Everything about who came in, when and where.
+  _NavGroup('Attendance', Icons.schedule_rounded, [
+    (label: 'Attendance Records',  icon: Icons.fact_check_rounded,        route: '/management/attendance-management'),
+    (label: 'Attendance by Date Range', icon: Icons.date_range_rounded,   route: '/management/attendance-range'),
+    (label: 'Leave Records',       icon: Icons.event_note_rounded,        route: '/management/leave-management'),
+    (label: 'Late Coming',         icon: Icons.more_time_rounded,         route: '/management/attendance/late-coming'),
+    (label: 'Live GPS',            icon: Icons.my_location_rounded,       route: '/management/attendance/gps-tracking'),
+    (label: 'Location History',    icon: Icons.route_rounded,             route: '/management/location-history'),
+  ]),
+
+  // The employee lifecycle, hiring through review.
+  _NavGroup('People', Icons.groups_rounded, [
+    (label: 'Employees',           icon: Icons.badge_rounded,             route: '/management/employee-management'),
+    (label: 'Onboarding',          icon: Icons.how_to_reg_rounded,        route: '/management/employee-onboarding'),
+    (label: 'Interviews',          icon: Icons.record_voice_over_rounded, route: '/management/interview-process'),
+    (label: 'Interview Review',    icon: Icons.rate_review_rounded,       route: '/management/interview-review'),
     (label: 'Appraisals',          icon: Icons.workspace_premium_rounded, route: '/management/appraisals'),
-    (label: 'KRA',                 icon: Icons.track_changes_rounded,           route: '/management/kra-management'),
+    (label: 'KRA',                 icon: Icons.track_changes_rounded,     route: '/management/kra-management'),
   ]),
-  _NavGroup('Time & Attendance', Icons.access_time_rounded, [
-    // Late Coming and GPS Tracking are live routes that were missing from
-    // the nav entirely — reachable only by typing the URL.
-    (label: 'Attendance Records',  icon: Icons.fact_check_rounded,     route: '/management/attendance-management'),
-    (label: 'Late Coming',         icon: Icons.watch_later_rounded,    route: '/management/attendance/late-coming'),
-    (label: 'GPS Tracking',        icon: Icons.my_location_rounded,    route: '/management/attendance/gps-tracking'),
-    (label: 'Location History',    icon: Icons.travel_explore_rounded, route: '/management/location-history'),
-    (label: 'Leave Records (view only)',    icon: Icons.event_note_rounded, route: '/management/leave-management'),
+
+  // Money first, then the day-to-day running of the business.
+  _NavGroup('Payroll & Operations', Icons.business_center_rounded, [
+    (label: 'Payroll',             icon: Icons.payments_rounded,          route: '/management/payroll-management'),
+    (label: 'Tasks',               icon: Icons.task_alt_rounded,          route: '/management/task-management'),
+    (label: 'Leads',               icon: Icons.contact_phone_rounded,     route: '/management/lead-management'),
+    (label: 'Maintenance',         icon: Icons.handyman_rounded,          route: '/management/maintenance-management'),
   ]),
-  _NavGroup('Operations', Icons.work_outline_rounded, [
-    (label: 'Task Management',     icon: Icons.task_alt_rounded,       route: '/management/task-management'),
-    (label: 'Lead Management',     icon: Icons.contact_phone_rounded,    route: '/management/lead-management'),
-    (label: 'Maintenance',         icon: Icons.build_rounded,          route: '/management/maintenance-management'),
-    (label: 'Payroll Management',  icon: Icons.payments_rounded, route: '/management/payroll-management'),
-  ]),
-  _NavGroup('Setup', Icons.settings_rounded, [
+
+  // Configuration: how the system behaves and what its forms ask.
+  _NavGroup('Settings & Forms', Icons.settings_rounded, [
     (label: 'Administration',      icon: Icons.admin_panel_settings_rounded, route: '/management/administration'),
-    (label: 'Location Management', icon: Icons.location_on_rounded,    route: '/management/location-management'),
-    (label: 'Settings',            icon: Icons.tune_rounded,           route: '/management/settings'),
+    (label: 'Office Locations',    icon: Icons.location_city_rounded,     route: '/management/location-management'),
+    (label: 'Settings',            icon: Icons.tune_rounded,              route: '/management/settings'),
+    (label: 'Leave, Permission & Comp Off Forms', icon: Icons.edit_calendar_rounded, route: '/management/edit-leave-form'),
+    (label: 'Interview Form',      icon: Icons.assignment_rounded,        route: '/management/edit-form'),
+    (label: 'Onboarding Form',     icon: Icons.assignment_ind_rounded,    route: '/management/edit-onboarding-form'),
+    (label: 'Maintenance Form',    icon: Icons.build_circle_rounded,      route: '/management/edit-maintenance-form'),
   ]),
-  _NavGroup('Edit Forms', Icons.edit_note_rounded, [
-    (label: 'Edit Leave Form',       icon: Icons.edit_calendar_rounded, route: '/management/edit-leave-form'),
-    (label: 'Edit Permission Form',  icon: Icons.access_time_rounded,     route: '/management/edit-leave-form'),
-    (label: 'Edit Comp Off Form',    icon: Icons.swap_horiz_rounded,      route: '/management/edit-leave-form'),
-    (label: 'Edit Interview Form',   icon: Icons.assignment_rounded,      route: '/management/edit-form'),
-    (label: 'Edit Onboarding Form',  icon: Icons.how_to_reg_rounded,      route: '/management/edit-onboarding-form'),
-    (label: 'Edit Maintenance Form', icon: Icons.build_rounded,           route: '/management/edit-maintenance-form'),
-  ]),
-  // Management are employees too. All four of these routes existed and none
-  // was linked from anywhere, so their own profile, attendance, balance and
-  // payslips were unreachable except by typing a URL. Oversight-only accounts
-  // are filtered out of attendance elsewhere, so the pages simply show
-  // nothing for them rather than being wrong.
-  _NavGroup('My Space', Icons.person_outline_rounded, [
-    (label: 'My Profile',            icon: Icons.badge_outlined,          route: '/management/my-profile'),
-    (label: 'My Attendance & Leaves', icon: Icons.event_note_rounded,     route: '/management/attendance-leaves'),
-    (label: 'My Leave Balance',      icon: Icons.account_balance_wallet_rounded, route: '/management/leave/balance'),
-    (label: 'My Payslips',           icon: Icons.receipt_long_rounded,    route: '/management/my-payslips'),
+
+  // Management are employees too.
+  _NavGroup('My Space', Icons.person_rounded, [
+    (label: 'My Profile',          icon: Icons.account_circle_rounded,    route: '/management/my-profile'),
+    (label: 'My Attendance & Leaves', icon: Icons.calendar_month_rounded, route: '/management/attendance-leaves'),
+    (label: 'My Leave Balance',    icon: Icons.account_balance_wallet_rounded, route: '/management/leave/balance'),
+    (label: 'My Payslips',         icon: Icons.receipt_long_rounded,      route: '/management/my-payslips'),
   ]),
 ];
 
