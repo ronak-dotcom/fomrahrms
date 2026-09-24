@@ -291,15 +291,20 @@ class _ManagementDashboardPageState extends State<ManagementDashboardPage> {
                   // opening the app, above the operational content.
                   SizedBox(height: narrow ? 24 : 32),
 
-                  // Every nav destination, grouped. Management works from
-                  // this page rather than the sidebar, so anything missing
-                  // here is effectively missing from the app for them.
-                  for (final group in _sectionGroups) ...[
-                    _SectionLabel(icon: group.icon, label: group.label),
-                    const SizedBox(height: 16),
-                    _SectionGrid(sections: group.sections, pending: _pending),
-                    SizedBox(height: narrow ? 24 : 32),
-                  ],
+                  // Only what is actually waiting. The page used to open with
+                  // twenty-six cards covering every destination — the same
+                  // list the sidebar now carries — so the four that needed a
+                  // decision were indistinguishable from the twenty-two that
+                  // did not, and the answer to "what needs me" took a scroll
+                  // and a scan.
+                  _NeedsAttention(pending: _pending, sections: _allSections),
+                  SizedBox(height: narrow ? 24 : 32),
+
+                  // Everything else is still here, one tap away. Collapsed by
+                  // default rather than removed: Management reaches some
+                  // screens from this page out of habit, and taking them away
+                  // would break that for no gain.
+                  _AllSections(groups: _sectionGroups, pending: _pending),
 
                   const SizedBox(height: 8),
                 ],
@@ -311,6 +316,151 @@ class _ManagementDashboardPageState extends State<ManagementDashboardPage> {
       ),
       ),
     );
+  }
+}
+
+/// Flat list of every section, for looking one up by route.
+List<_Section> get _allSections =>
+    [for (final g in _sectionGroups) ...g.sections];
+
+/// What is actually waiting on a decision.
+///
+/// Shows only sections with a pending count, so the page answers "what needs
+/// me" without a scroll. When nothing is waiting it says so plainly rather
+/// than rendering an empty space that looks like a loading failure.
+class _NeedsAttention extends StatelessWidget {
+  final Map<String, int> pending;
+  final List<_Section> sections;
+  const _NeedsAttention({required this.pending, required this.sections});
+
+  @override
+  Widget build(BuildContext context) {
+    final waiting = sections
+        .where((s) => (pending[s.route] ?? 0) > 0)
+        .toList()
+      // Most pressing first: a queue of nine matters more than one of one.
+      ..sort((a, b) => (pending[b.route] ?? 0).compareTo(pending[a.route] ?? 0));
+
+    if (waiting.isEmpty) {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(18),
+        decoration: BoxDecoration(
+          color: Colors.green.shade50,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.green.shade100),
+        ),
+        child: Row(children: [
+          Icon(Icons.check_circle_rounded, color: Colors.green.shade600, size: 20),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text('Nothing waiting on you.',
+                style: TextStyle(
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.green.shade900)),
+          ),
+        ]),
+      );
+    }
+
+    final total = waiting.fold<int>(0, (t, s) => t + (pending[s.route] ?? 0));
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      _SectionLabel(
+          icon: Icons.pending_actions_rounded,
+          label: '$total waiting on you'),
+      const SizedBox(height: 16),
+      Wrap(spacing: 12, runSpacing: 12, children: [
+        for (final s in waiting)
+          SizedBox(
+            width: 230,
+            child: Material(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(12),
+              child: InkWell(
+                borderRadius: BorderRadius.circular(12),
+                onTap: () => context.push(s.route),
+                child: Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.amber.shade200),
+                  ),
+                  child: Row(children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: Colors.amber.shade50,
+                        borderRadius: BorderRadius.circular(9),
+                      ),
+                      child: Icon(s.icon, size: 18, color: Colors.amber.shade800),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(s.title,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                              fontSize: 12.5, fontWeight: FontWeight.w600)),
+                    ),
+                    const SizedBox(width: 6),
+                    Text('${pending[s.route]}',
+                        style: TextStyle(
+                            fontSize: 17,
+                            fontWeight: FontWeight.w800,
+                            color: Colors.amber.shade800)),
+                  ]),
+                ),
+              ),
+            ),
+          ),
+      ]),
+    ]);
+  }
+}
+
+/// The full destination list, collapsed.
+class _AllSections extends StatefulWidget {
+  final List<_SectionGroup> groups;
+  final Map<String, int> pending;
+  const _AllSections({required this.groups, required this.pending});
+
+  @override
+  State<_AllSections> createState() => _AllSectionsState();
+}
+
+class _AllSectionsState extends State<_AllSections> {
+  bool _open = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      InkWell(
+        borderRadius: BorderRadius.circular(8),
+        onTap: () => setState(() => _open = !_open),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          child: Row(children: [
+            Icon(_open ? Icons.expand_less_rounded : Icons.expand_more_rounded,
+                size: 20, color: AppTheme.textSecondary),
+            const SizedBox(width: 6),
+            Text(_open ? 'Hide all sections' : 'All sections',
+                style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: AppTheme.textSecondary)),
+          ]),
+        ),
+      ),
+      if (_open)
+        for (final group in widget.groups) ...[
+          const SizedBox(height: 8),
+          _SectionLabel(icon: group.icon, label: group.label),
+          const SizedBox(height: 16),
+          _SectionGrid(sections: group.sections, pending: widget.pending),
+          const SizedBox(height: 24),
+        ],
+    ]);
   }
 }
 
