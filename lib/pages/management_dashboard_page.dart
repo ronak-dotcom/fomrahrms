@@ -99,6 +99,7 @@ class _ManagementDashboardPageState extends State<ManagementDashboardPage> {
   String _totalEmployees = '—';
   String _present = '—';
   String _absent  = '—';
+  int _weeklyOffToday = 0;
   // route → number of items waiting on a decision, shown as a badge on the
   // section card. The dashboard previously just repeated the sidebar's
   // links, so it told you where things live but never that anything needed
@@ -145,6 +146,18 @@ class _ManagementDashboardPageState extends State<ManagementDashboardPage> {
               holidayDates: holidays,
               leaveApps: leaves,
             ).countsAsAbsent)
+        .length;
+
+    // Same breakdown as the HR dashboard: without it the absent figure
+    // disagrees with a head count whenever someone is on their rota day off.
+    final onWeeklyOff = tracked
+        .where((u) => !presentNames.contains(u.name.trim().toLowerCase()))
+        .where((u) => classifyMissingAttendance(
+              employee: u,
+              date: today,
+              holidayDates: holidays,
+              leaveApps: leaves,
+            ) == NonWorkingReason.weeklyOff)
         .length;
 
     // Counted here rather than inside the card so the card stays a dumb
@@ -199,6 +212,7 @@ class _ManagementDashboardPageState extends State<ManagementDashboardPage> {
         _totalEmployees = '${tracked.length}';
         _present = '${presentNames.length}';
         _absent  = '$absent';
+        _weeklyOffToday = onWeeklyOff;
         _users = users;
         _records = records;
         _leaveApps = leaves;
@@ -239,6 +253,7 @@ class _ManagementDashboardPageState extends State<ManagementDashboardPage> {
                     totalEmployees: _totalEmployees,
                     present: _present,
                     absent: _absent,
+                    weeklyOff: _weeklyOffToday,
                     users: _users,
                     records: _records,
                     leaveApps: _leaveApps,
@@ -329,6 +344,8 @@ class _MgmtStatStrip extends StatelessWidget {
   final String totalEmployees;
   final String present;
   final String absent;
+  /// People off on their rota day, shown in brackets beside the absent count.
+  final int weeklyOff;
   final List<AppUser> users;
   final List<AttendanceRecord> records;
   final List<LeaveApplication> leaveApps;
@@ -336,6 +353,7 @@ class _MgmtStatStrip extends StatelessWidget {
       {required this.totalEmployees,
       required this.present,
       required this.absent,
+      required this.weeklyOff,
       required this.users,
       required this.records,
       this.leaveApps = const []});
@@ -463,7 +481,9 @@ class _MgmtStatStrip extends StatelessWidget {
         ),
       ),
       AppStatCard(
-        title: 'Absent Today',
+        title: weeklyOff > 0
+            ? 'Absent Today ($weeklyOff on week off)'
+            : 'Absent Today',
         value: absent,
         icon: Icons.cancel_rounded,
         gaugePercent: _pct(absent, totalEmployees),

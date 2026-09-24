@@ -31,6 +31,7 @@ class _DashboardPageState extends State<DashboardPage> {
   String _totalEmployees = '—';
   String _present = '—';
   String _absent  = '—';
+  int _weeklyOffToday = 0;
   List<AppUser> _users = [];
   List<AttendanceRecord> _records = [];
 
@@ -83,11 +84,26 @@ class _DashboardPageState extends State<DashboardPage> {
             ).countsAsAbsent)
         .length;
 
+    // Counted separately and shown beside the absent figure. Four people were
+    // missing today and the card read 3, because one was on his rota day off.
+    // The number was right and looked wrong, which costs more trust than
+    // being slightly off would.
+    final onWeeklyOff = tracked
+        .where((u) => !presentNames.contains(u.name.trim().toLowerCase()))
+        .where((u) => classifyMissingAttendance(
+              employee: u,
+              date: today,
+              holidayDates: holidays,
+              leaveApps: leaves,
+            ) == NonWorkingReason.weeklyOff)
+        .length;
+
     if (mounted) {
       setState(() {
         _totalEmployees = '$total';
         _present = '$present';
         _absent  = '$absent';
+        _weeklyOffToday = onWeeklyOff;
         _users = users;
         _records = records;
       });
@@ -123,6 +139,7 @@ class _DashboardPageState extends State<DashboardPage> {
                       totalEmployees: _totalEmployees,
                       present: _present,
                       absent: _absent,
+                      weeklyOff: _weeklyOffToday,
                       users: _users,
                       records: _records,
                     ),
@@ -208,10 +225,15 @@ class _HrStatStrip extends StatelessWidget {
   final String totalEmployees;
   final String present;
   final String absent;
+  /// People off on their rota day. Shown beside the absent count because
+  /// otherwise the two numbers disagree with a head count and the card looks
+  /// wrong when it is right.
+  final int weeklyOff;
   final List<AppUser> users;
   final List<AttendanceRecord> records;
   const _HrStatStrip(
-      {required this.totalEmployees,
+      {required this.weeklyOff,
+      required this.totalEmployees,
       required this.present,
       required this.absent,
       required this.users,
@@ -326,7 +348,12 @@ class _HrStatStrip extends StatelessWidget {
         ),
       ),
       AppStatCard(
-        title: 'Absent Today',
+        // The bracket accounts for the gap between this number and a head
+        // count. Four people were missing and the card read 3, because one
+        // was on his rota day off — correct, but it looked like a fault.
+        title: weeklyOff > 0
+            ? 'Absent Today ($weeklyOff on week off)'
+            : 'Absent Today',
         value: absent,
         icon: Icons.cancel_rounded,
         gaugePercent: _pct(absent, totalEmployees),
