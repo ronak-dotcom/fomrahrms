@@ -40,7 +40,11 @@ Color get _mgmtColor => AppTheme.primaryBlueDark;
 const _dashboardItem =
     _NavItem('Dashboard', Icons.dashboard_rounded, '/management/dashboard');
 
-/// Pinned above the groups.
+/// The decisions, pinned above the groups.
+///
+/// These four are not repeated in any group. An earlier version pinned them
+/// AND left them in an Approvals group, so the sidebar showed "Leave
+/// Approvals" twice — which is the confusion this was meant to end.
 ///
 /// Every group starts collapsed, so anything inside one costs two clicks:
 /// open the group, then pick the item. For the handful of screens opened
@@ -55,8 +59,8 @@ const _pinnedItems = <_NavItem>[
       '/management/leave/team-approvals'),
   _NavItem('Salary Approvals', Icons.request_quote_rounded,
       '/management/salary-approvals'),
-  _NavItem('Attendance by Date Range', Icons.date_range_rounded,
-      '/management/attendance-range'),
+  _NavItem('Late Review', Icons.running_with_errors_rounded,
+      '/management/late-review'),
 ];
 
 const _navGroups = <_NavGroup>[
@@ -65,14 +69,6 @@ const _navGroups = <_NavGroup>[
   // sat under Approvals although it decides nothing; Payroll sat under
   // Operations although it is the one money screen. Each item now lives
   // where someone would look for it first.
-
-  // Decisions waiting on Management.
-  _NavGroup('Approvals', Icons.inbox_rounded, [
-    (label: 'All Approvals',       icon: Icons.inbox_rounded,              route: '/management/approvals'),
-    (label: 'Leave Approvals',     icon: Icons.event_available_rounded,    route: '/management/leave/team-approvals'),
-    (label: 'Salary Approvals',    icon: Icons.request_quote_rounded,      route: '/management/salary-approvals'),
-    (label: 'Late Review',         icon: Icons.running_with_errors_rounded, route: '/management/late-review'),
-  ]),
 
   // Everything about who came in, when and where.
   _NavGroup('Attendance', Icons.schedule_rounded, [
