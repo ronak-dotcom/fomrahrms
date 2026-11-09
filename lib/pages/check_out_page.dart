@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../models/attendance_policy_store.dart';
 import '../models/attendance_store.dart';
@@ -183,7 +184,12 @@ class _CheckOutPageState extends State<CheckOutPage> {
       label: 'Check-Out',
     );
     if (!mounted) return;
-    if (selfiePath == null && selfieRequiredForCurrentUser) {
+    // See check_in_page: a photo taken but not uploaded lets the check-out
+    // through with the selfie marked as owed. Being unable to check out is
+    // worse than being unable to check in — it leaves the day open.
+    final selfiePending =
+        selfiePath == null && SelfieCaptureService.captureSucceededUploadDidNot;
+    if (selfiePath == null && selfieRequiredForCurrentUser && !selfiePending) {
       setState(() => _locatingForCheckOut = false);
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         content: Text('Selfie required to check out. ${SelfieCaptureService.lastFailure ?? "Please try again."}'),
@@ -205,10 +211,25 @@ class _CheckOutPageState extends State<CheckOutPage> {
       note: _noteController.text.trim(),
       selfiePath: selfiePath ?? '',
       selfieFromPicker: SelfieCaptureService.lastUsedFallback,
+      selfiePending: selfiePending,
       lat: pos?.latitude,
       lng: pos?.longitude,
       withinRadius: geofence.requiresLocation ? geofence.isWithinAnyLocation : null,
     );
+
+    if (selfiePending) {
+      unawaited(() async {
+        final path = await SelfieCaptureService.retryPendingUpload();
+        if (path != null) {
+          await SupabaseService.attachLateSelfie(
+            employeeId: UserSession.employeeId,
+            date: date,
+            kind: 'checkout',
+            selfiePath: path,
+          );
+        }
+      }());
+    }
 
     if (!mounted) return;
     if (UserSession.email.isNotEmpty) {

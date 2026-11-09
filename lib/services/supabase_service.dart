@@ -2396,6 +2396,32 @@ class SupabaseService {
   static String _attendanceId(String employeeId, String date) =>
       '${employeeId.isNotEmpty ? employeeId : 'emp'}_${date.replaceAll('/', '-')}';
 
+  /// Attaches a selfie that was uploaded after the attendance row was
+  /// written, and clears the pending flag.
+  ///
+  /// The check-in no longer waits on the photo, so the upload can land
+  /// seconds later. [kind] is 'checkin' or 'checkout'.
+  static Future<void> attachLateSelfie({
+    required String employeeId,
+    required String date,
+    required String kind,
+    required String selfiePath,
+  }) async {
+    final db = _db;
+    if (db == null || selfiePath.isEmpty) return;
+    final isOut = kind == 'checkout';
+    try {
+      await db.from('attendance_records').update({
+        isOut ? 'check_out_selfie_path' : 'check_in_selfie_path': selfiePath,
+        isOut ? 'check_out_selfie_pending' : 'check_in_selfie_pending': false,
+      }).eq('id', _attendanceId(employeeId, date));
+    } catch (e) {
+      // Left pending rather than retried here: the row is already correct
+      // apart from the photo, and v_attendance_selfie_pending still shows it.
+      _writeFailed('attachLateSelfie', e);
+    }
+  }
+
   static Future<String?> saveCheckIn({
     required String employeeName,
     required String employeeId,
@@ -2405,6 +2431,7 @@ class SupabaseService {
     String note = '',
     String selfiePath = '',
     bool selfieFromPicker = false,
+    bool selfiePending = false,
     double? lat,
     double? lng,
     bool? withinRadius,
@@ -2423,6 +2450,10 @@ class SupabaseService {
         'location':                location,
         'check_in_note':           note,
         'check_in_selfie_path':    selfiePath,
+        // The photo was taken but its upload failed. The check-in stands and
+        // the selfie is still owed, rather than the employee being turned
+        // away over a few seconds of bad wifi.
+        'check_in_selfie_pending': selfiePending,
         // Whether the device would open its camera directly, or fell back to
         // the photo picker. Both watermark identically, so without this the
         // difference is invisible to HR.
@@ -2511,6 +2542,7 @@ class SupabaseService {
     String note = '',
     String selfiePath = '',
     bool selfieFromPicker = false,
+    bool selfiePending = false,
     double? lat,
     double? lng,
     bool? withinRadius,
@@ -2523,6 +2555,8 @@ class SupabaseService {
             'check_out_note':          note,
             'check_out_selfie_path':   selfiePath,
             'check_out_selfie_from_picker': selfieFromPicker,
+            // See saveCheckIn: photo taken, upload failed, check-out stands.
+            'check_out_selfie_pending': selfiePending,
             'check_out_lat':           lat,
             'check_out_lng':           lng,
             'check_out_within_radius': withinRadius,

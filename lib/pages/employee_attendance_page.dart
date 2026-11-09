@@ -146,7 +146,11 @@ class _EmployeeAttendancePageState extends State<EmployeeAttendancePage> {
       kind: 'checkin',
       label: 'Check-In',
     );
-    if (selfiePath == null && selfieRequiredForCurrentUser) {
+    // See check_in_page: a photo taken but not uploaded lets the check-in
+    // through with the selfie marked as owed and retried below.
+    final selfiePending =
+        selfiePath == null && SelfieCaptureService.captureSucceededUploadDidNot;
+    if (selfiePath == null && selfieRequiredForCurrentUser && !selfiePending) {
       if (!mounted) return;
       setState(() => _submitting = false);
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -183,12 +187,28 @@ class _EmployeeAttendancePageState extends State<EmployeeAttendancePage> {
       note:     _checkInNoteCtrl.text.trim(),
       selfiePath: selfiePath ?? '',
       selfieFromPicker: SelfieCaptureService.lastUsedFallback,
+      selfiePending: selfiePending,
       lat:          loc.lat,
       lng:          loc.lng,
       withinRadius: loc.withinRadius,
       accuracy:     loc.accuracy,
       policyName:   loc.policyName,
     );
+
+    // The row exists now, so a late-landing photo can be attached to it.
+    if (selfiePending && err == null) {
+      unawaited(() async {
+        final path = await SelfieCaptureService.retryPendingUpload();
+        if (path != null) {
+          await SupabaseService.attachLateSelfie(
+            employeeId: UserSession.employeeId,
+            date: date,
+            kind: 'checkin',
+            selfiePath: path,
+          );
+        }
+      }());
+    }
 
     if (!mounted) return;
 
@@ -245,7 +265,11 @@ class _EmployeeAttendancePageState extends State<EmployeeAttendancePage> {
       kind: 'checkout',
       label: 'Check-Out',
     );
-    if (selfiePath == null && selfieRequiredForCurrentUser) {
+    // See check_in_page: photo taken, upload failed — the check-out stands
+    // and the selfie is marked as owed, then retried below.
+    final selfiePending =
+        selfiePath == null && SelfieCaptureService.captureSucceededUploadDidNot;
+    if (selfiePath == null && selfieRequiredForCurrentUser && !selfiePending) {
       if (!mounted) return;
       setState(() => _submitting = false);
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -269,7 +293,21 @@ class _EmployeeAttendancePageState extends State<EmployeeAttendancePage> {
       note: _checkOutNoteCtrl.text.trim(),
       selfiePath: selfiePath ?? '',
       selfieFromPicker: SelfieCaptureService.lastUsedFallback,
+      selfiePending: selfiePending,
     );
+    if (selfiePending) {
+      unawaited(() async {
+        final path = await SelfieCaptureService.retryPendingUpload();
+        if (path != null) {
+          await SupabaseService.attachLateSelfie(
+            employeeId: UserSession.employeeId,
+            date: date,
+            kind: 'checkout',
+            selfiePath: path,
+          );
+        }
+      }());
+    }
     if (UserSession.email.isNotEmpty) {
       NotificationService.checkOutRecorded(
         employeeEmail: UserSession.email,

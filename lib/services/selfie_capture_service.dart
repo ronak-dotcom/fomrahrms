@@ -225,11 +225,60 @@ class SelfieCaptureService {
     }
   }
 
+  /// Set when the photo was taken but could not be uploaded.
+  ///
+  /// The bytes are kept so the upload can be retried in the background once
+  /// the check-in itself has been recorded. Memory only: if the tab is closed
+  /// the photo is lost, but the attendance row survives and stays flagged as
+  /// owing one, which is the part that matters. Cleared on a later success.
+  static Uint8List? pendingBytes;
+  static String? _pendingEmployeeId;
+  static String? _pendingDate;
+  static String? _pendingKind;
+
+  /// Whether the last [captureAndUpload] took a photo it could not upload.
+  /// Callers use this to let the check-in through with the selfie marked
+  /// pending, instead of refusing it outright.
+  static bool get captureSucceededUploadDidNot => pendingBytes != null;
+
+  /// Retries the upload held by [pendingBytes], once.
+  ///
+  /// Returns the storage path on success, null otherwise. Safe to call when
+  /// nothing is pending. The caller patches the attendance row and clears the
+  /// pending flag; failure here simply leaves it pending.
+  static Future<String?> retryPendingUpload() async {
+    final bytes = pendingBytes;
+    final emp = _pendingEmployeeId;
+    final date = _pendingDate;
+    final kind = _pendingKind;
+    if (bytes == null || emp == null || date == null || kind == null) {
+      return null;
+    }
+    final path = await SupabaseService.uploadAttendanceSelfie(
+      employeeId: emp, date: date, kind: kind, bytes: bytes,
+    );
+    if (path != null) _clearPending();
+    return path;
+  }
+
+  static void _clearPending() {
+    pendingBytes = null;
+    _pendingEmployeeId = null;
+    _pendingDate = null;
+    _pendingKind = null;
+  }
+
   /// Captures + uploads in one step, for the three check-in/out entry
   /// points that all need identical "no selfie, no check-in/out" behavior.
-  /// Returns the storage path, or null if the employee cancelled the camera
-  /// or the shot couldn't be captured/compressed/uploaded — callers must
-  /// treat null as a hard stop, not a skip.
+  ///
+  /// Returns the storage path. Null means no usable photo: the employee
+  /// cancelled, or the camera or compression failed, and the caller must
+  /// treat that as a hard stop. Null *with*
+  /// [captureSucceededUploadDidNot] true is the separate case where the
+  /// photo was taken and only the upload failed — there the caller should
+  /// let the check-in through and mark the selfie pending, because blocking
+  /// it costs the employee a manager-and-HR vouching round for what is
+  /// usually a few seconds of bad wifi.
   static Future<String?> captureAndUpload({
     required String employeeId,
     required String date, // 'dd/MM/yyyy'
@@ -237,6 +286,7 @@ class SelfieCaptureService {
     required String label, // 'Check-In' | 'Check-Out'
     BuildContext? context,
   }) async {
+    _clearPending();
     final bytes = await capture(label: label, context: context);
     if (bytes == null) {
       // capture() has already set lastFailure with the specific step.
@@ -268,9 +318,15 @@ class SelfieCaptureService {
       lastFailure = why == null || why.isEmpty
           ? 'Photo taken but upload failed — check your connection and retry.'
           : 'Photo taken but upload failed: $why';
+      // Held for a background retry once the check-in has been recorded.
+      // The photo exists and is good; only the transport failed.
+      pendingBytes = bytes;
+      _pendingEmployeeId = employeeId;
+      _pendingDate = date;
+      _pendingKind = kind;
       unawaited(SupabaseService.logCheckInAttempt(
         kind: kind == 'checkout' ? 'check_out' : 'check_in',
-        outcome: 'selfie_failed',
+        outcome: 'selfie_upload_pending',
         reason: lastFailure!,
       ));
     }

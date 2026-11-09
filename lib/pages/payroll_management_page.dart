@@ -996,6 +996,10 @@ class _GeneratePayslipPageState extends State<GeneratePayslipPage> {
   /// fields so HR can see where the numbers came from — or that they are
   /// estimates because the employee has no salary structure.
   String _engineNote = '';
+  /// True while the selected month's 26th-to-25th cycle is still running.
+  /// Generating a payslip is blocked until it closes, because the engine
+  /// counts every day still to come as a day lost.
+  bool _cycleIncomplete = false;
   int _lateCount = 0;
   late final TextEditingController _workingDaysCtrl;
   late final TextEditingController _lopDaysCtrl;
@@ -1215,13 +1219,43 @@ class _GeneratePayslipPageState extends State<GeneratePayslipPage> {
   /// employee has no salary structure. Saying so is the point: silently
   /// billing a full month is how the gap stayed invisible.
   Future<void> _applyEngineDays(int year, int month) async {
+    // The cycle carrying this month's name ends on its 25th —
+    // "August'26" in the master sheet is 26 Jul to 25 Aug.
+    final cycleEnd = DateTime(year, month, 25);
+
+    // generate_payroll measures the whole cycle whether or not it has
+    // happened yet, so a cycle still running reports every day still to come
+    // as a day lost. On 9 November it had Saurabh Chandak at 14 days lost and
+    // ₹46,519 against a real month of about ₹76,000, and the screen wrote
+    // that straight into the payslip with nothing to say the month wasn't
+    // over. Refuse the figures until the cycle has closed rather than show
+    // numbers that look settled and are not.
+    final today = DateTime.now();
+    final cycleOver = DateTime(today.year, today.month, today.day)
+        .isAfter(cycleEnd);
+    if (!cycleOver) {
+      final daysLeft = cycleEnd
+              .difference(DateTime(today.year, today.month, today.day))
+              .inDays +
+          1;
+      setState(() {
+        _cycleIncomplete = true;
+        _engineNote = 'This cycle is still running — it ends on '
+            '${cycleEnd.day}/${cycleEnd.month}/${cycleEnd.year}, '
+            '$daysLeft day${daysLeft == 1 ? '' : 's'} from now. '
+            'Attendance for the remaining days has not been recorded, so '
+            'days worked and LOP cannot be calculated yet. Generate this '
+            'payslip once the cycle has closed.';
+      });
+      return;
+    }
+
     final row = await SupabaseService.fetchPayrollForCycle(
       employeeId: widget.user.employeeId,
-      // The cycle carrying this month's name ends on its 25th —
-      // "August'26" in the master sheet is 26 Jul to 25 Aug.
-      cycleEnd: DateTime(year, month, 25),
+      cycleEnd: cycleEnd,
     );
     if (!mounted) return;
+    setState(() => _cycleIncomplete = false);
     if (row == null) {
       setState(() => _engineNote = 'No salary structure on record — day counts '
           'below are estimated from the calendar, not from attendance. '
@@ -1301,6 +1335,10 @@ class _GeneratePayslipPageState extends State<GeneratePayslipPage> {
   }
 
   Future<void> _save() async {
+    // The button is disabled for an unfinished cycle; this is the second
+    // lock, in case the month was switched after the figures were read.
+    // Committing a payslip here pays it, so it is worth two checks.
+    if (_cycleIncomplete) return;
     setState(() => _saving = true);
     final workingDays = int.tryParse(_workingDaysCtrl.text.trim()) ?? _workingDays;
     final lopDays = int.tryParse(_lopDaysCtrl.text.trim()) ?? _lopDays;
@@ -1459,7 +1497,11 @@ class _GeneratePayslipPageState extends State<GeneratePayslipPage> {
                 if (_engineNote.isNotEmpty) ...[
                   Builder(builder: (_) {
                     final estimated = _engineNote.startsWith('No salary structure');
-                    final tone = estimated ? Colors.orange : _purple;
+                    final tone = _cycleIncomplete
+                        ? Colors.orange.shade800
+                        : estimated
+                            ? Colors.orange
+                            : _purple;
                     return Container(
                       width: double.infinity,
                       padding: const EdgeInsets.all(10),
@@ -1469,9 +1511,11 @@ class _GeneratePayslipPageState extends State<GeneratePayslipPage> {
                         border: Border.all(color: tone.withValues(alpha: 0.30)),
                       ),
                       child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                        Icon(estimated
-                                ? Icons.warning_amber_rounded
-                                : Icons.calculate_outlined,
+                        Icon(_cycleIncomplete
+                                ? Icons.hourglass_top_rounded
+                                : estimated
+                                    ? Icons.warning_amber_rounded
+                                    : Icons.calculate_outlined,
                             size: 16, color: tone),
                         const SizedBox(width: 8),
                         Expanded(
@@ -1711,12 +1755,24 @@ class _GeneratePayslipPageState extends State<GeneratePayslipPage> {
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton.icon(
-                    onPressed: _saving ? null : _save,
+                    // Blocked while the cycle is still running: the day
+                    // counts above are not available yet, and saving would
+                    // commit a month's pay against attendance that has not
+                    // been recorded.
+                    onPressed: (_saving || _cycleIncomplete) ? null : _save,
                     icon: _saving
                         ? const SizedBox(width: 16, height: 16,
                             child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                        : const Icon(Icons.check_circle_rounded, size: 18),
-                    label: Text(locked ? 'Approve & Generate' : 'Generate Payslip'),
+                        : Icon(
+                            _cycleIncomplete
+                                ? Icons.lock_clock_rounded
+                                : Icons.check_circle_rounded,
+                            size: 18),
+                    label: Text(_cycleIncomplete
+                        ? 'Available once the cycle closes'
+                        : locked
+                            ? 'Approve & Generate'
+                            : 'Generate Payslip'),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: _purple,
                       foregroundColor: Colors.white,

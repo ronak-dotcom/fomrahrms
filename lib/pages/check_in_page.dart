@@ -236,7 +236,14 @@ class _CheckInPageState extends State<CheckInPage> {
       label: 'Check-In',
     );
     if (!mounted) return;
-    if (selfiePath == null && selfieRequiredForCurrentUser) {
+    // A photo that was taken but could not be uploaded is not the same as no
+    // photo. Turning the employee away in that case sent them to the vouching
+    // flow — a manager and HR approval — over a few seconds of bad wifi. The
+    // check-in goes through, the selfie is marked as owed, and the upload is
+    // retried in the background below.
+    final selfiePending =
+        selfiePath == null && SelfieCaptureService.captureSucceededUploadDidNot;
+    if (selfiePath == null && selfieRequiredForCurrentUser && !selfiePending) {
       setState(() => _locatingForCheckIn = false);
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         content: Text('Selfie required to check in. ${SelfieCaptureService.lastFailure ?? "Please try again."}'),
@@ -271,12 +278,29 @@ class _CheckInPageState extends State<CheckInPage> {
       note: _noteController.text.trim(),
       selfiePath: selfiePath ?? '',
       selfieFromPicker: SelfieCaptureService.lastUsedFallback,
+      selfiePending: selfiePending,
       lat: pos?.latitude,
       lng: pos?.longitude,
       accuracy: pos?.accuracy,
       withinRadius: geofence.requiresLocation ? geofence.isWithinAnyLocation : null,
       policyName: policy.name,
     );
+
+    // The row exists now, so the photo can be attached whenever it lands.
+    // Unawaited: the employee is already checked in and should not wait.
+    if (selfiePending && err == null) {
+      unawaited(() async {
+        final path = await SelfieCaptureService.retryPendingUpload();
+        if (path != null) {
+          await SupabaseService.attachLateSelfie(
+            employeeId: UserSession.employeeId,
+            date: date,
+            kind: 'checkin',
+            selfiePath: path,
+          );
+        }
+      }());
+    }
 
     if (!mounted) return;
 
