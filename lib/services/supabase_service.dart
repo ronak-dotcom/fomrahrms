@@ -1149,23 +1149,64 @@ class SupabaseService {
     final safeDate = date.replaceAll('/', '-');
     final path =
         '$employeeId/${safeDate}_${kind}_${DateTime.now().millisecondsSinceEpoch}.jpg';
-    try {
-      await db.storage.from(_selfieBucket).uploadBinary(
-        path, bytes,
-        fileOptions: const FileOptions(contentType: 'image/jpeg'),
-      );
-      return path;
-    } catch (e) {
-      // Was `catch (_) { return null; }`. The caller then reported only
-      // "Photo taken but upload failed", so an employee could be blocked from
-      // checking out for days with no way to find out why — which is exactly
-      // what happened. Storage errors are specific and worth keeping: a
-      // missing bucket, an expired token and a policy refusal all look
-      // identical from the outside but need different fixes.
-      _writeFailed('uploadSelfieBytes', e);
-      lastSelfieUploadError = e.toString();
-      return null;
+
+    // Retried, because the failures left in the log are no longer the camera
+    // — they are the photo being captured and the upload then dying on the
+    // way out ("Failed to fetch", "Load failed"). On office wifi that is a
+    // few seconds of nothing, and it was costing the employee the whole
+    // check-in. Three attempts over about seven seconds.
+    //
+    // Only the transport is retried. A policy refusal, a missing bucket or
+    // an expired token will fail the same way every time, so those return at
+    // once rather than making someone wait through three rounds of it.
+    Object? lastError;
+    for (var attempt = 1; attempt <= 3; attempt++) {
+      try {
+        await db.storage.from(_selfieBucket).uploadBinary(
+          path, bytes,
+          fileOptions: const FileOptions(contentType: 'image/jpeg'),
+        );
+        lastSelfieUploadError = null;
+        return path;
+      } catch (e) {
+        lastError = e;
+        if (!_looksTransient(e) || attempt == 3) break;
+        await Future.delayed(Duration(milliseconds: 600 * attempt * attempt));
+      }
     }
+    // Was `catch (_) { return null; }`. The caller then reported only
+    // "Photo taken but upload failed", so an employee could be blocked from
+    // checking out for days with no way to find out why — which is exactly
+    // what happened. Storage errors are specific and worth keeping: a
+    // missing bucket, an expired token and a policy refusal all look
+    // identical from the outside but need different fixes.
+    _writeFailed('uploadSelfieBytes', lastError ?? 'unknown');
+    lastSelfieUploadError = lastError?.toString();
+    return null;
+  }
+
+  /// Whether a failure is worth trying again — a dropped connection rather
+  /// than a refusal. Matched on the message because the web transport
+  /// surfaces these as a plain ClientException with no status to read.
+  static bool _looksTransient(Object e) {
+    final s = e.toString().toLowerCase();
+    if (s.contains('unauthorized') ||
+        s.contains('forbidden') ||
+        s.contains('not found') ||
+        s.contains('violates') ||
+        s.contains('policy') ||
+        s.contains('already exists')) {
+      return false;
+    }
+    return s.contains('failed to fetch') ||
+        s.contains('load failed') ||
+        s.contains('clientexception') ||
+        s.contains('socketexception') ||
+        s.contains('connection') ||
+        s.contains('timeout') ||
+        s.contains('timed out') ||
+        s.contains('network') ||
+        s.contains('502') || s.contains('503') || s.contains('504');
   }
 
   /// Short-lived signed URL for an HR/Management viewer — storage RLS

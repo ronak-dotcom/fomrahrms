@@ -1260,10 +1260,10 @@ class _GeneratePayslipPageState extends State<GeneratePayslipPage> {
       ];
       _engineNote = daysLost == 0
           ? 'Computed from attendance: full $nwd-day cycle worked, nothing lost.'
-          : 'Computed from attendance for the $nwd-day cycle: '
-              '${_trim(daysLost)} day(s) not payable'
-              '${parts.isEmpty ? '' : ', including ${parts.join(' and ')}'}'
-              '${daysLost == lopWhole ? '' : ' (rounded to $lopWhole on the payslip)'}.';
+          : 'Computed from attendance: ${_trim(nowd)} of $nwd days payable, '
+              '${_trim(daysLost)} not'
+              '${parts.isEmpty ? '' : ' — ${parts.join(' and ')}'}'
+              '${daysLost == lopWhole ? '' : '. Rounded to $lopWhole on the payslip'}.';
     });
   }
 
