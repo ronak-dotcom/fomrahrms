@@ -992,6 +992,11 @@ class _GeneratePayslipPageState extends State<GeneratePayslipPage> {
   int _graceLateDays = 0;
   int _severeLateDays = 0;
   bool _daysWorkedManual = false;
+  /// What the payroll engine said about this cycle, shown above the day
+  /// fields so HR can see where the numbers came from — or that they are
+  /// estimates because the employee has no salary structure.
+  String _engineNote = '';
+  int _lateCount = 0;
   late final TextEditingController _workingDaysCtrl;
   late final TextEditingController _lopDaysCtrl;
   late final TextEditingController _daysWorkedCtrl;
@@ -1186,6 +1191,7 @@ class _GeneratePayslipPageState extends State<GeneratePayslipPage> {
       _tdsOverride = null;
       _lateDeductionOverride = null;
       _excessLeaveDeductionOverride = null;
+      _engineNote = '';
       _leaveDetails = [
         LeaveDetailRow(type: 'Casual Leave', opening: widget.user.monthlyCl.toDouble(), taken: clTaken),
         LeaveDetailRow(type: 'Medical Leave', opening: widget.user.monthlyMl.toDouble(), taken: mlTaken),
@@ -1193,7 +1199,76 @@ class _GeneratePayslipPageState extends State<GeneratePayslipPage> {
       ];
       _loading = false;
     });
+
+    await _applyEngineDays(year, month);
   }
+
+  /// Replaces the day counts above with the ones the database computes.
+  ///
+  /// Everything before this works in calendar months and counts LOP only
+  /// from leave filed under the 'LOP' bucket, so it never saw lateness,
+  /// permission overage or plain unapproved absence — every payslip came
+  /// out as a full month worked. generate_payroll() already does this
+  /// properly against the 26th-to-25th cycle, including the leave rules.
+  ///
+  /// Falls back to the figures above when there is no row, which means the
+  /// employee has no salary structure. Saying so is the point: silently
+  /// billing a full month is how the gap stayed invisible.
+  Future<void> _applyEngineDays(int year, int month) async {
+    final row = await SupabaseService.fetchPayrollForCycle(
+      employeeId: widget.user.employeeId,
+      // The cycle carrying this month's name ends on its 25th —
+      // "August'26" in the master sheet is 26 Jul to 25 Aug.
+      cycleEnd: DateTime(year, month, 25),
+    );
+    if (!mounted) return;
+    if (row == null) {
+      setState(() => _engineNote = 'No salary structure on record — day counts '
+          'below are estimated from the calendar, not from attendance. '
+          'Add a salary structure for this employee to compute them properly.');
+      return;
+    }
+    double n(String k) => ((row[k] as num?) ?? 0).toDouble();
+    final nwd      = n('nwd').round();
+    final nowd     = n('nowd');
+    final daysLost = n('days_lost');
+    final lateLop  = n('late_lop');
+    final permLop  = n('permission_lop');
+
+    setState(() {
+      _workingDays   = nwd;
+      _daysInMonth   = nwd;      // one-day salary divides by the cycle length
+      _lopDays       = daysLost.round();
+      // The payslip stores whole days, so a half-day of late LOP is rounded
+      // here and the exact figure reported in the note below. Days worked is
+      // derived from the rounded LOP rather than from nowd directly, so the
+      // three fields on screen still add up.
+      final lopWhole = daysLost.round();
+      _workingDaysCtrl.text = '$nwd';
+      _lopDaysCtrl.text     = '$lopWhole';
+      _daysWorkedCtrl.text  = '${(nwd - lopWhole).clamp(0, nwd)}';
+      _daysWorkedManual     = false;
+      // The engine charges lateness and permission overage as lost days,
+      // which are already inside days_lost. Leaving the screen's own rupee
+      // deductions switched on as well would bill the same lateness twice.
+      _lateDeductionOverride        = 0;
+      _excessLeaveDeductionOverride = 0;
+      _lateCount = (row['late_count'] as num?)?.toInt() ?? 0;
+      final parts = <String>[
+        if (lateLop > 0) '${_trim(lateLop)} day(s) for $_lateCount late arrivals',
+        if (permLop > 0) '${_trim(permLop)} day(s) for permission beyond the monthly 2 hours',
+      ];
+      _engineNote = daysLost == 0
+          ? 'Computed from attendance: full $nwd-day cycle worked, nothing lost.'
+          : 'Computed from attendance for the $nwd-day cycle: '
+              '${_trim(daysLost)} day(s) not payable'
+              '${parts.isEmpty ? '' : ', including ${parts.join(' and ')}'}'
+              '${daysLost == lopWhole ? '' : ' (rounded to $lopWhole on the payslip)'}.';
+    });
+  }
+
+  static String _trim(double v) =>
+      v == v.roundToDouble() ? v.toStringAsFixed(0) : v.toStringAsFixed(1);
 
   double get _grossPay => widget.user.grossPay;
   int get _daysWorked =>
@@ -1378,6 +1453,36 @@ class _GeneratePayslipPageState extends State<GeneratePayslipPage> {
                   ]),
                 ),
                 const SizedBox(height: 16),
+
+                // Where the day counts came from. Without it the figures
+                // look hand-typed, which is exactly what they used to be.
+                if (_engineNote.isNotEmpty) ...[
+                  Builder(builder: (_) {
+                    final estimated = _engineNote.startsWith('No salary structure');
+                    final tone = estimated ? Colors.orange : _purple;
+                    return Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: tone.withValues(alpha: 0.06),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: tone.withValues(alpha: 0.30)),
+                      ),
+                      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Icon(estimated
+                                ? Icons.warning_amber_rounded
+                                : Icons.calculate_outlined,
+                            size: 16, color: tone),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(_engineNote,
+                              style: TextStyle(fontSize: 11.5, color: tone)),
+                        ),
+                      ]),
+                    );
+                  }),
+                  const SizedBox(height: 12),
+                ],
 
                 Row(children: [
                   Expanded(

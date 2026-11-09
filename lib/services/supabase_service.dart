@@ -3301,6 +3301,45 @@ class SupabaseService {
     } catch (e) { _writeFailed('savePayslip', e); }
   }
 
+  /// One employee's computed payroll for the attendance cycle ending
+  /// [cycleEnd], straight from generate_payroll().
+  ///
+  /// The payslip screen worked the days out for itself: calendar days for
+  /// the month, and LOP counted only from leave filed under the 'LOP'
+  /// bucket. It never looked at attendance, so every payslip it produced
+  /// read "31 working days, 31 worked, 0 LOP" — lateness, permission
+  /// overage and ordinary unapproved absence all cost nothing. P. Prarthana
+  /// Princy's October payslip was ~2,200 over policy for exactly that
+  /// reason: nine late arrivals that the screen could not see.
+  ///
+  /// The database already computes this correctly against the 26th-to-25th
+  /// cycle, so the screen now asks rather than guesses. Returns null if the
+  /// employee has no salary structure — generate_payroll joins on it, so
+  /// there is no row to return and the caller must say so rather than
+  /// silently billing zero days.
+  static Future<Map<String, dynamic>?> fetchPayrollForCycle({
+    required String employeeId,
+    required DateTime cycleEnd,
+  }) async {
+    final db = _db;
+    if (db == null) return null;
+    try {
+      final iso = '${cycleEnd.year.toString().padLeft(4, '0')}-'
+          '${cycleEnd.month.toString().padLeft(2, '0')}-'
+          '${cycleEnd.day.toString().padLeft(2, '0')}';
+      final data = await db.rpc('generate_payroll', params: {'p_cycle_end': iso});
+      if (data is! List) return null;
+      for (final row in data) {
+        final m = Map<String, dynamic>.from(row as Map);
+        if ((m['employee_code'] ?? '').toString() == employeeId) return m;
+      }
+      return null;
+    } catch (e) {
+      _writeFailed('fetchPayrollForCycle', e);
+      return null;
+    }
+  }
+
   /// All employees' payslips for one month (`'YYYY-MM'`) — unlike
   /// [fetchPayslips], which is scoped to a single employee. Used by the
   /// Reports & Analytics Payroll Summary card.
