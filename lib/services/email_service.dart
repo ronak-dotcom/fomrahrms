@@ -167,6 +167,48 @@ class EmailService {
     );
   }
 
+  /// Forgot-password entry point for the login screen, where nobody is signed
+  /// in yet.
+  ///
+  /// [sendPasswordReset] above takes an AppUser, which the login screen could
+  /// only get by reading app_users — a table whose policies are granted to
+  /// `authenticated` only. Logged out, that read came back empty and the
+  /// dialog reported "No account found with that email" for every employee.
+  /// This variant hands the identifier to a SECURITY DEFINER RPC that does
+  /// the lookup and the token write together.
+  ///
+  /// Returns null on success, or a message to show the employee.
+  static Future<String?> sendPasswordResetByIdentifier(String identifier) async {
+    final token = TokenUtil.generate();
+    final res = await SupabaseService.requestPasswordReset(
+      identifier,
+      token: token,
+      expiresAt: TokenUtil.expiresInHours(24),
+    );
+    switch (res.status) {
+      case 'ok':
+        break;
+      case 'inactive':
+        return 'This account is no longer active. Please contact HR.';
+      case 'not_found':
+        return 'No account found with that email, employee ID or mobile number.';
+      default:
+        return 'Could not start the password reset — please try again.';
+    }
+    final recipient = (res.recipient ?? '').trim();
+    if (recipient.isEmpty) {
+      return 'No email address on file for this account — contact HR.';
+    }
+    return sendEmail(
+      templateName: 'password_reset',
+      recipient: recipient,
+      data: {
+        'name': res.name ?? '',
+        'resetLink': 'https://fomrahrms-zeta.vercel.app/#/reset-password/$token',
+      },
+    );
+  }
+
   /// Re-sends a previously logged email using its stored template/data/attachments.
   static Future<String?> resend(String emailLogId) async {
     final log = await SupabaseService.fetchEmailLog(emailLogId);

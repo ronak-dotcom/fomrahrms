@@ -8,7 +8,6 @@ import '../models/language_notifier.dart';
 import '../models/notification_store.dart';
 import '../services/notification_service.dart';
 import '../services/push_notification_service.dart';
-import '../services/user_store.dart';
 import '../services/session_storage.dart';
 import '../services/supabase_service.dart';
 import '../services/email_service.dart';
@@ -89,13 +88,16 @@ class _LoginPageState extends State<LoginPage> {
       return;
     }
     if (result.needsPasswordSetup) {
-      final profile = result.profile ?? const {};
+      // The create-password panel used to open here on nothing but a
+      // recognised email address, and the RPC behind it asked for nothing
+      // more. Anyone could name a new joiner — company addresses are
+      // firstname.lastname@ — and set the password before its owner did.
+      // Setting a first password now needs the token from the activation
+      // email, so send them there instead.
       setState(() {
         _loading = false;
-        _pendingUser = (
-          name: (profile['name'] as String?) ?? '',
-          email: (profile['email'] as String?) ?? email,
-        );
+        _error = 'This account has no password yet. Open the activation link '
+            'in your welcome email to set one — or ask HR to resend it.';
       });
       return;
     }
@@ -281,12 +283,13 @@ class _LoginPageState extends State<LoginPage> {
                     return;
                   }
                   setS(() { sending = true; error = null; });
-                  final user = await UserStore.findByLoginOrCompanyEmail(email);
-                  if (user == null) {
-                    setS(() { sending = false; error = 'No account found with that email.'; });
-                    return;
-                  }
-                  final sendError = await EmailService.sendPasswordReset(user);
+                  // Lookup and token write both happen server-side: reading
+                  // app_users from here is impossible, because nobody is
+                  // signed in yet and its policies are authenticated-only.
+                  // That is why this dialog used to answer "No account found"
+                  // to everyone, whatever they typed.
+                  final sendError =
+                      await EmailService.sendPasswordResetByIdentifier(email);
                   if (sendError != null) {
                     setS(() { sending = false; error = sendError; });
                     return;

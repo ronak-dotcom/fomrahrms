@@ -73,12 +73,14 @@ class _TeamLeaveApprovalsPageState extends State<TeamLeaveApprovalsPage>
     if (_showAll) return LeaveStore.applications;
     if (!_teamLoaded) return LeaveStore.applications;
     if (!_isMgmt) {
-      // Manager: team's Permission/CompOff + regular leaves ≤ 2 days
+      // The manager sees everything their team raised. Leaves over 2 days are
+      // still Management's to decide, but they used to be filtered out here —
+      // so the manager was shown nothing at all, and the one action they do
+      // have on them, Escalate, had no row to sit on. That is what "the
+      // reporting manager is unable to escalate" was: Saurabh's 5-day request
+      // sat pending from 10 October because nobody could see it.
       return LeaveStore.applications
-          .where((a) => _teamNames.contains(a.employeeName) &&
-              (a.leaveType == 'Permission' ||
-               a.leaveType == 'Comp Off' ||
-               a.effectiveDays <= 2))
+          .where((a) => _teamNames.contains(a.employeeName))
           .toList();
     }
     // Management: all employees
@@ -111,14 +113,12 @@ class _TeamLeaveApprovalsPageState extends State<TeamLeaveApprovalsPage>
   }
 
   List<LeaveApplication> get _leaveSection {
-    var src = _filtered.where((a) => !_isPermCompOff(a));
-    // Manager only handles ≤ 2-day regular leaves; holidays go to Management
-    if (!_isMgmt && !_showAll) src = src.where((a) => a.effectiveDays <= 2);
-    // Escalated requests are Management's to decide. Leaving them visible to
-    // the manager who escalated them would let the exception be approved at
+    // Nothing is hidden from the manager any more. Over-2-day and escalated
+    // requests stay in the list but render read-only (see `aboveMyLevel` in
+    // the card): the manager can see where the request stands and escalate it
+    // if it hasn't gone up yet, without being able to approve an exception at
     // exactly the level that judged it needed a higher one.
-    if (!_isMgmt) src = src.where((a) => !a.escalated);
-    return _sorted(src.toList());
+    return _sorted(_filtered.where((a) => !_isPermCompOff(a)).toList());
   }
 
   List<LeaveApplication> get _permSection =>
@@ -303,13 +303,53 @@ class _TeamLeaveApprovalsPageState extends State<TeamLeaveApprovalsPage>
 
   Future<void> _deny(LeaveApplication app) async {
     final reasonCtrl = TextEditingController();
+    // A request can reach a decision after the employee has already been
+    // away — Deepak's 7-10 November sat undecided while he took it. Denying
+    // it does not undo the absence; it leaves those days unauthorised, which
+    // is what makes them unpaid. Say so before the click, not after.
+    final today = DateTime.now();
+    final startedAlready =
+        app.from.isBefore(DateTime(today.year, today.month, today.day));
+    final pastDays = !startedAlready
+        ? ''
+        : (app.to.isBefore(today)
+            ? 'All ${_fmtDate(app.from)} – ${_fmtDate(app.to)}'
+            : 'The days from ${_fmtDate(app.from)} onwards');
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: const Text('Deny Leave',
             style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
-        content: Column(mainAxisSize: MainAxisSize.min, children: [
+        // Scrollable: the warning block pushes this past the height of a
+        // phone dialog, and AlertDialog content does not scroll on its own.
+        content: SingleChildScrollView(
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+          if (startedAlready) ...[
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: Colors.orange.shade50,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.orange.shade200),
+              ),
+              child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Icon(Icons.history_rounded, size: 16, color: Colors.orange.shade800),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'These dates have already passed.\n\n'
+                    '$pastDays have been taken. Denying does not reverse the '
+                    'absence — it records those days as unauthorised, so they '
+                    'stay unpaid (LOP) and no leave balance is deducted.',
+                    style: TextStyle(fontSize: 12, color: Colors.orange.shade900),
+                  ),
+                ),
+              ]),
+            ),
+            const SizedBox(height: 14),
+          ],
           const Text('Reason for denial (optional):',
               style: TextStyle(fontSize: 13, color: Color(0xFF6B7280))),
           const SizedBox(height: 10),
@@ -326,6 +366,7 @@ class _TeamLeaveApprovalsPageState extends State<TeamLeaveApprovalsPage>
             ),
           ),
         ]),
+        ),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(ctx, false),
@@ -456,7 +497,7 @@ class _TeamLeaveApprovalsPageState extends State<TeamLeaveApprovalsPage>
                       child: Row(mainAxisSize: MainAxisSize.min, children: [
                         Icon(Icons.beach_access_rounded, size: 13, color: Colors.red.shade700),
                         const SizedBox(width: 5),
-                        Text('Holiday — goes to Management',
+                        Text('Over 2 days — Management decides',
                             style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Colors.red.shade700)),
                       ]),
                     ),
@@ -1427,6 +1468,16 @@ class _RequestRowState extends State<_RequestRow> {
     final status = req.managerStatus;
     final locked = !widget.isManagement && req.managementDecided;
 
+    // Over 2 days is outside what a reporting manager may grant, and anything
+    // already escalated belongs to Management. Both are shown to the manager
+    // — they need to know their team is away — but only Management decides
+    // them. `aboveMyLevel` is what makes the row read-only.
+    final overPolicy  = req.effectiveDays > 2;
+    final aboveMyLevel =
+        !widget.isManagement && (overPolicy || req.escalated);
+    // Escalate is the one action left, and only while it hasn't gone up yet.
+    final canEscalate = !widget.isManagement && !req.escalated;
+
     final nameBlock = Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
       CircleAvatar(
         radius: 18,
@@ -1520,17 +1571,38 @@ class _RequestRowState extends State<_RequestRow> {
         // approver facing an exception could only approve it — setting a
         // precedent they have no authority to set — or reject it and send the
         // employee to ask someone else outside the system.
-        if (!widget.isManagement)
+        if (canEscalate)
           SizedBox(
             height: 32,
             child: TextButton.icon(
               onPressed: _escalate,
               icon: const Icon(Icons.arrow_upward_rounded, size: 14),
-              label: const Text('Escalate', style: TextStyle(fontSize: 12)),
+              label: Text(overPolicy ? 'Send to Management' : 'Escalate',
+                  style: const TextStyle(fontSize: 12)),
               style: TextButton.styleFrom(foregroundColor: Colors.indigo.shade600),
             ),
           ),
-        if (!widget.isManagement) const SizedBox(width: 4),
+        if (canEscalate) const SizedBox(width: 4),
+        // Approve/Reject disappear above the manager's level rather than
+        // being shown greyed out — a disabled green button reads as a bug.
+        if (aboveMyLevel)
+          // A fixed box, not Flexible: on the wide layout this Row is a
+          // direct child of another Row, so its width is unbounded and a
+          // flex child would fail to lay out.
+          SizedBox(
+            width: 148,
+            child: Text(
+              req.escalated
+                  ? 'With Management'
+                  : 'Over 2 days — Management decides',
+              textAlign: TextAlign.right,
+              style: TextStyle(
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.indigo.shade600),
+            ),
+          )
+        else ...[
         SizedBox(
           height: 32,
           child: ElevatedButton(
@@ -1561,6 +1633,7 @@ class _RequestRowState extends State<_RequestRow> {
             child: const Text('Reject'),
           ),
         ),
+        ],
       ] else
         SizedBox(
           height: 32,

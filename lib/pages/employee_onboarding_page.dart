@@ -1616,6 +1616,29 @@ class _SubmissionCardState extends State<_SubmissionCard> {
                           _emailClash('${emailCtrl.text.trim()}@fomrahousing.in', allUsers) != null)
                   ? null
                   : () async {
+                // The disabled-button check above reads `allUsers`, a cached
+                // whole-table list that can be stale or silently empty. Ask
+                // the database before forwarding, so HR — who can still fix
+                // it here — hears about a clash instead of Management
+                // meeting it as a constraint error two steps later.
+                final live = await SupabaseService.findIdentityClash(
+                  employeeId: empIdCtrl.text.trim(),
+                  email: '${emailCtrl.text.trim()}@fomrahousing.in',
+                );
+                if (!ctx.mounted) return;
+                if (live.checked &&
+                    (live.empIdHolder != null || live.emailHolder != null)) {
+                  ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(
+                    content: Text(live.empIdHolder != null
+                        ? 'Employee ID "${empIdCtrl.text.trim()}" is already '
+                            'used by ${live.empIdHolder}. Pick another.'
+                        : 'That email already belongs to ${live.emailHolder}. '
+                            'Pick another.'),
+                    backgroundColor: Colors.orange.shade800,
+                    duration: const Duration(seconds: 8),
+                  ));
+                  return;
+                }
                 Navigator.pop(ctx);
                 setState(() => _acting = true);
                 try {
@@ -1686,14 +1709,31 @@ class _SubmissionCardState extends State<_SubmissionCard> {
     // PostgrestException about a unique constraint, which does not say
     // which field clashed or who holds it. Submissions forwarded before
     // this check existed on the HR side can still carry a taken ID.
-    final existing = await _loadAllUsers();
-    final clash = _empIdClash(empId, existing) ?? _emailClash(email, existing);
-    if (clash != null && context.mounted) {
-      final which = _empIdClash(empId, existing) != null
-          ? 'Employee ID "$empId"'
-          : 'Email "$email"';
+    //
+    // Asked of the database rather than of _loadAllUsers(): that returns a
+    // whole-table fetch which falls back to a local cache and is swallowed
+    // to [] on error, so a stale or filtered list read as "nothing taken"
+    // and let the approval through to fail at the constraint. That is how
+    // FD-06 was assigned twice while Akila Varshini.J held it.
+    final clash = await SupabaseService.findIdentityClash(
+        employeeId: empId, email: email);
+    if (!context.mounted) return;
+    if (!clash.checked) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text('$which is already taken — $clash. '
+        content: const Text(
+            'Could not verify that the employee ID and email are free. '
+            'Nothing has been created — please try again.'),
+        backgroundColor: Colors.orange.shade800,
+        duration: const Duration(seconds: 6),
+      ));
+      return;
+    }
+    if (clash.empIdHolder != null || clash.emailHolder != null) {
+      final which = clash.empIdHolder != null
+          ? 'Employee ID "$empId" is already used by ${clash.empIdHolder}'
+          : 'Email "$email" is already used by ${clash.emailHolder}';
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('$which. '
             'Ask HR to re-forward this submission with a different one.'),
         backgroundColor: Colors.orange.shade800,
         duration: const Duration(seconds: 8),
@@ -1765,12 +1805,33 @@ class _SubmissionCardState extends State<_SubmissionCard> {
       setState(() => _acting = false);
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text('Error: $e'),
+          content: Text(_readableCreateError(e, empId: empId, email: email)),
           backgroundColor: Colors.red.shade700,
           duration: const Duration(seconds: 8),
         ));
       }
     }
+  }
+
+  // The pre-check above should catch a taken ID or email, but it can lose a
+  // race against another approval, and the raw text Postgres returns
+  // ("duplicate key value violates unique constraint
+  // app_users_employee_id_uidx") tells HR nothing they can act on. Translate
+  // the two constraints that actually fire here; anything else is passed
+  // through unchanged rather than guessed at.
+  String _readableCreateError(Object e, {required String empId, required String email}) {
+    final text = e.toString();
+    if (text.contains('app_users_employee_id_uidx') ||
+        (text.contains('duplicate key') && text.contains('employee_id'))) {
+      return 'Employee ID "$empId" was taken while this was being approved. '
+          'Nothing was created — ask HR to re-forward with a free ID.';
+    }
+    if (text.contains('app_users_pkey') ||
+        (text.contains('duplicate key') && text.contains('email'))) {
+      return 'Email "$email" already belongs to another account. '
+          'Nothing was created — ask HR to re-forward with a different email.';
+    }
+    return 'Error: $e';
   }
 
   // Sends the submission back to the candidate for a partial fix — the

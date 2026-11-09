@@ -1357,6 +1357,63 @@ class SupabaseService {
     }
   }
 
+  /// Who currently holds [employeeId] / [email], asked of the database
+  /// directly.
+  ///
+  /// The onboarding screens used to decide this from `UserStore.load()`, a
+  /// whole-table fetch that falls back to a local cache when the server
+  /// returns nothing, wrapped in a `catch (_) => []`. An empty or stale list
+  /// reads as "nothing is taken", so the clash guard waved the approval
+  /// through and HR got a raw PostgrestException about
+  /// app_users_employee_id_uidx instead — which is what happened when FD-06
+  /// was assigned a second time while Akila Varshini.J already held it.
+  ///
+  /// `checked` is false when the lookup itself failed. That is not the same
+  /// as "free", and callers must not treat it as such.
+  static Future<({bool checked, String? empIdHolder, String? emailHolder})>
+      findIdentityClash({required String employeeId, required String email}) async {
+    final db = _db;
+    if (db == null) return (checked: false, empIdHolder: null, emailHolder: null);
+    final id = employeeId.trim();
+    final em = email.trim().toLowerCase();
+    try {
+      String? idHolder;
+      String? emailHolder;
+      if (id.isNotEmpty) {
+        final rows = await db
+            .from('app_users')
+            .select('name')
+            .eq('employee_id', id)
+            .limit(1);
+        if (rows.isNotEmpty) idHolder = (rows.first['name'] ?? '').toString();
+      }
+      if (em.isNotEmpty) {
+        final rows = await db
+            .from('app_users')
+            .select('name')
+            .eq('email', em)
+            .limit(1);
+        if (rows.isNotEmpty) emailHolder = (rows.first['name'] ?? '').toString();
+      }
+      // A retired ID must never come back either — the attendance and payroll
+      // history keyed to it would silently attach to the new joiner.
+      if (idHolder == null && id.isNotEmpty) {
+        final retired = await db
+            .from('retired_employee_ids')
+            .select('previous_name')
+            .eq('employee_id', id)
+            .limit(1);
+        if (retired.isNotEmpty) {
+          idHolder = '${retired.first['previous_name'] ?? 'a former employee'} (retired ID)';
+        }
+      }
+      return (checked: true, empIdHolder: idHolder, emailHolder: emailHolder);
+    } catch (e) {
+      _writeFailed('findIdentityClash', e);
+      return (checked: false, empIdHolder: null, emailHolder: null);
+    }
+  }
+
   static Future<void> upsertAppUser(AppUser u) async {
     await _db?.from('app_users').upsert({
       'email':                    u.email,
@@ -4647,6 +4704,49 @@ class SupabaseService {
     }
   }
 
+  /// Looks up the account behind a forgot-password identifier and stores the
+  /// reset token in one server-side step.
+  ///
+  /// Both halves used to run as direct table access from the login screen,
+  /// where the caller is `anon`. Every policy on app_users is granted to
+  /// `authenticated` only, so the lookup read zero rows and the dialog told
+  /// every employee "No account found with that email" — including ones
+  /// sitting plainly in the table. The rest of the reset flow was already
+  /// behind SECURITY DEFINER RPCs; this was the step left behind.
+  ///
+  /// Returns `status` of 'ok' (with [name] and [recipient]), 'inactive' for a
+  /// deactivated account — a departed employee, not a typo — or 'not_found'.
+  static Future<({String status, String? name, String? recipient})>
+      requestPasswordReset(
+    String identifier, {
+    required String token,
+    required String expiresAt,
+  }) async {
+    final db = _db;
+    if (db == null) {
+      return (status: 'error', name: null, recipient: null);
+    }
+    try {
+      final data = await db.rpc('request_password_reset', params: {
+        'p_identifier': identifier,
+        'p_token': token,
+        'p_expires_at': expiresAt,
+      });
+      if (data is List && data.isNotEmpty) {
+        final row = Map<String, dynamic>.from(data.first as Map);
+        return (
+          status: (row['status'] ?? 'not_found').toString(),
+          name: row['name'] as String?,
+          recipient: row['recipient'] as String?,
+        );
+      }
+      return (status: 'not_found', name: null, recipient: null);
+    } catch (e) {
+      _writeFailed('requestPasswordReset', e);
+      return (status: 'error', name: null, recipient: null);
+    }
+  }
+
   static Future<Map<String, dynamic>?> fetchAppUserByResetToken(String token) async {
     if (token.isEmpty) return null;
     final data = await _db?.rpc('app_user_by_reset_token', params: {'p_token': token});
@@ -4719,15 +4819,28 @@ class SupabaseService {
     } catch (e) { _writeFailed('logAuditEvent', e); }
   }
 
-  /// Only succeeds if [email] genuinely has no password yet — via
-  /// set_password_if_unset(), see
-  /// supabase/migrations/20260716000500_password_flow_rpcs.sql. Called from
-  /// an anonymous context (the user isn't signed in yet), so — unlike
-  /// set_app_user_password — this can't be used to overwrite an existing
-  /// password.
-  static Future<bool> setInitialUserPassword(String email, String password) async {
+  /// Sets the first password for [email], via set_password_if_unset().
+  ///
+  /// Runs from an anonymous context — the employee isn't signed in yet — so
+  /// it needs proof that the caller is the person the account was made for.
+  /// [activationToken] is that proof, and comes from the activation email.
+  /// Without it the RPC refuses: before that check existed, anyone logged out
+  /// could enter a new joiner's address, be shown the create-password panel
+  /// and take the account, and company addresses are guessable by shape.
+  ///
+  /// Returns false if the account already has a password, or the token is
+  /// wrong, expired or missing.
+  static Future<bool> setInitialUserPassword(
+    String email,
+    String password, {
+    String? activationToken,
+  }) async {
     try {
-      final ok = await _db?.rpc('set_password_if_unset', params: {'p_email': email, 'p_password': password});
+      final ok = await _db?.rpc('set_password_if_unset', params: {
+        'p_email': email,
+        'p_password': password,
+        'p_token': activationToken,
+      });
       return ok == true;
     } catch (_) {
       return false;
