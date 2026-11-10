@@ -64,11 +64,9 @@ const _pinnedItems = <_NavItem>[
 ];
 
 const _navGroups = <_NavGroup>[
-  // Seven groups became five, with every screen kept. Setup and Edit Forms
-  // were both configuration and are now one group; Attendance by Date Range
-  // sat under Approvals although it decides nothing; Payroll sat under
-  // Operations although it is the one money screen. Each item now lives
-  // where someone would look for it first.
+  // Five groups, every screen kept. Ordered by how much each is used:
+  // the three that carry the daily work first, then personal pages, then
+  // More, which holds the modules that have barely been touched.
 
   // Everything about who came in, when and where.
   _NavGroup('Attendance', Icons.schedule_rounded, [
@@ -80,33 +78,24 @@ const _navGroups = <_NavGroup>[
     (label: 'Location History',    icon: Icons.route_rounded,             route: '/management/location-history'),
   ]),
 
-  // The employee lifecycle, hiring through review.
-  _NavGroup('People', Icons.groups_rounded, [
+  // The employee lifecycle and the money that goes with it. Payroll moved
+  // here when Payroll & Operations was emptied into More below — it was the
+  // only screen in that group with real use.
+  _NavGroup('People & Payroll', Icons.groups_rounded, [
     (label: 'Employees',           icon: Icons.badge_rounded,             route: '/management/employee-management'),
     (label: 'Onboarding',          icon: Icons.how_to_reg_rounded,        route: '/management/employee-onboarding'),
     (label: 'Interviews',          icon: Icons.record_voice_over_rounded, route: '/management/interview-process'),
     (label: 'Interview Review',    icon: Icons.rate_review_rounded,       route: '/management/interview-review'),
-    (label: 'Appraisals',          icon: Icons.workspace_premium_rounded, route: '/management/appraisals'),
-    (label: 'KRA',                 icon: Icons.track_changes_rounded,     route: '/management/kra-management'),
-  ]),
-
-  // Money first, then the day-to-day running of the business.
-  _NavGroup('Payroll & Operations', Icons.business_center_rounded, [
     (label: 'Payroll',             icon: Icons.payments_rounded,          route: '/management/payroll-management'),
-    (label: 'Tasks',               icon: Icons.task_alt_rounded,          route: '/management/task-management'),
-    (label: 'Leads',               icon: Icons.contact_phone_rounded,     route: '/management/lead-management'),
-    (label: 'Maintenance',         icon: Icons.handyman_rounded,          route: '/management/maintenance-management'),
   ]),
 
-  // Configuration: how the system behaves and what its forms ask.
-  _NavGroup('Settings & Forms', Icons.settings_rounded, [
+  // Configuration. The four form editors used to sit here as well, which
+  // made this the longest group in the sidebar for tools opened once at
+  // setup. They are now links on the Settings page (_settingsChildItems).
+  _NavGroup('Settings', Icons.settings_rounded, [
     (label: 'Administration',      icon: Icons.admin_panel_settings_rounded, route: '/management/administration'),
     (label: 'Office Locations',    icon: Icons.location_city_rounded,     route: '/management/location-management'),
-    (label: 'Settings',            icon: Icons.tune_rounded,              route: '/management/settings'),
-    (label: 'Leave, Permission & Comp Off Forms', icon: Icons.edit_calendar_rounded, route: '/management/edit-leave-form'),
-    (label: 'Interview Form',      icon: Icons.assignment_rounded,        route: '/management/edit-form'),
-    (label: 'Onboarding Form',     icon: Icons.assignment_ind_rounded,    route: '/management/edit-onboarding-form'),
-    (label: 'Maintenance Form',    icon: Icons.build_circle_rounded,      route: '/management/edit-maintenance-form'),
+    (label: 'Settings & Forms',    icon: Icons.tune_rounded,              route: '/management/settings'),
   ]),
 
   // Management are employees too.
@@ -116,6 +105,18 @@ const _navGroups = <_NavGroup>[
     (label: 'My Leave Balance',    icon: Icons.account_balance_wallet_rounded, route: '/management/leave/balance'),
     (label: 'My Payslips',         icon: Icons.receipt_long_rounded,      route: '/management/my-payslips'),
   ]),
+
+  // Modules with almost no use so far: 3 tasks, 2 appraisals, 2 KRA
+  // documents and 1 maintenance ticket in the whole database as of
+  // November 2026. Kept, every one of them, but out of the groups people
+  // open daily. Last of the groups so it reads as the overflow it is.
+  _NavGroup('More', Icons.more_horiz_rounded, [
+    (label: 'Tasks',               icon: Icons.task_alt_rounded,          route: '/management/task-management'),
+    (label: 'Leads',               icon: Icons.contact_phone_rounded,     route: '/management/lead-management'),
+    (label: 'Maintenance',         icon: Icons.handyman_rounded,          route: '/management/maintenance-management'),
+    (label: 'Appraisals',          icon: Icons.workspace_premium_rounded, route: '/management/appraisals'),
+    (label: 'KRA',                 icon: Icons.track_changes_rounded,     route: '/management/kra-management'),
+  ]),
 ];
 
 // Reports and Notifications stay flat: single destinations that don't
@@ -123,6 +124,15 @@ const _navGroups = <_NavGroup>[
 const _flatTailItems = [
   _NavItem('Reports & Analytics', Icons.bar_chart_rounded,     '/management/reports-analytics'),
   _NavItem('Notifications',       Icons.notifications_rounded, '/management/notifications'),
+];
+
+/// Reached from the Settings page rather than the sidebar. Listed here so
+/// their pages still get a title and a breadcrumb.
+const _settingsChildItems = <({String label, String route})>[
+  (label: 'Leave, Permission & Comp Off Forms', route: '/management/edit-leave-form'),
+  (label: 'Interview Form',   route: '/management/edit-form'),
+  (label: 'Onboarding Form',  route: '/management/edit-onboarding-form'),
+  (label: 'Maintenance Form', route: '/management/edit-maintenance-form'),
 ];
 
 // Breadcrumbs resolve a route to a label, so this has to stay a flat list
@@ -135,6 +145,7 @@ List<BreadcrumbSection> get _breadcrumbSections => [
       for (final g in _navGroups)
         for (final i in g.items) (label: i.label, route: i.route),
       for (final i in _flatTailItems) (label: i.label, route: i.route),
+      for (final i in _settingsChildItems) (label: i.label, route: i.route),
     ];
 
 // Built once and shared by the wide sidebar and the narrow drawer so the two
