@@ -28,6 +28,10 @@ class _PayrollManagementPageState extends State<PayrollManagementPage> {
   bool _elExpanded = false;
   bool _payslipsExpanded = false;
   List<AppUser> _employees = [];
+  /// Deactivated accounts: people who have left, and new joiners who have not
+  /// activated yet. Kept off the main list but still reachable, because a
+  /// leaver can be owed a final payslip for the days they worked.
+  List<AppUser> _inactive = [];
   List<LeaveApplication> _leaves = [];
   List<PayslipRequest> _payslipRequests = [];
 
@@ -50,9 +54,13 @@ class _PayrollManagementPageState extends State<PayrollManagementPage> {
       final reqs   = results[2] as List<PayslipRequest>;
       if (mounted) {
         setState(() {
-          _employees = users
+          // The list was filtered by role alone, so deactivated accounts
+          // sat in it looking exactly like current staff.
+          final onPayroll = users
               .where((u) => u.role == 'Employee' || u.role == 'Manager')
               .toList();
+          _employees = onPayroll.where((u) => u.active).toList();
+          _inactive  = onPayroll.where((u) => !u.active).toList();
           _leaves = leaves;
           _payslipRequests = reqs;
           _loading = false;
@@ -475,6 +483,57 @@ class _PayrollManagementPageState extends State<PayrollManagementPage> {
                       ),
                       ),
                     )),
+
+                    // Deactivated accounts, collapsed. Not dropped outright:
+                    // someone who left mid-cycle may still be owed a final
+                    // payslip, and hiding them would leave no way to raise it.
+                    if (_inactive.isNotEmpty)
+                      Theme(
+                        data: Theme.of(context)
+                            .copyWith(dividerColor: Colors.transparent),
+                        child: ExpansionTile(
+                          tilePadding: EdgeInsets.zero,
+                          title: Text(
+                            'Inactive accounts (${_inactive.length})',
+                            style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w700,
+                                color: Colors.grey.shade600),
+                          ),
+                          subtitle: Text(
+                            'Exited, or not activated yet. Open one only to '
+                            'raise a final payslip.',
+                            style: TextStyle(
+                                fontSize: 11, color: Colors.grey.shade400),
+                          ),
+                          children: [
+                            for (final u in _inactive)
+                              Card(
+                                margin: const EdgeInsets.only(bottom: 8),
+                                color: Colors.grey.shade50,
+                                child: ListTile(
+                                  dense: true,
+                                  leading: Icon(Icons.person_off_rounded,
+                                      color: Colors.grey.shade500),
+                                  title: Text(u.name,
+                                      style: TextStyle(
+                                          fontSize: 13.5,
+                                          fontWeight: FontWeight.w600,
+                                          color: Colors.grey.shade700)),
+                                  subtitle: Text(
+                                      '${u.employeeId} · inactive',
+                                      style: TextStyle(
+                                          fontSize: 11.5,
+                                          color: Colors.grey.shade500)),
+                                  trailing: const Icon(
+                                      Icons.chevron_right_rounded,
+                                      size: 18),
+                                  onTap: () => _openGenerate(u),
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
                   ]),
                 ),
       ])),
