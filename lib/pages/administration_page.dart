@@ -899,6 +899,28 @@ class _OnboardingTabState extends State<_OnboardingTab> {
                 final newEmail   = '${emailCtrl.text.trim()}@fomrahousing.in';
                 final newEmpId   = empIdCtrl.text.trim();
                 final newManager = managers.isNotEmpty ? selectedManager : managerCtrl.text.trim();
+                // This dialog stays typeable on purpose — it is the path for
+                // correcting a form that already carries a wrong ID or
+                // address. Checked against the database so a correction
+                // cannot land on someone else: without this, a bad value
+                // simply moved from one collision to another and only
+                // surfaced as a constraint error at approval.
+                final clash = await SupabaseService.findIdentityClash(
+                    employeeId: newEmpId, email: newEmail);
+                if (!ctx.mounted) return;
+                if (clash.checked &&
+                    (clash.empIdHolder != null || clash.emailHolder != null)) {
+                  ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(
+                    content: Text(clash.empIdHolder != null
+                        ? 'Employee ID "$newEmpId" already belongs to '
+                            '${clash.empIdHolder}. Pick another.'
+                        : 'That email already belongs to ${clash.emailHolder}. '
+                            'Pick another.'),
+                    backgroundColor: Colors.orange.shade800,
+                    duration: const Duration(seconds: 8),
+                  ));
+                  return;
+                }
                 Navigator.pop(ctx);
                 try {
                   await Supabase.instance.client

@@ -1529,16 +1529,33 @@ class _SubmissionCardState extends State<_SubmissionCard> {
               const SizedBox(height: 12),
               TextField(
                 controller: empIdCtrl,
-                // Rebuild on every keystroke so the clash shows as it is
-                // typed, rather than after the whole form is submitted.
-                onChanged: (_) => setS(() {}),
+                // Assigned by the system, not typed. As a free-text field
+                // this invited exactly one mistake: typing a number that is
+                // already somebody's. FD-06 was handed out a second time
+                // while Akila Varshini.J held it, and the approval then died
+                // on a unique-constraint error two steps later, with nothing
+                // on screen naming the holder.
+                //
+                // next_employee_id() counts past live accounts, pending
+                // onboarding forms and retired numbers, so what it returns is
+                // free. The clash check below stays as a second line: the
+                // value is computed when this dialog opens, and another
+                // forward could land in between.
+                readOnly: true,
                 decoration: InputDecoration(
                   labelText: 'Employee ID',
-                  helperText: 'Next available for $selectedCompany',
+                  helperText: 'Assigned automatically — next free number for '
+                      '$selectedCompany',
                   errorText: _empIdClash(empIdCtrl.text, allUsers),
                   prefixIcon: Icon(Icons.badge_rounded, color: _blue, size: 20),
+                  suffixIcon: Tooltip(
+                    message: 'Employee IDs are issued in sequence and never '
+                        'reused, so this one is chosen for you.',
+                    child: Icon(Icons.lock_outline_rounded,
+                        size: 18, color: Colors.grey.shade500),
+                  ),
                   border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                  filled: true, fillColor: Colors.white,
+                  filled: true, fillColor: const Color(0xFFF3F4F6),
                   labelStyle: const TextStyle(color: Color(0xFF6B7280)),
                 ),
               ),
