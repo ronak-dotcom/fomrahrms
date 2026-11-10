@@ -423,6 +423,141 @@ class _TeamLeaveApprovalsPageState extends State<TeamLeaveApprovalsPage>
 
   // ── Detail dialog ────────────────────────────────────────────────────────
 
+  /// Lets HR or Management record how a leave was actually settled.
+  /// Returns true when something was saved.
+  Future<bool> _editLopSplit(BuildContext context, LeaveApplication req) async {
+    final total = req.effectiveDays;
+    final lopCtrl = TextEditingController(text: _fmtDays(req.lopDays));
+    final noteCtrl = TextEditingController(text: req.lopNote);
+    const buckets = ['CL', 'ML', 'EL', 'LOP'];
+    String bucket = buckets.contains(req.bucket) ? req.bucket : 'CL';
+    String? error;
+    bool saving = false;
+
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (dctx) => StatefulBuilder(
+        builder: (dctx, setS) {
+          final lop = double.tryParse(lopCtrl.text.trim());
+          final paid = lop == null ? null : total - lop;
+          return AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            title: const Text('Adjust paid / LOP days',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '${req.employeeName} · ${_fmtDays(total)} day leave, '
+                    '${_fmtDate(req.from)} to ${_fmtDate(req.to)}',
+                    style: TextStyle(fontSize: 12.5, color: Colors.grey.shade700),
+                  ),
+                  const SizedBox(height: 14),
+                  TextField(
+                    controller: lopCtrl,
+                    keyboardType:
+                        const TextInputType.numberWithOptions(decimal: true),
+                    onChanged: (_) => setS(() => error = null),
+                    decoration: InputDecoration(
+                      labelText: 'LOP (unpaid) days',
+                      helperText: paid == null
+                          ? 'Enter a number in half-day steps'
+                          : '${_fmtDays(paid < 0 ? 0.0 : paid)} day(s) will be '
+                              'paid from the balance below',
+                      border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8)),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  DropdownButtonFormField<String>(
+                    value: bucket,
+                    decoration: InputDecoration(
+                      labelText: 'Paid days come from',
+                      border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8)),
+                    ),
+                    items: [
+                      for (final b in buckets)
+                        DropdownMenuItem(value: b, child: Text(b)),
+                    ],
+                    onChanged: (v) => setS(() => bucket = v ?? bucket),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: noteCtrl,
+                    maxLines: 2,
+                    decoration: InputDecoration(
+                      labelText: 'Reason for the change',
+                      border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8)),
+                    ),
+                  ),
+                  if (error != null) ...[
+                    const SizedBox(height: 10),
+                    Text(error!,
+                        style: TextStyle(
+                            fontSize: 12, color: Colors.red.shade700)),
+                  ],
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: saving ? null : () => Navigator.pop(dctx, false),
+                child: const Text('Cancel'),
+              ),
+              ElevatedButton(
+                onPressed: saving
+                    ? null
+                    : () async {
+                        final v = double.tryParse(lopCtrl.text.trim());
+                        if (v == null || v < 0 || v > total) {
+                          setS(() => error =
+                              'LOP days must be between 0 and ${_fmtDays(total)}.');
+                          return;
+                        }
+                        if ((v * 2) != (v * 2).roundToDouble()) {
+                          setS(() => error = 'Use half-day steps, such as 1.5.');
+                          return;
+                        }
+                        if (noteCtrl.text.trim().isEmpty) {
+                          setS(() => error = 'Please give a reason for the change.');
+                          return;
+                        }
+                        setS(() => saving = true);
+                        final err = await SupabaseService.setLeaveLopSplit(
+                          leaveId: req.id,
+                          lopDays: v,
+                          bucket: bucket,
+                          note: noteCtrl.text.trim(),
+                        );
+                        if (!dctx.mounted) return;
+                        if (err != null) {
+                          setS(() {
+                            saving = false;
+                            error = err;
+                          });
+                          return;
+                        }
+                        Navigator.pop(dctx, true);
+                      },
+                child: const Text('Save'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+
+    if (saved == true) {
+      await _loadData();
+      return true;
+    }
+    return false;
+  }
+
   void _showDetails(LeaveApplication req) {
     showDialog(
       context: context,
@@ -476,6 +611,16 @@ class _TeamLeaveApprovalsPageState extends State<TeamLeaveApprovalsPage>
                     _DetailRow(Icons.numbers_rounded, 'Days',
                         req.isHalfDay ? '½ day' : '${req.days} day${req.days == 1 ? '' : 's'}'),
                     const SizedBox(height: 8),
+                    if (req.leaveType != 'Permission') ...[
+                      _DetailRow(
+                        Icons.account_balance_wallet_rounded,
+                        'Paid / LOP',
+                        '${_fmtDays(req.paidDays)} paid from ${req.bucket}'
+                        '  ·  ${_fmtDays(req.lopDays)} LOP'
+                        '${req.lopIsManual ? '  (set manually)' : ''}',
+                      ),
+                      const SizedBox(height: 8),
+                    ],
                     _DetailRow(Icons.calendar_today_rounded, 'Applied On', _fmtDateTime(req.appliedOn)),
                     if (req.reason.isNotEmpty) ...[
                       const SizedBox(height: 8),
@@ -483,6 +628,23 @@ class _TeamLeaveApprovalsPageState extends State<TeamLeaveApprovalsPage>
                     ],
                   ]),
                 ),
+                // The split was fixed by rule with nowhere to record what was
+                // actually agreed, and it was not shown anywhere either.
+                if (req.leaveType != 'Permission' &&
+                    (UserSession.role == UserRole.hr ||
+                        UserSession.role == UserRole.management))
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: TextButton.icon(
+                      onPressed: () async {
+                        final changed = await _editLopSplit(ctx, req);
+                        if (changed && ctx.mounted) Navigator.pop(ctx);
+                      },
+                      icon: const Icon(Icons.tune_rounded, size: 16),
+                      label: const Text('Adjust paid / LOP days',
+                          style: TextStyle(fontSize: 12.5)),
+                    ),
+                  ),
                 if (req.effectiveDays > 2) ...[
                   const SizedBox(height: 10),
                   Align(
@@ -1013,6 +1175,10 @@ class _TeamLeaveApprovalsPageState extends State<TeamLeaveApprovalsPage>
 // ── Formatting helpers ──────────────────────────────────────────────────────
 
 const _months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+/// 5 -> "5", 1.5 -> "1.5".
+String _fmtDays(double v) =>
+    v == v.roundToDouble() ? v.toStringAsFixed(0) : v.toStringAsFixed(1);
 
 String _fmtDate(DateTime d) =>
     '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}';

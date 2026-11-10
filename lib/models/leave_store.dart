@@ -39,6 +39,19 @@ class LeaveApplication {
   // Empty for older records — falls back to guessing from [leaveType] text.
   String leaveBucket = '';
 
+  /// Days of this request that are unpaid. Set by rule (two paid days per
+  /// request, the rest LOP) unless HR or Management recorded a different
+  /// split, in which case [lopIsManual] is true.
+  double lopDays = 0;
+  bool   lopIsManual = false;
+  String lopNote = '';
+
+  /// Days actually drawn from the leave balance.
+  double get paidDays {
+    final p = effectiveDays - lopDays;
+    return p < 0 ? 0 : p;
+  }
+
   // True once management (HR/admin) has made a decision — locks manager's controls
   bool managementDecided = false;
 

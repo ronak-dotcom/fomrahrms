@@ -814,6 +814,10 @@ class SupabaseService {
         app.escalationReason = (row['escalation_reason'] as String?) ?? '';
         app.proofUrl    = (row['proof_url']  as String?) ?? '';
         app.leaveBucket = (row['leave_bucket'] as String?) ?? '';
+        // Numeric in the database and fractional (3.5), so read as num.
+        app.lopDays     = ((row['lop_days'] as num?) ?? 0).toDouble();
+        app.lopIsManual = row['lop_days_override'] != null;
+        app.lopNote     = (row['lop_override_note'] as String?) ?? '';
         return app;
       }).toList();
       return list;
@@ -2419,6 +2423,36 @@ class SupabaseService {
       // Left pending rather than retried here: the row is already correct
       // apart from the photo, and v_attendance_selfie_pending still shows it.
       _writeFailed('attachLateSelfie', e);
+    }
+  }
+
+  /// Records how a leave divides between paid days and loss of pay.
+  ///
+  /// The rule gives two paid days per request and marks the rest LOP, which
+  /// is not always what was agreed with the employee. HR or Management can
+  /// set the actual split here; [lopDays] null returns the request to the
+  /// rule. Returns null on success, or the reason it was refused.
+  static Future<String?> setLeaveLopSplit({
+    required String leaveId,
+    required double? lopDays,
+    String? bucket,
+    String? note,
+  }) async {
+    final db = _db;
+    if (db == null) return 'Database not connected';
+    try {
+      await db.rpc('set_leave_lop_split', params: {
+        'p_leave_id': leaveId,
+        'p_lop_days': lopDays,
+        'p_bucket': bucket,
+        'p_note': note,
+      });
+      return null;
+    } catch (e) {
+      _writeFailed('setLeaveLopSplit', e);
+      final text = e.toString();
+      final m = RegExp(r'message: ([^,]+)').firstMatch(text);
+      return m?.group(1) ?? text;
     }
   }
 
