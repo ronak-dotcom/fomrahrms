@@ -84,11 +84,15 @@ class Payslip {
   final String band;
   final String dateOfJoining;
   final int workingDays;
-  final int daysWorked;
-  final int lopDays;
+  /// Fractional: 2.5 days of LOP is a real outcome and has to be storable.
+  final double daysWorked;
+  final double lopDays;
   final double grossPay;
 
   final double basic;
+  /// Dearness allowance. Absent from the payslip until November 2026, which
+  /// left every stored payslip short of the salary on the employee record.
+  final double da;
   final double hra;
   final double educationalAllowance;
   final double lta;
@@ -97,6 +101,7 @@ class Payslip {
   final double specialAllowance;
 
   final double epf;
+  final double esi;
   final double professionalTax;
   final double tds;
   final double lateDeductions;
@@ -121,6 +126,7 @@ class Payslip {
     required this.lopDays,
     required this.grossPay,
     required this.basic,
+    this.da = 0,
     required this.hra,
     required this.educationalAllowance,
     required this.lta,
@@ -128,6 +134,7 @@ class Payslip {
     required this.conveyanceAllowance,
     this.specialAllowance = 0,
     required this.epf,
+    this.esi = 0,
     required this.professionalTax,
     required this.tds,
     required this.lateDeductions,
@@ -138,12 +145,16 @@ class Payslip {
     this.generatedBy = '',
   });
 
+  /// 30 -> "30", 27.5 -> "27.5".
+  static String fmtDays(double v) =>
+      v == v.roundToDouble() ? v.toStringAsFixed(0) : v.toStringAsFixed(1);
+
   double get actualGrossPay =>
-      basic + hra + educationalAllowance + lta + otherAllowance +
+      basic + da + hra + educationalAllowance + lta + otherAllowance +
       conveyanceAllowance + specialAllowance;
 
   double get totalDeductions =>
-      epf + professionalTax + tds + lateDeductions + excessLeaveDeduction + cug;
+      epf + esi + professionalTax + tds + lateDeductions + excessLeaveDeduction + cug;
 
   double get netPay => actualGrossPay - totalDeductions;
 
@@ -161,6 +172,7 @@ class Payslip {
         'lop_days': lopDays,
         'gross_pay': grossPay,
         'basic': basic,
+        'da': da,
         'hra': hra,
         'educational_allowance': educationalAllowance,
         'lta': lta,
@@ -168,6 +180,7 @@ class Payslip {
         'conveyance_allowance': conveyanceAllowance,
         'special_allowance': specialAllowance,
         'epf': epf,
+        'esi': esi,
         'professional_tax': professionalTax,
         'tds': tds,
         'late_deductions': lateDeductions,
@@ -213,10 +226,11 @@ class Payslip {
       band: (j['band'] as String?) ?? '',
       dateOfJoining: (j['date_of_joining'] as String?) ?? '',
       workingDays: (j['working_days'] as num?)?.toInt() ?? 0,
-      daysWorked: (j['days_worked'] as num?)?.toInt() ?? 0,
-      lopDays: (j['lop_days'] as num?)?.toInt() ?? 0,
+      daysWorked: numOf('days_worked'),
+      lopDays: numOf('lop_days'),
       grossPay: numOf('gross_pay'),
       basic: numOf('basic'),
+      da: numOf('da'),
       hra: numOf('hra'),
       educationalAllowance: numOf('educational_allowance'),
       lta: numOf('lta'),
@@ -224,6 +238,7 @@ class Payslip {
       conveyanceAllowance: numOf('conveyance_allowance'),
       specialAllowance: numOf('special_allowance'),
       epf: numOf('epf'),
+      esi: numOf('esi'),
       professionalTax: numOf('professional_tax'),
       tds: numOf('tds'),
       lateDeductions: numOf('late_deductions'),

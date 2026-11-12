@@ -103,8 +103,8 @@ class PayslipPdfService {
       ('Designation', p.designation),
       ('Date of Joining', p.dateOfJoining),
       ('Working Days', '${p.workingDays}'),
-      ('Days Worked', '${p.daysWorked}'),
-      ('LOP Days', '${p.lopDays}'),
+      ('Days Worked', Payslip.fmtDays(p.daysWorked)),
+      ('LOP Days', Payslip.fmtDays(p.lopDays)),
       if (p.band.isNotEmpty) ('Band', p.band),
       ('Gross Pay', _fmtRs(p.grossPay)),
     ];
@@ -124,6 +124,7 @@ class PayslipPdfService {
   static pw.Widget _earningsDeductions(Payslip p) {
     final earnings = <(String, double)>[
       ('Basic', p.basic),
+      if (p.da > 0) ('Dearness Allowance', p.da),
       ('House Rent Allowance', p.hra),
       ('Educational Allowance', p.educationalAllowance),
       ('LTA', p.lta),
@@ -133,6 +134,7 @@ class PayslipPdfService {
     ];
     final deductions = <(String, double)>[
       ('EPF', p.epf),
+      if (p.esi > 0) ('ESI', p.esi),
       ('Professional Tax', p.professionalTax),
       ('TDS', p.tds),
       ('Late Deductions', p.lateDeductions),

@@ -92,7 +92,17 @@ class _ApplyLeavePageState extends State<ApplyLeavePage> {
     }
   }
 
+  /// Usable days per bucket from leave_balance(), less this person's own
+  /// requests that the balance has not counted yet. Null until loaded.
+  Map<String, double>? _usable;
+
   double get _remaining {
+    if (_bucket == 'LOP') return double.infinity;
+    // The real balance. The figures below it are the older estimate, which
+    // allowed one CL and one ML per cycle and ignored anything carried
+    // forward, so someone with days in hand was told the leave was unpaid.
+    final u = _usable;
+    if (u != null && u.containsKey(_bucket)) return u[_bucket]!;
     switch (_bucket) {
       case 'ML':  return _isOnroll ? (1.0 - _usedMl).clamp(0.0, 1.0) : 0.0;
       case 'EL':  return (_accruedEl.toDouble() - _usedEl).clamp(0.0, _accruedEl.toDouble());
@@ -225,7 +235,33 @@ class _ApplyLeavePageState extends State<ApplyLeavePage> {
         }
       }
 
+      // Real balance, less what is already spoken for: requests still
+      // awaiting approval, and approved leave that has not started yet
+      // (leave_balance counts leave only once its first day arrives).
+      Map<String, double>? usable;
+      if (UserSession.employeeId.isNotEmpty) {
+        final rows = await SupabaseService.fetchLeaveBalance(UserSession.employeeId);
+        if (rows.isNotEmpty) {
+          usable = {
+            for (final r in rows)
+              (r['bucket'] as String): ((r['usable'] as num?) ?? 0).toDouble(),
+          };
+          final today = DateTime(now.year, now.month, now.day);
+          for (final a in _myLeaves) {
+            final pending = a.managerStatus == LeaveApprovalStatus.pending;
+            final upcoming = a.managerStatus == LeaveApprovalStatus.approved &&
+                a.from.isAfter(today);
+            if (!pending && !upcoming) continue;
+            final b = a.bucket;
+            if (usable.containsKey(b)) {
+              usable[b] = (usable[b]! - a.effectiveDays).clamp(0.0, 9999.0).toDouble();
+            }
+          }
+        }
+      }
+
       if (mounted) setState(() {
+        _usable       = usable;
         _usedCl       = usedCl;
         _usedMl       = usedMl;
         _usedEl       = usedEl;
@@ -380,7 +416,7 @@ class _ApplyLeavePageState extends State<ApplyLeavePage> {
                 ),
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Text(
-                    'Your monthly leave balance is exhausted.',
+                    'This is more than your available leave balance.',
                     style: TextStyle(
                         fontSize: 13,
                         fontWeight: FontWeight.w600,

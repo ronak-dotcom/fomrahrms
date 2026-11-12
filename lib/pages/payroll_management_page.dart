@@ -1047,7 +1047,11 @@ class _GeneratePayslipPageState extends State<GeneratePayslipPage> {
 
   int _workingDays = 0;
   int _daysInMonth = 0; // fixed calendar days; basis for one-day salary
-  int _lopDays = 0;
+  double _lopDays = 0;
+  /// True once day counts came from the payroll engine. Earnings are then
+  /// paid in proportion to days payable, the way the salary sheet does it,
+  /// and the separate rupee deductions for lateness and excess leave are off.
+  bool _prorate = false;
   int _graceLateDays = 0;
   int _severeLateDays = 0;
   bool _daysWorkedManual = false;
@@ -1081,6 +1085,7 @@ class _GeneratePayslipPageState extends State<GeneratePayslipPage> {
   double? _hraOverride;
   double? _otherAllowanceOverride;
   double? _epfOverride;
+  double? _esiOverride;
   double? _professionalTaxOverride;
   double? _tdsOverride;
   double? _lateDeductionOverride;
@@ -1134,6 +1139,7 @@ class _GeneratePayslipPageState extends State<GeneratePayslipPage> {
       // old constant, so an unset structure keeps the previous behaviour
       // rather than silently dropping to zero.
       if (row['epf'] != null) _epfOverride = (row['epf'] as num).toDouble();
+      if (row['esi'] != null) _esiOverride = (row['esi'] as num).toDouble();
       if (row['tds'] != null) _tdsOverride = (row['tds'] as num).toDouble();
       });
     }
@@ -1236,7 +1242,8 @@ class _GeneratePayslipPageState extends State<GeneratePayslipPage> {
     setState(() {
       _workingDays = daysInMonth;
       _daysInMonth = daysInMonth;
-      _lopDays = lopDays;
+      _lopDays = lopDays.toDouble();
+      _prorate = false;
       _graceLateDays = graceLateDays;
       _severeLateDays = severeLateDays;
       _workingDaysCtrl.text = '$daysInMonth';
@@ -1250,6 +1257,7 @@ class _GeneratePayslipPageState extends State<GeneratePayslipPage> {
       _hraOverride = null;
       _otherAllowanceOverride = null;
       _epfOverride = null;
+      _esiOverride = null;
       _professionalTaxOverride = null;
       _tdsOverride = null;
       _lateDeductionOverride = null;
@@ -1331,15 +1339,14 @@ class _GeneratePayslipPageState extends State<GeneratePayslipPage> {
     setState(() {
       _workingDays   = nwd;
       _daysInMonth   = nwd;      // one-day salary divides by the cycle length
-      _lopDays       = daysLost.round();
-      // The payslip stores whole days, so a half-day of late LOP is rounded
-      // here and the exact figure reported in the note below. Days worked is
-      // derived from the rounded LOP rather than from nowd directly, so the
-      // three fields on screen still add up.
-      final lopWhole = daysLost.round();
+      // Exact, half days included. The payslip used to hold whole days
+      // only, so 2.5 days of LOP was rounded to 3 and nothing was deducted
+      // for it either: the day counts were printed and the full month paid.
+      _lopDays       = daysLost;
+      _prorate       = true;
       _workingDaysCtrl.text = '$nwd';
-      _lopDaysCtrl.text     = '$lopWhole';
-      _daysWorkedCtrl.text  = '${(nwd - lopWhole).clamp(0, nwd)}';
+      _lopDaysCtrl.text     = _trim(daysLost);
+      _daysWorkedCtrl.text  = _trim(nowd);
       _daysWorkedManual     = false;
       // The engine charges lateness and permission overage as lost days,
       // which are already inside days_lost. Leaving the screen's own rupee
@@ -1356,7 +1363,7 @@ class _GeneratePayslipPageState extends State<GeneratePayslipPage> {
           : 'Computed from attendance: ${_trim(nowd)} of $nwd days payable, '
               '${_trim(daysLost)} not'
               '${parts.isEmpty ? '' : ' — ${parts.join(' and ')}'}'
-              '${daysLost == lopWhole ? '' : '. Rounded to $lopWhole on the payslip'}.';
+              '. Earnings below are paid for the payable days.';
     });
   }
 
@@ -1364,8 +1371,21 @@ class _GeneratePayslipPageState extends State<GeneratePayslipPage> {
       v == v.roundToDouble() ? v.toStringAsFixed(0) : v.toStringAsFixed(1);
 
   double get _grossPay => widget.user.grossPay;
-  int get _daysWorked =>
-      int.tryParse(_daysWorkedCtrl.text.trim()) ?? (_workingDays - _lopDays).clamp(0, _workingDays);
+  double get _daysWorked =>
+      double.tryParse(_daysWorkedCtrl.text.trim()) ??
+      (_workingDays - _lopDays).clamp(0, _workingDays).toDouble();
+
+  /// Share of the month's earnings that is payable: days worked over days in
+  /// the cycle when the engine supplied the days, otherwise the whole month.
+  double get _earnFactor {
+    if (!_prorate) return 1.0;
+    final wd = int.tryParse(_workingDaysCtrl.text.trim()) ?? _workingDays;
+    if (wd <= 0) return 1.0;
+    return (_daysWorked / wd).clamp(0.0, 1.0).toDouble();
+  }
+
+  static double _r2(double v) => (v * 100).roundToDouble() / 100;
+  double get _esi => _esiOverride ?? 0;
   double get _hra => _hraOverride ?? PayslipCalc.hra(_basic);
   double get _otherAllowance => _otherAllowanceOverride ?? PayslipCalc.otherAllowance(_grossPay);
   double get _epf => _epfOverride ?? PayslipCalc.epf;
@@ -1381,16 +1401,21 @@ class _GeneratePayslipPageState extends State<GeneratePayslipPage> {
   double get _cug => double.tryParse(_cugCtrl.text.trim()) ?? 0;
 
   double get _actualGrossPay =>
-      _basic + _da + _hra + _educational + _lta + _otherAllowance +
-      _conveyance + _special;
+      // Each head rounded on its own, as it is saved and printed, so the
+      // total is exactly the sum of the lines above it.
+      _r2(_basic * _earnFactor) + _r2(_da * _earnFactor) +
+      _r2(_hra * _earnFactor) + _r2(_educational * _earnFactor) +
+      _r2(_lta * _earnFactor) + _r2(_otherAllowance * _earnFactor) +
+      _r2(_conveyance * _earnFactor) + _special;
   double get _totalDeductions =>
-      _epf + _professionalTax + _tds + _lateDeduction + _excessLeaveDeduction + _cug;
+      _epf + _esi + _professionalTax + _tds + _lateDeduction + _excessLeaveDeduction + _cug;
   double get _netPay => _actualGrossPay - _totalDeductions;
 
   void _syncDaysWorked() {
     final workingDays = int.tryParse(_workingDaysCtrl.text.trim()) ?? _workingDays;
-    final lopDays = int.tryParse(_lopDaysCtrl.text.trim()) ?? _lopDays;
-    _daysWorkedCtrl.text = '${(workingDays - lopDays).clamp(0, workingDays)}';
+    final lopDays = double.tryParse(_lopDaysCtrl.text.trim()) ?? _lopDays;
+    _daysWorkedCtrl.text =
+        _trim((workingDays - lopDays).clamp(0, workingDays).toDouble());
   }
 
   Future<void> _save() async {
@@ -1400,8 +1425,11 @@ class _GeneratePayslipPageState extends State<GeneratePayslipPage> {
     if (_cycleIncomplete) return;
     setState(() => _saving = true);
     final workingDays = int.tryParse(_workingDaysCtrl.text.trim()) ?? _workingDays;
-    final lopDays = int.tryParse(_lopDaysCtrl.text.trim()) ?? _lopDays;
+    final lopDays = double.tryParse(_lopDaysCtrl.text.trim()) ?? _lopDays;
     final daysWorked = _daysWorked;
+    // Stored as what is actually paid: each earning in proportion to the
+    // payable days, so the saved payslip adds up to the net shown here.
+    final f = _earnFactor;
     final payslip = Payslip(
       id: '${widget.user.employeeId}_$_monthYear',
       employeeId: widget.user.employeeId,
@@ -1414,14 +1442,16 @@ class _GeneratePayslipPageState extends State<GeneratePayslipPage> {
       daysWorked: daysWorked,
       lopDays: lopDays,
       grossPay: _grossPay,
-      basic: _basic,
-      hra: _hra,
-      educationalAllowance: _educational,
-      lta: _lta,
-      otherAllowance: _otherAllowance,
-      conveyanceAllowance: _conveyance,
+      basic: _r2(_basic * f),
+      da: _r2(_da * f),
+      hra: _r2(_hra * f),
+      educationalAllowance: _r2(_educational * f),
+      lta: _r2(_lta * f),
+      otherAllowance: _r2(_otherAllowance * f),
+      conveyanceAllowance: _r2(_conveyance * f),
       specialAllowance: _special,
       epf: _epf,
+      esi: _esi,
       professionalTax: _professionalTax,
       tds: _tds,
       lateDeductions: _lateDeduction,
@@ -1604,7 +1634,8 @@ class _GeneratePayslipPageState extends State<GeneratePayslipPage> {
                   Expanded(
                     child: TextField(
                       controller: _lopDaysCtrl,
-                      keyboardType: TextInputType.number,
+                      keyboardType:
+                          const TextInputType.numberWithOptions(decimal: true),
                       decoration: InputDecoration(
                           labelText: 'LOP Days',
                           border: OutlineInputBorder(borderRadius: BorderRadius.circular(10))),
@@ -1617,7 +1648,8 @@ class _GeneratePayslipPageState extends State<GeneratePayslipPage> {
                   Expanded(
                     child: TextField(
                       controller: _daysWorkedCtrl,
-                      keyboardType: TextInputType.number,
+                      keyboardType:
+                          const TextInputType.numberWithOptions(decimal: true),
                       decoration: InputDecoration(
                           labelText: 'Days Worked',
                           border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
@@ -1707,7 +1739,11 @@ class _GeneratePayslipPageState extends State<GeneratePayslipPage> {
                   ),
                 ),
                 const Divider(),
-                _readOnlyAmount('Actual Gross Pay', _actualGrossPay),
+                _readOnlyAmount(
+                    _earnFactor < 1.0
+                        ? 'Gross payable (${_trim(_daysWorked)} days)'
+                        : 'Actual Gross Pay',
+                    _actualGrossPay),
                 const SizedBox(height: 16),
 
                 Text('Deductions', style: TextStyle(fontWeight: FontWeight.w700, color: _purple)),
@@ -1717,6 +1753,12 @@ class _GeneratePayslipPageState extends State<GeneratePayslipPage> {
                   autoValue: PayslipCalc.epf,
                   overrideValue: _epfOverride,
                   onChanged: (v) => setState(() => _epfOverride = v),
+                ),
+                _EditableAmount(
+                  label: 'ESI',
+                  autoValue: 0,
+                  overrideValue: _esiOverride,
+                  onChanged: (v) => setState(() => _esiOverride = v),
                 ),
                 _EditableAmount(
                   label: 'Professional Tax',
