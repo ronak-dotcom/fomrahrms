@@ -5,6 +5,7 @@ import '../theme/app_theme.dart';
 import 'profile_avatar_button.dart';
 import 'quick_actions_bar.dart';
 import 'notification_bell_button.dart';
+import 'report_problem_button.dart';
 
 class ShellTopBar extends StatelessWidget {
   final bool sidebarOpen;
@@ -87,6 +88,14 @@ class ShellTopBar extends StatelessWidget {
         const Spacer(),
         // Quick actions
         const QuickActionIcons(),
+        const SizedBox(width: 8),
+        ReportProblemButton(
+          color: Colors.white,
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.08),
+            borderRadius: BorderRadius.circular(8),
+          ),
+        ),
         const SizedBox(width: 8),
         // Notifications bell
         NotificationBellButton(

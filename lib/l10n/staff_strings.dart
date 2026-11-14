@@ -22,6 +22,26 @@ const Map<String, Map<AppLanguage, String>> _staffStrings = {
                        AppLanguage.hi: 'अपनी भाषा चुनें',
                        AppLanguage.ta: 'உங்கள் மொழியைத் தேர்ந்தெடுக்கவும்'},
 
+  // ── Report a problem (every shell) ───────────────────────────────────
+  'report_problem':  {AppLanguage.en: 'Report a problem', AppLanguage.hi: 'समस्या बताएं', AppLanguage.ta: 'பிரச்சனையைத் தெரிவி'},
+  'report_intro':    {AppLanguage.en: 'Tell us what went wrong. Your name and this screen are sent with it.',
+                       AppLanguage.hi: 'बताएं क्या गलत हुआ। आपका नाम और यह स्क्रीन साथ में भेजे जाएंगे।',
+                       AppLanguage.ta: 'என்ன தவறு நடந்தது என்று சொல்லுங்கள். உங்கள் பெயரும் இந்தத் திரையும் சேர்த்து அனுப்பப்படும்.'},
+  'report_hint':     {AppLanguage.en: 'What were you doing, and what happened?',
+                       AppLanguage.hi: 'आप क्या कर रहे थे, और क्या हुआ?',
+                       AppLanguage.ta: 'நீங்கள் என்ன செய்து கொண்டிருந்தீர்கள், என்ன நடந்தது?'},
+  'report_describe': {AppLanguage.en: 'Please describe the problem.',
+                       AppLanguage.hi: 'कृपया समस्या बताएं।',
+                       AppLanguage.ta: 'பிரச்சனையை விவரிக்கவும்.'},
+  'report_screen':   {AppLanguage.en: 'Screen', AppLanguage.hi: 'स्क्रीन', AppLanguage.ta: 'திரை'},
+  'report_attach':   {AppLanguage.en: 'Attach a picture of this screen',
+                       AppLanguage.hi: 'इस स्क्रीन की तस्वीर जोड़ें',
+                       AppLanguage.ta: 'இந்தத் திரையின் படத்தை இணை'},
+  'report_send':     {AppLanguage.en: 'Send', AppLanguage.hi: 'भेजें', AppLanguage.ta: 'அனுப்பு'},
+  'report_sent':     {AppLanguage.en: 'Thanks. Your report has been sent to Management.',
+                       AppLanguage.hi: 'धन्यवाद। आपकी रिपोर्ट प्रबंधन को भेज दी गई है।',
+                       AppLanguage.ta: 'நன்றி. உங்கள் புகார் நிர்வாகத்திற்கு அனுப்பப்பட்டது.'},
+
   // ── Home ─────────────────────────────────────────────────────────────
   'check_in':               {AppLanguage.en: 'Check In',  AppLanguage.hi: 'चेक इन',       AppLanguage.ta: 'செக் இன்'},
   'check_out':              {AppLanguage.en: 'Check Out', AppLanguage.hi: 'चेक आउट',      AppLanguage.ta: 'செக் அவுட்'},

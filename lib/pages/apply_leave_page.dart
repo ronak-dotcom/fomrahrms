@@ -1,4 +1,5 @@
 import 'package:file_picker/file_picker.dart';
+import '../utils/leave_balance_math.dart';
 import '../utils/leave_deduction.dart';
 import '../utils/attendance_cycle.dart';
 import 'package:flutter/material.dart';
@@ -242,21 +243,14 @@ class _ApplyLeavePageState extends State<ApplyLeavePage> {
       if (UserSession.employeeId.isNotEmpty) {
         final rows = await SupabaseService.fetchLeaveBalance(UserSession.employeeId);
         if (rows.isNotEmpty) {
-          usable = {
-            for (final r in rows)
-              (r['bucket'] as String): ((r['usable'] as num?) ?? 0).toDouble(),
-          };
-          final today = DateTime(now.year, now.month, now.day);
-          for (final a in _myLeaves) {
-            final pending = a.managerStatus == LeaveApprovalStatus.pending;
-            final upcoming = a.managerStatus == LeaveApprovalStatus.approved &&
-                a.from.isAfter(today);
-            if (!pending && !upcoming) continue;
-            final b = a.bucket;
-            if (usable.containsKey(b)) {
-              usable[b] = (usable[b]! - a.effectiveDays).clamp(0.0, 9999.0).toDouble();
-            }
-          }
+          usable = usableAfterOutstanding(
+            usable: {
+              for (final r in rows)
+                (r['bucket'] as String): ((r['usable'] as num?) ?? 0).toDouble(),
+            },
+            myLeaves: _myLeaves,
+            today: now,
+          );
         }
       }
 

@@ -13,16 +13,15 @@ flutter pub get
 echo "==========================================================="
 echo "  flutter test"
 echo "==========================================================="
-# The suite in test/ has never been executed. Run it FIRST so its result is not
-# buried: Vercel truncates the build log at 4 MB and a noisy analyze pass has
-# swallowed it before.
+# Blocking: a failing test stops the deploy, so a change to the money rules
+# (payroll maths, leave balance, attendance cycle, permission minutes) cannot
+# reach production with a broken expectation. The suite was non-blocking
+# while its characterisation tests were being reviewed; they now pass.
 #
-# Non-blocking for this run. Several tests are CHARACTERISATION tests that
-# assert current behaviour including known payroll bugs, so a failure may be
-# the test doing its job rather than a regression. Once we have seen the
-# output and know which is which, this becomes a real gate.
-flutter test --reporter expanded 2>&1 | tail -120 \
-  || echo ">>> TESTS FAILED - see output above"
+# pipefail so the exit code is flutter's, not tail's.
+set -o pipefail
+flutter test --reporter expanded 2>&1 | tail -120
+set +o pipefail
 
 echo
 echo "==========================================================="

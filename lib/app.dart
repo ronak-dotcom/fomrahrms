@@ -7,6 +7,8 @@ import 'models/task_store.dart';
 import 'widgets/app_shell.dart';
 import 'widgets/employee_shell.dart';
 import 'widgets/notification_popup_overlay.dart';
+import 'services/error_reporter.dart';
+import 'pages/app_health_page.dart';
 import 'pages/login_page.dart';
 import 'pages/location_history_page.dart';
 import 'pages/settings_page.dart';
@@ -613,6 +615,7 @@ final _router = GoRouter(
         GoRoute(path: '/management/notifications',          builder: (_, __) => const NotificationsPage()),
         GoRoute(path: '/management/reports-analytics',      builder: (_, __) => const ReportsAnalyticsPage()),
         GoRoute(path: '/management/administration',         builder: (_, __) => const AdministrationPage()),
+        GoRoute(path: '/management/app-health',             builder: (_, __) => const AppHealthPage()),
         GoRoute(path: '/management/settings',               builder: (_, __) => const SettingsPage()),
         // Location history is Management-only by placement here. The view
         // underneath has security_invoker on, so RLS applies regardless — an
@@ -649,6 +652,9 @@ class FomraHrmsApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Error log entries and problem reports name the screen they came from.
+    ErrorReporter.screenResolver ??=
+        () => _router.routerDelegate.currentConfiguration.uri.path;
     return ListenableBuilder(
       listenable: colorThemeNotifier,
       builder: (_, __) => MaterialApp.router(
@@ -656,6 +662,11 @@ class FomraHrmsApp extends StatelessWidget {
         debugShowCheckedModeBanner: false,
         theme: AppTheme.lightTheme,
         routerConfig: _router,
+        // Lets "Report a problem" attach a picture of the current screen.
+        builder: (context, child) => RepaintBoundary(
+          key: ErrorReporter.screenKey,
+          child: child ?? const SizedBox.shrink(),
+        ),
       ),
     );
   }

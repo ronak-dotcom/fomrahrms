@@ -124,6 +124,7 @@ const _navGroups = <_NavGroup>[
 const _flatTailItems = [
   _NavItem('Reports & Analytics', Icons.bar_chart_rounded,     '/management/reports-analytics'),
   _NavItem('Notifications',       Icons.notifications_rounded, '/management/notifications'),
+  _NavItem('App Health',          Icons.monitor_heart_rounded, '/management/app-health'),
 ];
 
 /// Reached from the Settings page rather than the sidebar. Listed here so

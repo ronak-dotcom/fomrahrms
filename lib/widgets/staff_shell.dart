@@ -6,6 +6,7 @@ import '../models/user_session.dart';
 import '../theme/app_theme.dart';
 import 'fomra_logo.dart';
 import 'logout_action.dart';
+import 'report_problem_button.dart';
 
 class _StaffTab {
   final String labelKey;   // sidebar / bottom-nav label
@@ -180,6 +181,12 @@ class _Sidebar extends StatelessWidget {
             Divider(color: AppTheme.borderSubtle, height: 1),
             const SizedBox(height: 12),
             _SidebarTile(
+              icon: Icons.bug_report_outlined,
+              label: st('report_problem'),
+              selected: false,
+              onTap: () => showReportProblemDialog(context),
+            ),
+            _SidebarTile(
               icon: Icons.translate_rounded,
               label: st('language'),
               selected: false,
@@ -305,6 +312,11 @@ class _NarrowLayout extends StatelessWidget {
           ),
         ]),
         actions: [
+          IconButton(
+            tooltip: st('report_problem'),
+            icon: const Icon(Icons.bug_report_outlined),
+            onPressed: () => showReportProblemDialog(context),
+          ),
           IconButton(
             tooltip: st('language'),
             icon: const Icon(Icons.translate_rounded),

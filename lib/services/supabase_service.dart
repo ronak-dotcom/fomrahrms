@@ -1,4 +1,5 @@
 // ignore_for_file: avoid_catches_without_on_clauses
+import 'error_reporter.dart';
 import 'dart:async';
 import 'package:flutter/foundation.dart' show kIsWeb, defaultTargetPlatform;
 import 'gps_tracking_service.dart';
@@ -620,6 +621,8 @@ class SupabaseService {
   /// console and recorded, so the next one is diagnosable in minutes rather
   /// than by tracing a user complaint back through the code.
   static void _writeFailed(String operation, Object error) {
+    ErrorReporter.log('write_failed', '$operation: $error',
+        context: {'operation': operation});
     // ignore: avoid_print
     print('[write-failed] $operation: $error');
     lastWriteFailure = '$operation: $error';
