@@ -196,6 +196,21 @@ begin
       end case;
     end loop;
 
+    -- Net pay is rounded to the nearest rupee (HR, October 2026 check:
+    -- 19,999.80 is paid as 20,000). Halves round up.
+    res := res || jsonb_build_array(
+      jsonb_build_object('t', 'payroll: net pay rounds to the nearest rupee (19,999.80 -> 20,000)',
+        'e', '20000', 'a', trim_scale(payroll_round_net(19999.80))::text),
+      jsonb_build_object('t', 'payroll: net pay rounds to the nearest rupee (44,719.52 -> 44,720)',
+        'e', '44720', 'a', trim_scale(payroll_round_net(44719.52))::text),
+      jsonb_build_object('t', 'payroll: net pay rounds down below 50 paise (77,899.15 -> 77,899)',
+        'e', '77899', 'a', trim_scale(payroll_round_net(77899.15))::text),
+      jsonb_build_object('t', 'payroll: 50 paise rounds up',
+        'e', '101', 'a', trim_scale(payroll_round_net(100.50))::text),
+      jsonb_build_object('t', 'payroll: every net pay is a whole rupee',
+        'e', '0', 'a', (select count(*) from generate_payroll(ce)
+                         where employee_code like 'ZZT-%' and net_pay <> round(net_pay))::text));
+
     if (select count(*) from generate_payroll(ce) where employee_code like 'ZZT-%') <> 10 then
       res := res || jsonb_build_array(jsonb_build_object('t', 'payroll: every active payroll employee gets a row',
         'e', '10', 'a', (select count(*) from generate_payroll(ce) where employee_code like 'ZZT-%')::text));
