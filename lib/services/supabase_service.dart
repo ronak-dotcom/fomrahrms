@@ -2459,6 +2459,92 @@ class SupabaseService {
     }
   }
 
+  // ── Leave corrections: HR proposes, Management approves ────────────────
+  //
+  // A wrong leave type (Jose's CL that should have been ML) could only be
+  // rejected, after which the person had to apply again. HR now proposes
+  // the correction, with a reason, and Management approves it, optionally
+  // approving the leave in the same step. See
+  // supabase/migrations/20261119100000_leave_rejection_probation_corrections.sql.
+
+  static String _rpcError(Object e) {
+    final text = e.toString();
+    final m = RegExp(r'message: ([^,]+)').firstMatch(text);
+    return m?.group(1) ?? text;
+  }
+
+  /// Null on success, or the reason it was refused.
+  static Future<String?> proposeLeaveCorrection({
+    required String leaveId,
+    required String leaveType,
+    required String bucket,
+    required DateTime from,
+    required DateTime to,
+    required bool halfDay,
+    required String reason,
+  }) async {
+    final db = _db;
+    if (db == null) return 'Database not connected';
+    String iso(DateTime d) =>
+        '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+    try {
+      await db.rpc('propose_leave_correction', params: {
+        'p_leave_id': leaveId,
+        'p_leave_type': leaveType,
+        'p_bucket': bucket,
+        'p_from': iso(from),
+        'p_to': iso(to),
+        'p_half_day': halfDay,
+        'p_reason': reason,
+      });
+      return null;
+    } catch (e) {
+      _writeFailed('proposeLeaveCorrection', e);
+      return _rpcError(e);
+    }
+  }
+
+  /// Corrections waiting for Management, keyed by leave id.
+  static Future<Map<String, Map<String, dynamic>>> fetchPendingLeaveCorrections() async {
+    try {
+      final data = await _db
+          ?.from('leave_corrections')
+          .select()
+          .eq('status', 'pending')
+          .order('proposed_at');
+      if (data == null) return {};
+      return {
+        for (final row in data as List)
+          (row['leave_id'] as String): Map<String, dynamic>.from(row as Map),
+      };
+    } catch (_) {
+      return {};
+    }
+  }
+
+  /// Null on success, or the reason it was refused.
+  static Future<String?> decideLeaveCorrection({
+    required int id,
+    required bool approve,
+    bool approveLeave = false,
+    String? note,
+  }) async {
+    final db = _db;
+    if (db == null) return 'Database not connected';
+    try {
+      await db.rpc('decide_leave_correction', params: {
+        'p_id': id,
+        'p_approve': approve,
+        'p_note': note,
+        'p_approve_leave': approveLeave,
+      });
+      return null;
+    } catch (e) {
+      _writeFailed('decideLeaveCorrection', e);
+      return _rpcError(e);
+    }
+  }
+
   static Future<String?> saveCheckIn({
     required String employeeName,
     required String employeeId,
@@ -4337,8 +4423,16 @@ class SupabaseService {
   /// get one leave per cycle instead of the full CL/ML/EL entitlement.
   ///
   /// HR raising it also counts as HR's own acceptance: requiring HR to
-  /// approve a request HR just made is a signature with no meaning. It still
-  /// needs the reporting manager and Management.
+  /// approve a request HR just made is a signature with no meaning.
+  ///
+  /// Confirmation is decided by HR and Management (Management's decision,
+  /// 19 Nov 2026), so the reporting-manager stage is marked not required and
+  /// the request goes straight to Management. Management's acceptance sets
+  /// onroll_confirmed_at, and from that date leave starts to accrue
+  /// (app_users.leave_accrual_from, set by the database).
+  static const onrollManagerNotRequired =
+      'Not required: confirmation is decided by HR and Management';
+
   static Future<String?> requestOnrollForEmployee(String employeeId,
       {String comment = ''}) async {
     try {
@@ -4353,9 +4447,11 @@ class SupabaseService {
             ? 'Raised by ${UserSession.name} (HR) on the employee\u2019s behalf'
             : comment,
         'onroll_hr_decided_at': now,
+        'onroll_manager_status': 'accepted',
+        'onroll_manager_comment': onrollManagerNotRequired,
+        'onroll_manager_decided_at': now,
         // Cleared so a previously denied request can be re-raised rather than
         // staying dead.
-        'onroll_manager_status': 'pending',
         'onroll_management_status': 'pending',
       }).eq('employee_id', employeeId);
       logAuditEvent('onroll_requested_by_hr',

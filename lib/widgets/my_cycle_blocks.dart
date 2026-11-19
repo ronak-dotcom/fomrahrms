@@ -182,6 +182,8 @@ class _MyLeaveBalanceBlockState extends State<MyLeaveBalanceBlock> {
     }
   }
 
+  static String? _fmt(double? v) => v == null ? null : LeaveStore.fmtDays(v);
+
   String _left(int entitled, double used) {
     if (entitled >= 9999) return 'Unlimited';
     final left = (entitled - used).clamp(0, 9999);
@@ -210,13 +212,15 @@ class _MyLeaveBalanceBlockState extends State<MyLeaveBalanceBlock> {
                     _StatusChip(label: me.leaveStatus, color: AppTheme.warning),
                     const SizedBox(height: 10),
                     _MetricRow(
-                      label: 'Leaves left this cycle',
-                      value: _left(AppUser.probationLeavesPerCycle, _usedCl + _usedMl + _usedEl),
+                      label: 'Paid leave left this cycle',
+                      value: _fmt(LeaveStore.availableFor('CL')) ??
+                          _left(AppUser.probationLeavesPerCycle, _usedCl + _usedMl + _usedEl),
                     ),
                     const SizedBox(height: 8),
                     const Text(
-                      'On probation: one leave per cycle, any type. Permission is '
-                      'available after confirmation.',
+                      'On probation: 1 paid day of leave per cycle, and unused days '
+                      'lapse on the 25th. More leave can be taken as loss of pay. '
+                      'Permission is available after confirmation.',
                       style: TextStyle(fontSize: 11, color: AppTheme.textSecondary, height: 1.35),
                     ),
                   ] else ...[
@@ -224,19 +228,19 @@ class _MyLeaveBalanceBlockState extends State<MyLeaveBalanceBlock> {
                     const SizedBox(height: 10),
                     _MetricRow(
                         label: 'Casual Leave',
-                        value: LeaveStore.availableFor('CL')?.toString() ??
+                        value: _fmt(LeaveStore.availableFor('CL')) ??
                             _left(me.monthlyCl, _usedCl)),
                     const SizedBox(height: 8),
                     _MetricRow(
                         label: 'Medical Leave',
-                        value: LeaveStore.availableFor('ML')?.toString() ??
+                        value: _fmt(LeaveStore.availableFor('ML')) ??
                             _left(me.monthlyMl, _usedMl)),
                     const SizedBox(height: 8),
                     // EL only accrues once eligible, so a plain "0" would
                     // look like it was used up rather than not yet earned.
                     _MetricRow(
                       label: 'Earned Leave',
-                      value: LeaveStore.availableFor('EL')?.toString() ??
+                      value: _fmt(LeaveStore.availableFor('EL')) ??
                           (me.isElEligible ? _left(me.monthlyEl, _usedEl) : 'Not yet eligible'),
                     ),
                   ],

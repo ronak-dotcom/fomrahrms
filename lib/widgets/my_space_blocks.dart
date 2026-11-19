@@ -67,7 +67,7 @@ class MyLeaveBlock extends StatefulWidget {
 
 class _MyLeaveBlockState extends State<MyLeaveBlock> {
   bool _loading = true;
-  int? _clAvail;
+  double? _clAvail;
   int _pending = 0;
 
   @override
@@ -100,7 +100,7 @@ class _MyLeaveBlockState extends State<MyLeaveBlock> {
 
       if (mounted) setState(() {
         _clAvail = LeaveStore.availableFor('CL') ??
-            (user != null ? (user.monthlyCl - usedCl).clamp(0, 99).toInt() : null);
+            (user != null ? (user.monthlyCl - usedCl).clamp(0, 99).toDouble() : null);
         _pending = pending;
         _loading = false;
       });
@@ -121,7 +121,7 @@ class _MyLeaveBlockState extends State<MyLeaveBlock> {
       child: _loading
           ? const _MiniLoader()
           : Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              _StatRow('Available Leaves', _clAvail != null ? '$_clAvail Day${_clAvail == 1 ? '' : 's'}' : '—', compact: widget.compact),
+              _StatRow('Available Leaves', _clAvail != null ? '${LeaveStore.fmtDays(_clAvail!)} Day${_clAvail == 1 ? '' : 's'}' : '—', compact: widget.compact),
               SizedBox(height: widget.compact ? 8 : 12),
               _StatRow('Pending Requests', '$_pending', compact: widget.compact),
               SizedBox(height: widget.compact ? 10 : 14),

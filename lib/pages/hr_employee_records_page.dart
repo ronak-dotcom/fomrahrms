@@ -1142,7 +1142,7 @@ class EmployeeProfileDialogState extends State<EmployeeProfileDialog> {
   ///
   /// Raising it counts as this stage's approval — asking HR to approve a
   /// request HR just made is a signature with no meaning — so it goes
-  /// straight to the reporting manager and Management.
+  /// straight to Management, which confirms it.
   Future<void> _raiseOnroll() async {
     setState(() => _raisingOnroll = true);
     final err = await SupabaseService.requestOnrollForEmployee(_user.employeeId);
@@ -1154,10 +1154,8 @@ class EmployeeProfileDialogState extends State<EmployeeProfileDialog> {
         backgroundColor: Colors.red.shade700));
       return;
     }
-    NotificationService.onrollRequested(
-      employeeName: _user.name,
-      reportingManagerName: _user.reportingManager,
-    );
+    // Management confirms; the reporting manager has no stage any more.
+    NotificationService.onrollReachedManagement(employeeName: _user.name);
     if (mounted) {
       Navigator.of(context).pop();
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -2272,6 +2270,13 @@ class EmployeeProfileDialogState extends State<EmployeeProfileDialog> {
     _user.onrollHrStatus = accept ? 'accepted' : 'denied';
     _user.onrollHrComment = comment;
     _user.onrollHrDecidedAt = DateTime.now().toIso8601String();
+    // HR and Management decide confirmation; the reporting manager no longer
+    // has a stage, so HR's acceptance sends it straight to Management.
+    if (accept && _user.onrollManagerStatus == 'pending') {
+      _user.onrollManagerStatus = 'accepted';
+      _user.onrollManagerComment = SupabaseService.onrollManagerNotRequired;
+      _user.onrollManagerDecidedAt = _user.onrollHrDecidedAt;
+    }
     try {
       await widget.onSave(_user);
       NotificationService.onrollStageDecided(

@@ -371,14 +371,20 @@ class _ApplyLeavePageState extends State<ApplyLeavePage> {
 
     // If bucket balance exceeded, show unpaid-leave T&C dialog before proceeding
     if (_remaining != double.infinity && _effectiveDays > _remaining) {
-      final agreed = await _showUnpaidDialog();
+      final paid = _remaining.clamp(0.0, _effectiveDays).toDouble();
+      final agreed = await _showUnpaidDialog(paid: paid, lop: _effectiveDays - paid);
       if (!agreed) return;
     }
 
     await _doSubmit();
   }
 
-  Future<bool> _showUnpaidDialog() async {
+  /// Says exactly how much is paid and how much is loss of pay. It used to
+  /// say only "more than your balance", and that salary would be deducted
+  /// "for the days applied", which read as all of them even when half was
+  /// paid.
+  Future<bool> _showUnpaidDialog({required double paid, required double lop}) async {
+    String d(double v) => '${LeaveStore.fmtDays(v)} day${v == 1 ? '' : 's'}';
     return await showDialog<bool>(
           context: context,
           barrierDismissible: false,
@@ -410,7 +416,11 @@ class _ApplyLeavePageState extends State<ApplyLeavePage> {
                 ),
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Text(
-                    'This is more than your available leave balance.',
+                    paid > 0
+                        ? '${d(paid)} will be paid from your balance and ${d(lop)} '
+                          'will be loss of pay.'
+                        : 'You have no paid leave left for this, so all ${d(lop)} '
+                          'will be loss of pay.',
                     style: TextStyle(
                         fontSize: 13,
                         fontWeight: FontWeight.w600,
@@ -422,8 +432,8 @@ class _ApplyLeavePageState extends State<ApplyLeavePage> {
                     style: TextStyle(fontSize: 12, color: Colors.orange.shade800),
                   ),
                   const SizedBox(height: 6),
-                  _TcPoint('This leave will be treated as Loss of Pay (LOP).'),
-                  _TcPoint('Salary will be deducted for the days applied.'),
+                  _TcPoint('Loss of Pay (LOP): ${d(lop)} beyond your balance.'),
+                  _TcPoint('Salary will be deducted for the LOP ${lop == 1 ? 'day' : 'days'} only.'),
                   _TcPoint('This is subject to manager / management approval.'),
                   _TcPoint('LOP entries are recorded in your attendance.'),
                 ]),

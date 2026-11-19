@@ -519,8 +519,8 @@ class NotificationService {
 
   static Future<void> onrollReachedManagement({required String employeeName}) => _create(
         type: 'onroll_management_pending',
-        title: 'On-roll confirmation awaiting final approval',
-        body: '$employeeName — HR and Manager both accepted',
+        title: 'Confirmation awaiting your approval',
+        body: '$employeeName: HR has recommended confirmation',
         route: '/management/onroll-approvals',
         targetRole: 'Management',
       );
