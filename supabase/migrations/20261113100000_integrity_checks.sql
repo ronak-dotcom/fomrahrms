@@ -371,18 +371,19 @@ begin
                         'The attendance-on-leave check could not run: ' || sqlerrm, '{}'::jsonb;
   end;
 
-  -- 11. Permission charged half a day although, taken in date order, it was
-  --     still inside the quota. set_and_check_permission_minutes() re-runs
-  --     on every update and counts all the cycle's other permissions,
-  --     including later ones, so approving an earlier permission after a
-  --     later one was filed charges both. Pinned by run_money_rule_tests().
+  -- 11. Permission charged half a day although, taken in the order they were
+  --     filed, it was still inside the quota. Until 19 Nov 2026 the rule
+  --     re-ran on every update against all the cycle's permissions, so
+  --     approving an earlier one after a later one was filed charged both
+  --     (fixed in 20261119120000_permission_quota_filing_order.sql). This
+  --     check watches for it coming back.
   begin
     return query
     with p as (
       select l.*, coalesce(u.permission_minutes_quota, 120) as quota,
              sum(coalesce(l.permission_minutes, 0)) over (
                partition by l.employee_id, attendance_cycle_start(l.from_date)
-               order by l.from_date, l.applied_on rows unbounded preceding) as running
+               order by l.applied_on, l.id rows unbounded preceding) as running
         from leave_applications l
         left join app_users u on u.employee_id = l.employee_id
        where l.leave_type = 'Permission'
