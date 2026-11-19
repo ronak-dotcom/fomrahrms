@@ -5,6 +5,8 @@ import '../widgets/attendance_shortcut_card.dart';
 import '../widgets/dashboard_info_blocks.dart';
 import '../widgets/fade_in.dart';
 import '../widgets/milestone_confetti.dart';
+import '../widgets/mobile_home.dart';
+import '../widgets/mobile_shell.dart';
 import '../widgets/my_cycle_blocks.dart';
 import '../widgets/my_space_blocks.dart';
 import '../widgets/my_team_block.dart';
@@ -27,6 +29,11 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage> {
 
   @override
   Widget build(BuildContext context) {
+    // Phones get the redesigned Home (19 Nov 2026); the desktop dashboard
+    // below is unchanged.
+    if (MobileChrome.active(context)) {
+      return const MilestoneConfetti(child: MobileHome());
+    }
     final narrow = MediaQuery.of(context).size.width < 700;
     final pad    = narrow ? 16.0 : 24.0;
 

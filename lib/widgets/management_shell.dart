@@ -3,13 +3,10 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../models/user_session.dart';
 import '../theme/app_theme.dart';
-import '../models/color_theme_notifier.dart';
+import 'mobile_shell.dart';
 import 'breadcrumb_bar.dart';
 import 'logout_action.dart';
 import 'shell_top_bar.dart';
-import 'profile_avatar_button.dart';
-import 'quick_actions_bar.dart';
-import 'notification_bell_button.dart';
 
 class _NavItem {
   final String label;
@@ -317,50 +314,15 @@ class _NarrowLayout extends StatelessWidget {
   final String location;
   const _NarrowLayout({required this.child, required this.location});
 
-  String get _currentTitle {
-    for (final s in _breadcrumbSections) {
-      if (s.route == location) return s.label;
-    }
-    return _dashboardItem.label;
-  }
-
   @override
-  Widget build(BuildContext context) {
-    // The dashboard already shows a large, functional profile avatar in the
-    // WelcomeBanner below — repeating it here would be a second, redundant
-    // profile icon on screen at once.
-    final hideProfile = location == '/management/dashboard';
-    return ListenableBuilder(
-      listenable: colorThemeNotifier,
-      builder: (context, _) => Scaffold(
-        appBar: AppBar(
-          title: Text(_currentTitle),
-          backgroundColor: Colors.transparent,
-          elevation: 0,
-          flexibleSpace: Container(decoration: BoxDecoration(gradient: AppTheme.headerGradient)),
-          iconTheme: const IconThemeData(color: Colors.white),
-          actions: [
-            const NotificationBellButton(
-              notificationsRoute: '/management/notifications',
-              color: Colors.white,
-            ),
-            if (!hideProfile) ...[
-              const Padding(
-                padding: EdgeInsets.only(right: 8),
-                child: ProfileAvatarButton(),
-              ),
-            ] else
-              const SizedBox(width: 8),
-          ],
-        ),
-        drawer: Drawer(child: _DrawerContent(location: location)),
-        body: Column(children: [
-          BreadcrumbBar(location: location, homeRoute: '/management/dashboard', sections: _breadcrumbSections),
-          Expanded(child: QuickActionsBody(child: child)),
-        ]),
-      ),
-    );
-  }
+  Widget build(BuildContext context) => MobileShellScaffold(
+          location: location,
+          homeRoute: '/management/dashboard',
+          notificationsRoute: '/management/notifications',
+          sections: _breadcrumbSections,
+          drawer: _DrawerContent(location: location),
+          child: child,
+        );
 }
 
 class _Sidebar extends StatelessWidget {

@@ -322,8 +322,12 @@ class QuickActionIconsVertical extends StatelessWidget {
 }
 
 /// Wide top-bar version: 4 colourful icon buttons with tooltips.
+///
+/// [onLight] styles them for a white background (the phone header strip)
+/// instead of the dark gradient bar.
 class QuickActionIcons extends StatelessWidget {
-  const QuickActionIcons({super.key});
+  final bool onLight;
+  const QuickActionIcons({super.key, this.onLight = false});
 
   @override
   Widget build(BuildContext context) {
@@ -340,10 +344,72 @@ class QuickActionIcons extends StatelessWidget {
             block: _blockFor(i),
             boxSize: 36,
             iconSize: 20,
-            whiteIcon: true,
+            whiteIcon: !onLight,
           ),
         );
       }),
+    );
+  }
+}
+
+/// "Around FOMRA" on the phone Home: announcements, holidays and birthdays,
+/// which used to sit as a strip of icons at the top of every phone screen.
+/// Each opens the same panel the icons did, in a bottom sheet.
+class AroundFomraCard extends StatelessWidget {
+  const AroundFomraCard({super.key});
+
+  static const _items = [0, 1, 3]; // announcements, holidays, birthdays
+
+  void _open(BuildContext context, int i) {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      backgroundColor: Colors.white,
+      builder: (_) => ConstrainedBox(
+        constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.75),
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(8, 0, 8, 24),
+          child: _blockFor(i),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return _UpcomingCountsLoader(
+      builder: (context, counts) => Row(children: [
+        for (final i in _items) ...[
+          if (i != _items.first) const SizedBox(width: 8),
+          Expanded(
+            child: Material(
+              color: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
+                side: const BorderSide(color: Color(0xFFE5E9F2)),
+              ),
+              child: InkWell(
+                borderRadius: BorderRadius.circular(14),
+                onTap: () => _open(context, i),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+                  child: Column(children: [
+                    Badge(
+                      isLabelVisible: counts.forIndex(i) > 0,
+                      label: Text('${counts.forIndex(i)}'),
+                      child: Icon(_qData[i].icon, color: AppTheme.primaryBlue, size: 24),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(_qData[i].label,
+                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                  ]),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ]),
     );
   }
 }

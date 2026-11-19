@@ -15,6 +15,8 @@ import '../services/supabase_service.dart';
 import '../utils/checkin_status.dart';
 import '../utils/location_consent.dart';
 import '../widgets/back_button.dart';
+import '../widgets/mobile_shell.dart';
+import '../theme/mobile_ui.dart';
 import '../widgets/route_map_view.dart';
 import '../theme/app_theme.dart';
 
@@ -39,6 +41,11 @@ class _EmployeeAttendancePageState extends State<EmployeeAttendancePage> {
   // same amount; 0 if none. See checkin_status.dart's approvedPermissionMinutesFor.
   int _permissionMinutes = 0;
   Timer? _refreshTimer;
+  // Phones show the time as a large clock and on the button ("Check out at
+  // 13:16"), so it is kept current instead of freezing at the moment the
+  // page was opened.
+  Timer? _clockTimer;
+  bool _mobile = false;
 
   final _checkInCtrl  = TextEditingController();
   final _checkOutCtrl = TextEditingController();
@@ -51,11 +58,19 @@ class _EmployeeAttendancePageState extends State<EmployeeAttendancePage> {
     _fillTime(_checkInCtrl);
     _fillTime(_checkOutCtrl);
     _load();
+    _clockTimer = Timer.periodic(const Duration(seconds: 15), (_) {
+      if (!mounted || !_mobile || _submitting) return;
+      setState(() {
+        _fillTime(_checkInCtrl);
+        _fillTime(_checkOutCtrl);
+      });
+    });
   }
 
   @override
   void dispose() {
     _refreshTimer?.cancel();
+    _clockTimer?.cancel();
     _checkInCtrl.dispose();
     _checkOutCtrl.dispose();
     _checkInNoteCtrl.dispose();
@@ -338,8 +353,182 @@ class _EmployeeAttendancePageState extends State<EmployeeAttendancePage> {
     return days[DateTime.now().weekday - 1];
   }
 
+  static const _weekdayNames = ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY'];
+  static const _monthNames = ['JANUARY', 'FEBRUARY', 'MARCH', 'APRIL', 'MAY', 'JUNE', 'JULY',
+      'AUGUST', 'SEPTEMBER', 'OCTOBER', 'NOVEMBER', 'DECEMBER'];
+
+  static String _hhmm(int minutes) =>
+      '${(minutes ~/ 60).toString().padLeft(2, '0')}:${(minutes % 60).toString().padLeft(2, '0')}';
+
+  static String _since(String from) {
+    final p = from.split(':');
+    if (p.length < 2) return '';
+    final start = (int.tryParse(p[0]) ?? 0) * 60 + (int.tryParse(p[1]) ?? 0);
+    final now = DateTime.now();
+    final d = (now.hour * 60 + now.minute - start).clamp(0, 24 * 60);
+    return '${d ~/ 60}h ${d % 60}m';
+  }
+
+  /// Phone layout (approved redesign): one big clock, where you are, the
+  /// reason box only when the time is early or late, and the action fixed
+  /// at the bottom. Same rules and same save calls as the wide layout.
+  Widget _buildMobile(BuildContext context) {
+    final rec = _record;
+    final now = DateTime.now();
+    final checkedIn = rec != null && rec.checkInTime.isNotEmpty && rec.checkOutTime.isEmpty;
+    final done = rec != null && rec.checkOutTime.isNotEmpty;
+    final schedule = OfficeTimingStore.scheduleForCurrentUser();
+    final ctrl = checkedIn ? _checkOutCtrl : _checkInCtrl;
+
+    final early = checkedIn && isEarlyCheckOut(_checkOutCtrl.text, schedule, _permissionMinutes);
+    final late = !checkedIn && !done &&
+        isLateCheckIn(_checkInCtrl.text, schedule) && _permissionMinutes == 0;
+
+    Widget reasonBox({required String title, required TextEditingController c, required String hint}) =>
+        MCard(
+          color: MobileUi.lateBg,
+          borderColor: const Color(0xFFF6D7A8),
+          padding: const EdgeInsets.all(14),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              const Icon(Icons.schedule_rounded, color: MobileUi.late, size: 20),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(title,
+                    style: const TextStyle(fontWeight: FontWeight.w700, color: MobileUi.late)),
+              ),
+            ]),
+            const SizedBox(height: 10),
+            TextField(
+              controller: c,
+              maxLines: 2,
+              minLines: 1,
+              decoration: InputDecoration(
+                labelText: 'Reason (required)',
+                hintText: hint,
+                filled: true,
+                fillColor: Colors.white,
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: const BorderSide(color: MobileUi.line),
+                ),
+              ),
+            ),
+          ]),
+        );
+
+    return Scaffold(
+      backgroundColor: AppTheme.pageBackground,
+      bottomNavigationBar: _loading || done
+          ? null
+          : checkedIn
+              ? MStickyButton(
+                  label: 'Check out at ${_checkOutCtrl.text}',
+                  icon: Icons.logout_rounded,
+                  color: _teal,
+                  busy: _submitting,
+                  onPressed: _checkOut,
+                )
+              : MStickyButton(
+                  label: 'Check in at ${_checkInCtrl.text}',
+                  icon: Icons.login_rounded,
+                  busy: _submitting,
+                  onPressed: _checkIn,
+                ),
+      body: RefreshIndicator(
+        onRefresh: _load,
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+          children: [
+            if (_loading)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 60),
+                child: Center(child: CircularProgressIndicator()),
+              )
+            else if (done)
+              _DaySummary(record: rec, isDark: false)
+            else ...[
+              MCard(
+                padding: const EdgeInsets.fromLTRB(16, 20, 16, 20),
+                child: Column(children: [
+                  Text('${_weekdayNames[now.weekday - 1]}, ${now.day} ${_monthNames[now.month - 1]}',
+                      style: const TextStyle(
+                          fontSize: 13, letterSpacing: 0.4, fontWeight: FontWeight.w600,
+                          color: AppTheme.textSecondary)),
+                  const SizedBox(height: 4),
+                  InkWell(
+                    borderRadius: BorderRadius.circular(12),
+                    onTap: () => setState(() => _fillTime(ctrl)),
+                    child: Text(ctrl.text,
+                        style: const TextStyle(
+                            fontSize: 56, height: 1.1, fontWeight: FontWeight.w800,
+                            letterSpacing: -1.5, color: AppTheme.textPrimary,
+                            fontFeatures: [FontFeature.tabularFigures()])),
+                  ),
+                  const SizedBox(height: 12),
+                  Wrap(alignment: WrapAlignment.center, spacing: 8, runSpacing: 8, children: [
+                    if (checkedIn && rec.location.isNotEmpty)
+                      ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 260),
+                        child: MChip(rec.location,
+                            icon: Icons.my_location_rounded,
+                            color: MobileUi.present,
+                            background: MobileUi.presentBg),
+                      ),
+                    if (checkedIn)
+                      MChip('In at ${rec.checkInTime} · ${_since(rec.checkInTime)}',
+                          color: const Color(0xFF334155),
+                          background: const Color(0xFFEEF1F6)),
+                    if (!checkedIn && !schedule.noFixedTiming)
+                      MChip('Office hours ${_hhmm(schedule.checkInMinutes)}–${_hhmm(schedule.checkOutMinutes)}',
+                          color: const Color(0xFF334155),
+                          background: const Color(0xFFEEF1F6)),
+                  ]),
+                ]),
+              ),
+              if (early) ...[
+                const SizedBox(height: 14),
+                reasonBox(
+                  title: 'Before ${_hhmm(schedule.checkOutMinutes - _permissionMinutes)}, '
+                      'so this is an early check-out',
+                  c: _checkOutNoteCtrl,
+                  hint: "e.g. Site visit, doctor's appointment",
+                ),
+              ],
+              if (late) ...[
+                const SizedBox(height: 14),
+                reasonBox(
+                  title: 'After ${_hhmm(schedule.checkInMinutes)}, so this is a late check-in',
+                  c: _checkInNoteCtrl,
+                  hint: 'e.g. Traffic delay, doctor appointment',
+                ),
+              ],
+              if (checkedIn && rec.checkInNote.isNotEmpty) ...[
+                const SizedBox(height: 14),
+                MCard(
+                  child: Text('Check-in note: ${rec.checkInNote}',
+                      style: const TextStyle(fontSize: 13, color: AppTheme.textSecondary)),
+                ),
+              ],
+              if (checkedIn && _routePoints(rec).isNotEmpty) ...[
+                const MSection('Route today'),
+                MCard(
+                  padding: const EdgeInsets.all(10),
+                  child: RouteMapView(points: _routePoints(rec), recordId: rec.id, keyPrefix: 'rt'),
+                ),
+              ],
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    _mobile = MobileChrome.active(context);
+    if (_mobile) return _buildMobile(context);
     final cs     = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final rec    = _record;
