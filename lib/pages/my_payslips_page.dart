@@ -495,10 +495,17 @@ const _monthNames = ['Jan','Feb','Mar','Apr','May','Jun',
                       'Jul','Aug','Sep','Oct','Nov','Dec'];
 
 /// Last 12 months as (key='YYYY-MM', label='Mon YYYY'), newest first.
+/// The last 12 cycles that have closed (each ends on the 25th), newest
+/// first. A payslip cannot be issued for a cycle still running, so a
+/// request for one used to sit unanswered.
 List<(String, String)> _recentMonths() {
   final now = DateTime.now();
+  final today = DateTime(now.year, now.month, now.day);
+  final latestClosed = DateTime(today.year, today.month, 25).isBefore(today)
+      ? DateTime(today.year, today.month, 1)
+      : DateTime(today.year, today.month - 1, 1);
   return List.generate(12, (i) {
-    final d = DateTime(now.year, now.month - i, 1);
+    final d = DateTime(latestClosed.year, latestClosed.month - i, 1);
     final key = '${d.year}-${d.month.toString().padLeft(2, '0')}';
     return (key, '${_monthNames[d.month - 1]} ${d.year}');
   });
@@ -837,6 +844,8 @@ class PayslipDetailPage extends StatelessWidget {
   static String _fmtRs(double v) =>
       '₹${v.toStringAsFixed(0).replaceAllMapped(RegExp(r'\B(?=(\d{3})+(?!\d))'), (m) => ',')}';
 
+  static String? _d(double? v) => v == null || v == 0 ? null : Payslip.fmtDays(v);
+
   Widget _infoRow(String label, String value) => Padding(
         padding: const EdgeInsets.symmetric(vertical: 6),
         child: Row(children: [
@@ -851,7 +860,7 @@ class PayslipDetailPage extends StatelessWidget {
         ]),
       );
 
-  Widget _amountRow(String label, double value, {bool bold = false}) => Padding(
+  Widget _amountRow(String label, double value, {bool bold = false, bool paise = false}) => Padding(
         padding: const EdgeInsets.symmetric(vertical: 6),
         child: Row(children: [
           Expanded(
@@ -859,7 +868,7 @@ class PayslipDetailPage extends StatelessWidget {
                   style: TextStyle(
                       fontSize: 13,
                       fontWeight: bold ? FontWeight.w700 : FontWeight.normal))),
-          Text(_fmtRs(value),
+          Text(paise ? '₹${value.toStringAsFixed(2)}' : _fmtRs(value),
               style: TextStyle(
                   fontSize: 13, fontWeight: bold ? FontWeight.w700 : FontWeight.w600)),
         ]),
@@ -975,8 +984,37 @@ class PayslipDetailPage extends StatelessWidget {
                   color: _purple.withValues(alpha: 0.08),
                   borderRadius: BorderRadius.circular(10),
                 ),
-                child: _amountRow('Net Pay (Rs)', p.netPay, bold: true),
+                child: Column(children: [
+                  // Net pay is rounded to the rupee (agreed with HR, Nov 2026).
+                  if (p.roundedOff.abs() >= 0.005) _amountRow('Rounded off', p.roundedOff, paise: true),
+                  _amountRow('Net Pay (Rs)', p.netPay, bold: true),
+                ]),
               ),
+              if (p.isFromEngine) ...[
+                const SizedBox(height: 16),
+                Text('This cycle',
+                    style: TextStyle(fontWeight: FontWeight.w700, color: _purple)),
+                const SizedBox(height: 6),
+                Wrap(spacing: 18, runSpacing: 6, children: [
+                  for (final (l, v) in [
+                    ('Working days', p.attendanceWorkingDays?.toString()),
+                    ('Days present', p.daysPresent?.toString()),
+                    ('CL used', _d(p.clUsed)),
+                    ('ML used', _d(p.mlUsed)),
+                    ('EL used', _d(p.elUsed)),
+                    ('Comp off used', _d(p.compOffUsed)),
+                    ('Permission', (p.permissionMinutes ?? 0) > 0 ? '${p.permissionMinutes} min' : null),
+                    ('Late arrivals', (p.lateCount ?? 0) > 0 ? '${p.lateCount}' : null),
+                    ('LOP days', Payslip.fmtDays(p.lopDays)),
+                    ('Payable days', Payslip.fmtDays(p.daysWorked)),
+                  ])
+                    if (v != null)
+                      Text.rich(TextSpan(children: [
+                        TextSpan(text: '$l  ', style: const TextStyle(fontSize: 12, color: Color(0xFF6B7280))),
+                        TextSpan(text: v, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                      ])),
+                ]),
+              ],
 
               if (p.leaveDetails.isNotEmpty) ...[
                 const SizedBox(height: 24),

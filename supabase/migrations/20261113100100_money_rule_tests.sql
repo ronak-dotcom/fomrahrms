@@ -211,6 +211,50 @@ begin
         'e', '0', 'a', (select count(*) from generate_payroll(ce)
                          where employee_code like 'ZZT-%' and net_pay <> round(net_pay))::text));
 
+    -- Payslips are issued from the payroll engine (Nov 2026).
+    begin
+      perform _issue_payslips(ce, array['ZZT-01'], false, ce, 'selftest');
+      t := 'issued';
+    exception when others then
+      t := 'refused';
+    end;
+    res := res || jsonb_build_array(jsonb_build_object('t', 'payslip: refused while the cycle is still running',
+      'e', 'refused', 'a', t));
+    perform _issue_payslips(ce, array['ZZT-01', 'ZZT-05'], false, ce + 1, 'selftest');
+    select string_agg(p.employee_id || ':' || p.status, ',' order by p.employee_id) into t
+      from payslips p where p.employee_id in ('ZZT-01', 'ZZT-05');
+    res := res || jsonb_build_array(jsonb_build_object('t', 'payslip: issued as drafts once the cycle has closed',
+      'e', 'ZZT-01:draft,ZZT-05:draft', 'a', t));
+    select count(*)::text into t
+      from payslips p join generate_payroll(ce) g on g.employee_code = p.employee_id
+     where p.employee_id in ('ZZT-01', 'ZZT-05')
+       and p.net_pay = g.net_pay and p.gross_earned = g.gross
+       and p.lop_days = g.days_lost and p.days_worked = g.nowd;
+    res := res || jsonb_build_array(jsonb_build_object('t', 'payslip: net pay, gross and LOP are the payroll engine''s',
+      'e', '2', 'a', t));
+    select trim_scale(cl_used)::text || '/' || trim_scale(leave_lop)::text into t
+      from payslips where employee_id = 'ZZT-05';
+    res := res || jsonb_build_array(jsonb_build_object('t', 'payslip: records 3 CL days of which 1.5 LOP',
+      'e', '3/1.5', 'a', t));
+    perform _publish_payslips(ce, array['ZZT-01'], 'selftest');
+    select string_agg(outcome, ',') into t from _issue_payslips(ce, array['ZZT-01'], false, ce + 1, 'selftest');
+    res := res || jsonb_build_array(jsonb_build_object('t', 'payslip: a published payslip is not overwritten without a reissue',
+      'e', 'already_published', 'a', t));
+    perform _issue_payslips(ce, array['ZZT-01'], true, ce + 1, 'selftest');
+    select p.status || ' v' || p.version || ', history ' ||
+           (select count(*) from payslip_history h where h.employee_id = 'ZZT-01')
+      into t from payslips p where p.employee_id = 'ZZT-01';
+    res := res || jsonb_build_array(jsonb_build_object('t', 'payslip: a reissue is a new draft and keeps the old one',
+      'e', 'draft v2, history 1', 'a', t));
+    insert into app_users(email, name, employee_id, role, active, date_of_joining,
+                          department, designation, onroll_confirmed_at,
+                          weekly_off_day, payroll_eligible, permission_minutes_quota)
+    values ('zzt-11@selftest.invalid', 'ZZ Selftest ZZT-11', 'ZZT-11', 'Employee', true, '2025-01-01',
+            'ZZ Selftest Dept', 'Tester', '2025-04-01', 'Sunday', true, 120);
+    select string_agg(outcome, ',') into t from _issue_payslips(ce, array['ZZT-11'], false, ce + 1, 'selftest');
+    res := res || jsonb_build_array(jsonb_build_object('t', 'payslip: refused without a salary structure',
+      'e', 'no_salary_structure', 'a', t));
+
     if (select count(*) from generate_payroll(ce) where employee_code like 'ZZT-%') <> 10 then
       res := res || jsonb_build_array(jsonb_build_object('t', 'payroll: every active payroll employee gets a row',
         'e', '10', 'a', (select count(*) from generate_payroll(ce) where employee_code like 'ZZT-%')::text));

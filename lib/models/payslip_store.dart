@@ -112,6 +112,39 @@ class Payslip {
   final DateTime generatedAt;
   final String generatedBy;
 
+  // ── Issued by the database (issue_payslips, from Nov 2026) ──────────────
+  // A payslip issued from the payroll engine carries the engine's own
+  // totals. Shown as issued rather than re-added from the lines: each line
+  // is rounded to the paisa, so the lines can differ from the total by a few
+  // paise, and net pay is rounded to the rupee.
+  /// 'draft' (HR has not published it; the employee cannot see it) or
+  /// 'published'.
+  final String status;
+  /// 'engine' when issued by the database; 'app' for the older payslips the
+  /// app calculated itself.
+  final String source;
+  final int version;
+  final double? grossEarned;
+  final double? totalDeductionsIssued;
+  final double? netPayIssued;
+  final double roundedOff;
+  final DateTime? cycleStart;
+  final DateTime? cycleEnd;
+  final int? attendanceWorkingDays;
+  final int? daysPresent;
+  final double? clUsed;
+  final double? mlUsed;
+  final double? elUsed;
+  final double? compOffUsed;
+  final double? lopLeave;
+  /// The unpaid part of approved leave.
+  final double? leaveLop;
+  final int? permissionCount;
+  final int? permissionMinutes;
+  final int? lateCount;
+  final double? lateLop;
+  final double? permissionLop;
+
   const Payslip({
     required this.id,
     required this.employeeId,
@@ -143,20 +176,48 @@ class Payslip {
     this.leaveDetails = const [],
     required this.generatedAt,
     this.generatedBy = '',
+    this.status = 'published',
+    this.source = 'app',
+    this.version = 1,
+    this.grossEarned,
+    this.totalDeductionsIssued,
+    this.netPayIssued,
+    this.roundedOff = 0,
+    this.cycleStart,
+    this.cycleEnd,
+    this.attendanceWorkingDays,
+    this.daysPresent,
+    this.clUsed,
+    this.mlUsed,
+    this.elUsed,
+    this.compOffUsed,
+    this.lopLeave,
+    this.leaveLop,
+    this.permissionCount,
+    this.permissionMinutes,
+    this.lateCount,
+    this.lateLop,
+    this.permissionLop,
   });
+
+  bool get isFromEngine => source == 'engine';
+  bool get isDraft => status == 'draft';
 
   /// 30 -> "30", 27.5 -> "27.5".
   static String fmtDays(double v) =>
       v == v.roundToDouble() ? v.toStringAsFixed(0) : v.toStringAsFixed(1);
 
   double get actualGrossPay =>
-      basic + da + hra + educationalAllowance + lta + otherAllowance +
-      conveyanceAllowance + specialAllowance;
+      grossEarned ??
+      (basic + da + hra + educationalAllowance + lta + otherAllowance +
+          conveyanceAllowance + specialAllowance);
 
   double get totalDeductions =>
-      epf + esi + professionalTax + tds + lateDeductions + excessLeaveDeduction + cug;
+      totalDeductionsIssued ??
+      (epf + esi + professionalTax + tds + lateDeductions + excessLeaveDeduction + cug);
 
-  double get netPay => actualGrossPay - totalDeductions;
+  /// As issued (rounded to the rupee) when the database issued it.
+  double get netPay => netPayIssued ?? (actualGrossPay - totalDeductions);
 
   Map<String, dynamic> toJson() => {
         'id': id,
@@ -215,6 +276,14 @@ class Payslip {
       if (v is String) return double.tryParse(v) ?? 0;
       return 0;
     }
+    double? numOrNull(String key) {
+      final v = j[key];
+      if (v is num) return v.toDouble();
+      if (v is String) return double.tryParse(v);
+      return null;
+    }
+    int? intOrNull(String key) => numOrNull(key)?.round();
+    DateTime? dateOrNull(String key) => DateTime.tryParse((j[key] as String?) ?? '');
 
     return Payslip(
       id: (j['id'] as String?) ?? '',
@@ -248,6 +317,28 @@ class Payslip {
       generatedAt: DateTime.tryParse((j['generated_at'] as String?) ?? '') ??
           DateTime.now(),
       generatedBy: (j['generated_by'] as String?) ?? '',
+      status: (j['status'] as String?) ?? 'published',
+      source: (j['source'] as String?) ?? 'app',
+      version: intOrNull('version') ?? 1,
+      grossEarned: numOrNull('gross_earned'),
+      totalDeductionsIssued: numOrNull('total_deductions'),
+      netPayIssued: numOrNull('net_pay'),
+      roundedOff: numOrNull('rounded_off') ?? 0,
+      cycleStart: dateOrNull('cycle_start'),
+      cycleEnd: dateOrNull('cycle_end'),
+      attendanceWorkingDays: intOrNull('attendance_working_days'),
+      daysPresent: intOrNull('days_present'),
+      clUsed: numOrNull('cl_used'),
+      mlUsed: numOrNull('ml_used'),
+      elUsed: numOrNull('el_used'),
+      compOffUsed: numOrNull('comp_off_used'),
+      lopLeave: numOrNull('lop_leave'),
+      leaveLop: numOrNull('leave_lop'),
+      permissionCount: intOrNull('permission_count'),
+      permissionMinutes: intOrNull('permission_minutes'),
+      lateCount: intOrNull('late_count'),
+      lateLop: numOrNull('late_lop'),
+      permissionLop: numOrNull('permission_lop'),
     );
   }
 }

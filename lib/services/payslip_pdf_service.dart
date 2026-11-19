@@ -172,6 +172,14 @@ class PayslipPdfService {
   }
 
   static pw.Widget _netPayBar(Payslip p) => pw.Column(children: [
+        // Net pay is rounded to the rupee (agreed with HR, Nov 2026).
+        if (p.roundedOff.abs() >= 0.005)
+          pw.Padding(
+            padding: const pw.EdgeInsets.only(bottom: 2, right: 10),
+            child: pw.Row(mainAxisAlignment: pw.MainAxisAlignment.end, children: [
+              pw.Text('Rounded off  Rs. ${p.roundedOff.toStringAsFixed(2)}', style: const pw.TextStyle(fontSize: 8)),
+            ]),
+          ),
         pw.Container(
           width: double.infinity,
           padding: const pw.EdgeInsets.symmetric(horizontal: 10, vertical: 8),

@@ -3477,20 +3477,93 @@ class SupabaseService {
 
   // ── Payslips ──────────────────────────────────────────────────────────────
 
+  /// The person's own payslips, published ones only. HR and Management may
+  /// read every payslip, drafts included, so without the filter a draft
+  /// waiting for review would appear on their own payslips page.
   static Future<List<Payslip>> fetchPayslips(String employeeId) async {
+    List<Payslip> parse(dynamic data) => data == null
+        ? <Payslip>[]
+        : (data as List)
+            .map((row) => Payslip.fromJson(Map<String, dynamic>.from(row as Map)))
+            .toList();
     try {
       final data = await _db
           ?.from('payslips')
           .select()
           .eq('employee_id', employeeId)
+          .eq('status', 'published')
           .order('month_year', ascending: false);
-      if (data == null) return [];
-      return (data as List)
-          .map((row) => Payslip.fromJson(Map<String, dynamic>.from(row as Map)))
-          .toList();
+      return parse(data);
     } catch (_) {
-      return [];
+      // Before the database had payslip status (Nov 2026) the filter fails;
+      // every payslip then was published.
+      try {
+        final data = await _db
+            ?.from('payslips')
+            .select()
+            .eq('employee_id', employeeId)
+            .order('month_year', ascending: false);
+        return parse(data);
+      } catch (_) {
+        return [];
+      }
     }
+  }
+
+  // ── Issuing payslips (HR / Management) ──────────────────────────────────
+  // The database works every payslip out from the payroll engine; the app
+  // only shows the figures, asks HR to confirm the counts, and publishes.
+
+  static List<Map<String, dynamic>> _rows(dynamic data) => data is List
+      ? data.map((r) => Map<String, dynamic>.from(r as Map)).toList()
+      : <Map<String, dynamic>>[];
+
+  /// Everyone on payroll for the cycle ending [cycleEnd]: the counts HR
+  /// confirms, the figures, and where each payslip stands. Throws on error.
+  static Future<List<Map<String, dynamic>>> payslipPreview(DateTime cycleEnd) async {
+    final db = _db;
+    if (db == null) return [];
+    final data = await db.rpc('payslip_preview', params: {'p_cycle_end': _isoDate(cycleEnd)});
+    return _rows(data);
+  }
+
+  /// Issues draft payslips for [employeeIds] (everyone when null). A
+  /// published payslip is replaced only with [reissue]; the old one is kept.
+  /// Returns one row per person with an `outcome`: draft,
+  /// already_published or no_salary_structure. Throws on error, including
+  /// for a cycle that has not closed.
+  static Future<List<Map<String, dynamic>>> issuePayslips(
+    DateTime cycleEnd, {
+    List<String>? employeeIds,
+    bool reissue = false,
+  }) async {
+    final db = _db;
+    if (db == null) return [];
+    final data = await db.rpc('issue_payslips', params: {
+      'p_cycle_end': _isoDate(cycleEnd),
+      'p_employee_ids': employeeIds,
+      'p_reissue': reissue,
+    });
+    logAuditEvent('payslips_issued', targetType: 'payslips',
+        targetId: _isoDate(cycleEnd), details: {'reissue': reissue, 'count': (data as List?)?.length ?? 0});
+    return _rows(data);
+  }
+
+  /// Publishes the drafts for [employeeIds] (all drafts when null): the
+  /// employees can then see them and are notified. Throws on error.
+  static Future<List<Map<String, dynamic>>> publishPayslips(
+    DateTime cycleEnd, {
+    List<String>? employeeIds,
+  }) async {
+    final db = _db;
+    if (db == null) return [];
+    final data = await db.rpc('publish_payslips', params: {
+      'p_cycle_end': _isoDate(cycleEnd),
+      'p_employee_ids': employeeIds,
+    });
+    logAuditEvent('payslips_published', targetType: 'payslips',
+        targetId: _isoDate(cycleEnd), details: {'count': (data as List?)?.length ?? 0});
+    return _rows(data);
   }
 
   static Future<void> savePayslip(Payslip p) async {
