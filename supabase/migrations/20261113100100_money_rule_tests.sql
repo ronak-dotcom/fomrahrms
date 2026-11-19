@@ -86,7 +86,8 @@ begin
        and not (e = 'ZZT-05' and d::date between date '2030-10-07' and date '2030-10-09')
        and not (e = 'ZZT-06' and d::date < date '2030-10-11')
        and not (e = 'ZZT-09' and d::date in (date '2030-10-12', date '2030-10-14'))
-       and not (e = 'ZZT-10' and d::date = date '2030-10-08');
+       and not (e = 'ZZT-10' and d::date = date '2030-10-08')
+       and not (e = 'ZZT-08' and d::date in (date '2030-10-03', date '2030-10-08', date '2030-10-15'));
 
     -- ZZT-04: five late arrivals (start 09:30, grace 10 minutes).
     update attendance_records set check_in_time = '09:45'
@@ -114,7 +115,14 @@ begin
        'pending', 'pending', null, false),
       ('zzt-07-p2', 'ZZ Selftest ZZT-07', 'ZZT-07', 'ZZ Selftest Dept', 'Permission',
        date '2030-10-10', date '2030-10-10', 0, 'Permission: 30 Minutes | selftest', now(),
-       'pending', 'pending', null, false);
+       'pending', 'pending', null, false),
+      -- ZZT-08 is on probation: a half day, then a full day, then another.
+      ('zzt-08-a', 'ZZ Selftest ZZT-08', 'ZZT-08', 'ZZ Selftest Dept', 'Casual Leave',
+       date '2030-10-03', date '2030-10-03', 0.5, 'selftest', now(), 'pending', 'pending', 'CL', true),
+      ('zzt-08-b', 'ZZ Selftest ZZT-08', 'ZZT-08', 'ZZ Selftest Dept', 'Casual Leave',
+       date '2030-10-08', date '2030-10-08', 1, 'selftest', now(), 'pending', 'pending', 'CL', false),
+      ('zzt-08-c', 'ZZ Selftest ZZT-08', 'ZZT-08', 'ZZ Selftest Dept', 'Casual Leave',
+       date '2030-10-15', date '2030-10-15', 1, 'selftest', now(), 'pending', 'pending', 'CL', false);
 
     -- Approved at Management level: a Reporting Manager may approve only up
     -- to two days, and the three-day request below would be refused.
@@ -225,9 +233,53 @@ begin
     select * into b from leave_balance('ZZT-08', ce) where bucket = 'ML';
     res := res || jsonb_build_array(jsonb_build_object('t', 'leave balance: no ML before confirmation',
       'e', '0', 'a', trim_scale(b.accrued)::text));
+    -- Probation (decided 14 and 19 Nov 2026): one paid day per cycle, the
+    -- rest LOP rather than refused; a half day counts half; CL lapses at the
+    -- end of the cycle, so the balance never shows more than 1.
     select * into b from leave_balance('ZZT-08', ce) where bucket = 'CL';
-    res := res || jsonb_build_array(jsonb_build_object('t', 'leave balance: CL accrues from the joining cycle (Jun - Oct = 5)',
-      'e', '5', 'a', trim_scale(b.accrued)::text));
+    res := res || jsonb_build_array(
+      jsonb_build_object('t', 'probation: CL is 1 per cycle and does not carry forward',
+        'e', '1', 'a', trim_scale(b.accrued)::text),
+      jsonb_build_object('t', 'probation: half day + full day uses the 1 paid day, nothing left',
+        'e', '0', 'a', trim_scale(b.available)::text));
+    select lop_days into v from leave_applications where id = 'zzt-08-a';
+    res := res || jsonb_build_array(jsonb_build_object('t', 'probation: first half day of the cycle is paid',
+      'e', '0', 'a', trim_scale(v)::text));
+    select lop_days into v from leave_applications where id = 'zzt-08-b';
+    res := res || jsonb_build_array(jsonb_build_object('t', 'probation: a full day after a half day is half paid, half LOP',
+      'e', '0.5', 'a', trim_scale(v)::text));
+    select lop_days into v from leave_applications where id = 'zzt-08-c';
+    res := res || jsonb_build_array(jsonb_build_object('t', 'probation: a third leave in the cycle is accepted, all LOP',
+      'e', '1', 'a', trim_scale(v)::text));
+
+    -- A leave rejected by Management frees the date (Jose, 19 Nov 2026).
+    insert into leave_applications(id, employee_name, employee_id, department, leave_type,
+                                   from_date, to_date, days, reason, applied_on,
+                                   manager_status, management_status, leave_bucket, is_half_day)
+    values ('zzt-02-r1', 'ZZ Selftest ZZT-02', 'ZZT-02', 'ZZ Selftest Dept', 'Casual Leave',
+            date '2030-10-07', date '2030-10-07', 1, 'selftest', now(), 'pending', 'pending', 'CL', false);
+    update leave_applications set management_status = 'denied' where id = 'zzt-02-r1';
+    begin
+      insert into leave_applications(id, employee_name, employee_id, department, leave_type,
+                                     from_date, to_date, days, reason, applied_on,
+                                     manager_status, management_status, leave_bucket, is_half_day)
+      values ('zzt-02-r2', 'ZZ Selftest ZZT-02', 'ZZT-02', 'ZZ Selftest Dept', 'Casual Leave',
+              date '2030-10-07', date '2030-10-07', 1, 'selftest', now(), 'pending', 'pending', 'CL', false);
+      t := 'allowed';
+    exception when others then
+      t := 'refused: ' || sqlerrm;
+    end;
+    res := res || jsonb_build_array(jsonb_build_object('t', 'a date rejected by Management can be applied for again',
+      'e', 'allowed', 'a', t));
+
+    -- Confirmed from now on: leave accrues from the confirmation date.
+    update app_users set onroll_confirmed_at = '2030-09-30T10:00:00' where employee_id = 'ZZT-08';
+    select leave_accrual_from::text into t from app_users where employee_id = 'ZZT-08';
+    res := res || jsonb_build_array(jsonb_build_object('t', 'confirmation records the date leave accrues from',
+      'e', '2030-09-30', 'a', t));
+    select * into b from leave_balance('ZZT-08', ce) where bucket = 'ML';
+    res := res || jsonb_build_array(jsonb_build_object('t', 'after confirmation, ML accrues from the confirmation cycle only (1 by Oct)',
+      'e', '1', 'a', trim_scale(b.accrued)::text));
 
     raise exception using errcode = 'ZZTST', message = 'selftest rollback';
   exception
