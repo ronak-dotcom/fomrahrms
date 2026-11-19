@@ -35,39 +35,65 @@ type SupabaseLike = {
   };
 };
 
-let supabase: ReturnType<typeof createClient> | null = null;
-
-function getSupabase() {
-  if (supabase) return supabase;
-
+// A NEW client for every request, never a shared one.
+//
+// This used to be a single client kept for the life of the function
+// instance. verifyOtp() below signs the client it is called on in as the
+// employee who just logged in, and from then on supabase-js sends that
+// employee's token instead of the service-role key. So the next person to log
+// in on the same warm instance was looked up AS THE PREVIOUS USER, under RLS,
+// which lets an employee see only their own app_users row: their account
+// "did not exist" and they were told "Invalid email or password" however
+// correct the password was. A password reset could not help, because the
+// password was never reached. Between 5 and 19 Nov 2026 this caused all 94
+// not-found failures for real accounts, each within 3 minutes of someone
+// else's successful login.
+//
+// Now: one service-role client per request for lookups and admin calls, and a
+// separate throwaway client for verifyOtp, so no session is ever carried over.
+function newClient() {
   const url = Deno.env.get("SUPABASE_URL");
   const key = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
   if (!url || !key) {
     throw new Error("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be configured");
   }
-
-  supabase = createClient(url, key);
-  return supabase;
+  return createClient(url, key, {
+    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+  });
 }
 
-// Same allow-list approach as send-email — CORS is a browser-side check
-// only (a non-browser caller ignores it), so this is defense-in-depth,
-// not the real security boundary (password verification is).
-// Must list every origin the app is actually served from. The GitHub Pages
-// build published by .github/workflows/flutter.yml was missing here, so
-// logging in from that deployment failed at the browser before the request
-// ever reached password verification.
-const ALLOWED_ORIGINS = [
+// CORS is a browser-side check only, so this is defence-in-depth rather than
+// the security boundary. But getting it wrong LOCKS USERS OUT: the browser
+// sends the preflight, sees an Access-Control-Allow-Origin that doesn't match,
+// and never sends the POST. In the logs that is OPTIONS 200 with no POST.
+//
+// A single hardcoded origin broke exactly that way, because every Vercel
+// deployment gets its own hostname. The live app is hrms.fomrahousing.in,
+// covered by the second pattern. (This block was copied back from the
+// deployed version on 19 Nov 2026; the repo copy had fallen behind it.)
+const ALLOWED_ORIGIN_EXACT = [
   "https://fomrahrms-zeta.vercel.app",
   "https://internfomrahousing-oss.github.io",
 ];
 
+const ALLOWED_ORIGIN_PATTERNS = [
+  /^https:\/\/fomrahrms(-[a-z0-9-]+)?\.vercel\.app$/,
+  /^https:\/\/([a-z0-9-]+\.)?fomrahousing\.in$/,
+];
+
+function isAllowedOrigin(origin: string): boolean {
+  if (!origin) return false;
+  if (ALLOWED_ORIGIN_EXACT.includes(origin)) return true;
+  if (origin.startsWith("http://localhost")) return true;
+  return ALLOWED_ORIGIN_PATTERNS.some((re) => re.test(origin));
+}
+
 function corsHeadersFor(req: Request) {
   const origin = req.headers.get("Origin") ?? "";
-  const allowOrigin =
-    ALLOWED_ORIGINS.includes(origin) || origin.startsWith("http://localhost")
-      ? origin
-      : ALLOWED_ORIGINS[0];
+  if (!isAllowedOrigin(origin) && origin) {
+    console.warn("login: request from unrecognised origin", origin);
+  }
+  const allowOrigin = isAllowedOrigin(origin) ? origin : ALLOWED_ORIGIN_EXACT[0];
   return {
     "Access-Control-Allow-Origin": allowOrigin,
     "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
@@ -86,9 +112,14 @@ function escapeIlike(value: string) {
 // log_audit_event() RPC, since that RPC stamps the actor from the caller's
 // own JWT — there isn't one yet on a failed login, and this function's
 // session is the service role's, not the employee's.
-async function logAudit(action: string, actorEmail: string, actorRole = "") {
+async function logAudit(
+  db: ReturnType<typeof newClient>,
+  action: string,
+  actorEmail: string,
+  actorRole = "",
+) {
   try {
-    await getSupabase().from("audit_log").insert({
+    await db.from("audit_log").insert({
       action,
       actor_email: actorEmail,
       actor_role: actorRole,
@@ -157,7 +188,10 @@ export async function findAppUserByLoginIdentifier(
     "exempt_from_timing",
   ].join(", ");
 
-  const columns = ["email", "company_email", "employee_id", "mobile"] as const;
+  // Signing in by mobile number was added here in September 2026 but never
+  // deployed. Left out of the 19 Nov 2026 deploy so that fixing the shared
+  // client changed nothing else; add "mobile" back as a separate change.
+  const columns = ["email", "company_email", "employee_id"] as const;
   for (const column of columns) {
     const { data, error } = await supabaseClient
       .from("app_users")
@@ -192,14 +226,16 @@ Deno.serve(async (req) => {
       return json({ error: "email and password are required" }, 400);
     }
 
-    const { row, matchedField } = await findAppUserByLoginIdentifier(getSupabase(), email);
+    // Fresh per request; see newClient().
+    const admin = newClient();
+    const { row, matchedField } = await findAppUserByLoginIdentifier(admin as never, email);
     const entry = row as Record<string, unknown> | null;
 
     // Same generic error whether the email doesn't exist or the password is
     // wrong — no user-enumeration hints, matching the old client-side
     // behavior (login_page.dart always showed "Invalid email or password.").
     if (!entry || matchedField == null) {
-      await logAudit("login_failed", email);
+      await logAudit(admin, "login_failed", email);
       return json({ error: "Invalid email or password" }, 401);
     }
     if (!entry.active) {
@@ -234,7 +270,7 @@ Deno.serve(async (req) => {
     let verified = false;
 
     try {
-      const { data, error } = await getSupabase().rpc(
+      const { data, error } = await admin.rpc(
         "verify_app_user_password",
         { p_email: loginEmail, p_password: password },
       );
@@ -252,7 +288,7 @@ Deno.serve(async (req) => {
     }
 
     if (!verified) {
-      await logAudit("login_failed", loginEmail, String(entry.role ?? ""));
+      await logAudit(admin, "login_failed", loginEmail, String(entry.role ?? ""));
       return json({ error: "Invalid email or password" }, 401);
     }
 
@@ -267,13 +303,13 @@ Deno.serve(async (req) => {
     let authUserId = entry.auth_user_id as string | null;
     if (!authUserId) {
       try {
-        const { data: existingId } = await getSupabase().rpc("auth_user_id_by_email", {
+        const { data: existingId } = await admin.rpc("auth_user_id_by_email", {
           p_email: loginEmail,
         });
         if (existingId) {
           authUserId = existingId as string;
         } else {
-          const { data: created, error: createError } = await getSupabase().auth.admin.createUser({
+          const { data: created, error: createError } = await admin.auth.admin.createUser({
             email: loginEmail,
             email_confirm: true,
             password: crypto.randomUUID() + crypto.randomUUID(),
@@ -284,7 +320,7 @@ Deno.serve(async (req) => {
           }
           authUserId = created.user.id;
         }
-        await getSupabase().from("app_users").update({ auth_user_id: authUserId }).eq("email", loginEmail);
+        await admin.from("app_users").update({ auth_user_id: authUserId }).eq("email", loginEmail);
       } catch (createErr) {
         console.error("createUser failed", createErr);
         return json({ error: "Could not start session" }, 500);
@@ -294,7 +330,7 @@ Deno.serve(async (req) => {
     // Mint a session for that auth user without ever needing its real
     // password: generate a magic-link token server-side, then immediately
     // redeem it ourselves via verifyOtp to get back a session.
-    const { data: link, error: linkError } = await getSupabase().auth.admin.generateLink({
+    const { data: link, error: linkError } = await admin.auth.admin.generateLink({
       type: "magiclink",
       email: loginEmail,
     });
@@ -304,7 +340,7 @@ Deno.serve(async (req) => {
       return json({ error: "Could not start session" }, 500);
     }
 
-    const { data: session, error: sessionError } = await getSupabase().auth.verifyOtp({
+    const { data: session, error: sessionError } = await newClient().auth.verifyOtp({
       type: "magiclink",
       token_hash: hashedToken,
     });
@@ -313,7 +349,7 @@ Deno.serve(async (req) => {
       return json({ error: "Could not start session" }, 500);
     }
 
-    await logAudit("login_success", loginEmail, String(entry.role ?? ""));
+    await logAudit(admin, "login_success", loginEmail, String(entry.role ?? ""));
 
     return json({
       access_token: session.session.access_token,
