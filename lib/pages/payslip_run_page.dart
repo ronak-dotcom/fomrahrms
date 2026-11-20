@@ -105,15 +105,17 @@ class _PayslipRunPageState extends State<PayslipRunPage> {
       _rows.where((r) => !_isPublished(r) && _confirmed.contains(r['employee_id'])).toList();
   List<Map<String, dynamic>> get _drafts => _rows.where(_isDraft).toList();
   int get _published => _rows.where(_isPublished).length;
-  int get _step => _rows.isEmpty
-      ? 1
-      : _rows.every(_isPublished)
-          ? 4
-          : _drafts.isNotEmpty && _toIssue.isEmpty
-              ? 3
-              : _confirmed.isEmpty
-                  ? 1
-                  : 2;
+  /// 1 confirm, 2 generate, 3 review & publish, 4 all published. Someone
+  /// still without a payslip keeps the run on steps 1-2.
+  int get _step {
+    if (_rows.isEmpty) return 1;
+    if (_rows.every(_isPublished)) return 4;
+    final notIssued = _rows.where((r) => _status(r) == null);
+    if (notIssued.isNotEmpty) {
+      return notIssued.any((r) => _confirmed.contains(r['employee_id'])) ? 2 : 1;
+    }
+    return 3;
+  }
 
   // ── actions ────────────────────────────────────────────────────────────
   Future<void> _generate() async {

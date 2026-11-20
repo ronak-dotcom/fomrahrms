@@ -466,7 +466,7 @@ class _PayrollManagementPageState extends State<PayrollManagementPage> {
                         style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700,
                             color: Colors.grey.shade600)),
                     const SizedBox(height: 4),
-                    Text('Tap an employee to generate or view their payslip.',
+                    Text('Tap an employee to see their figures in the payroll for the last closed cycle.',
                         style: TextStyle(fontSize: 11, color: Colors.grey.shade400)),
                     const SizedBox(height: 10),
                     ..._employees.map((u) => Card(
