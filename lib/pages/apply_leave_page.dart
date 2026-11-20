@@ -13,6 +13,7 @@ import '../services/supabase_service.dart';
 import '../services/user_store.dart';
 import '../widgets/back_button.dart';
 import '../widgets/mobile_shell.dart';
+import '../widgets/desktop_shell.dart' show DesktopChrome;
 import '../theme/mobile_ui.dart';
 import '../theme/app_theme.dart';
 
@@ -526,8 +527,71 @@ class _ApplyLeavePageState extends State<ApplyLeavePage> {
     ));
   }
 
-  Widget _maybeCard({required bool mobile, required Widget child}) =>
-      mobile ? child : Card(child: child);
+  Widget _maybeCard({required bool mobile, bool desktop = false, required Widget child}) =>
+      mobile ? child : desktop ? MCard(padding: EdgeInsets.zero, child: child) : Card(child: child);
+
+  /// Beside the form on a computer: the balance, what this leave costs, and
+  /// Submit (approved 20 Nov 2026).
+  Widget _desktopSide() {
+    final u = _usable;
+    String v(double d) => d >= 9999 ? '∞' : LeaveStore.fmtDays(d);
+    const names = {'CL': 'Casual (CL)', 'ML': 'Medical (ML)', 'EL': 'Earned (EL)'};
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(0, 8, 28, 28),
+      children: [
+        const MSection('Your balance'),
+        if (u == null)
+          const MCard(child: Text('…'))
+        else
+          Row(children: [
+            for (final b in const ['CL', 'ML', 'EL'])
+              if (u.containsKey(b))
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: MCard(
+                      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Text(names[b]!, style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600,
+                            color: AppTheme.textSecondary)),
+                        Text(v(u[b]!), style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
+                        const Text('left', style: TextStyle(fontSize: 11.5, color: AppTheme.textSecondary)),
+                      ]),
+                    ),
+                  ),
+                ),
+          ]),
+        if (_effectiveDays > 0) ...[
+          const MSection('What this costs'),
+          _mobileSummary(),
+        ],
+        const SizedBox(height: 16),
+        MStickyButton(label: 'Submit request', icon: Icons.send_rounded, onPressed: _submit, inline: true),
+        const SizedBox(height: 6),
+        Center(child: TextButton(onPressed: _clear, child: const Text('Clear the form'))),
+      ],
+    );
+  }
+
+  Widget _desktopFrame(bool desktop, Widget form) => !desktop
+      ? form
+      : LayoutBuilder(
+          builder: (context, c) => c.maxWidth >= 900
+              ? Align(
+                  alignment: Alignment.topCenter,
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 1176),
+                    child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Expanded(child: form),
+                      SizedBox(width: 380, child: _desktopSide()),
+                    ]),
+                  ),
+                )
+              : Column(children: [
+                  Expanded(child: form),
+                  MStickyButton(label: 'Submit request', icon: Icons.send_rounded, onPressed: _submit),
+                ]),
+        );
 
   List<Widget> _mobileBalanceChips() {
     final u = _usable;
@@ -681,18 +745,26 @@ class _ApplyLeavePageState extends State<ApplyLeavePage> {
     // Phones (redesign approved 19 Nov 2026): no page header (the bar above
     // names the page), the balance first, leave types as one-tap chips, a
     // plain summary of what the leave costs, and Submit fixed at the bottom.
-    final mobile = MobileChrome.active(context);
+    final phone = MobileChrome.active(context);
+    // On a computer (approved 20 Nov 2026) the form is the phone's, in a
+    // card, with the balance, what it costs and Submit beside it.
+    final desktop = DesktopChrome.active(context);
+    final mobile = phone || desktop;
     return Scaffold(
       backgroundColor: null,
-      bottomNavigationBar: mobile
+      bottomNavigationBar: phone
           ? MStickyButton(label: 'Submit request', icon: Icons.send_rounded, onPressed: _submit)
           : null,
-      body: SingleChildScrollView(
-        padding: mobile ? const EdgeInsets.fromLTRB(16, 14, 16, 24) : const EdgeInsets.all(24),
+      body: _desktopFrame(desktop, SingleChildScrollView(
+        padding: phone
+            ? const EdgeInsets.fromLTRB(16, 14, 16, 24)
+            : desktop
+                ? const EdgeInsets.fromLTRB(28, 22, 22, 28)
+                : const EdgeInsets.all(24),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            if (mobile) ..._mobileBalanceChips(),
+            if (phone) ..._mobileBalanceChips(),
             // Header
             if (!mobile) Row(children: [
               const NavBackButton(),
@@ -711,9 +783,10 @@ class _ApplyLeavePageState extends State<ApplyLeavePage> {
             if (!mobile) const SizedBox(height: 24),
 
             _maybeCard(
-              mobile: mobile,
+              mobile: phone,
+              desktop: desktop,
               child: Padding(
-                padding: mobile ? EdgeInsets.zero : const EdgeInsets.all(20),
+                padding: phone ? EdgeInsets.zero : desktop ? const EdgeInsets.fromLTRB(22, 4, 22, 22) : const EdgeInsets.all(20),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -857,25 +930,30 @@ class _ApplyLeavePageState extends State<ApplyLeavePage> {
                       )),
                     ]),
                     const SizedBox(height: 12),
-                    LeaveMonthCalendar(
-                      from: _fromDate,
-                      to: _isHalfDay ? _fromDate : _toDate,
-                      firstDate: DateTime.now().subtract(const Duration(days: 365)),
-                      lastDate: DateTime.now().add(const Duration(days: 365)),
-                      color: _color,
-                      singleDate: _isHalfDay,
-                      isNonWorking: _isNonWorkingDay,
-                      onRangeChanged: (f, t) => setState(() {
-                        _fromDate = f;
-                        _toDate = _isHalfDay ? f : t;
-                      }),
+                    // Kept to a readable size; on a wide screen each day
+                    // used to stretch to about 170 px.
+                    ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 380),
+                      child: LeaveMonthCalendar(
+                        from: _fromDate,
+                        to: _isHalfDay ? _fromDate : _toDate,
+                        firstDate: DateTime.now().subtract(const Duration(days: 365)),
+                        lastDate: DateTime.now().add(const Duration(days: 365)),
+                        color: _color,
+                        singleDate: _isHalfDay,
+                        isNonWorking: _isNonWorkingDay,
+                        onRangeChanged: (f, t) => setState(() {
+                          _fromDate = f;
+                          _toDate = _isHalfDay ? f : t;
+                        }),
+                      ),
                     ),
 
                     // What this will actually cost, and why — shown before
                     // submitting rather than discovered afterwards.
                     if (_effectiveDays > 0) ...[
                       const SizedBox(height: 12),
-                      if (mobile) _mobileSummary() else Center(
+                      if (phone) _mobileSummary() else if (!desktop) Center(
                         child: Container(
                           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
                           decoration: BoxDecoration(
@@ -1049,7 +1127,7 @@ class _ApplyLeavePageState extends State<ApplyLeavePage> {
             ]),
           ],
         ),
-      ),
+      )),
     );
   }
 }

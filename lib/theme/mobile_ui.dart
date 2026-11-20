@@ -122,15 +122,20 @@ class MStickyButton extends StatelessWidget {
   final VoidCallback? onPressed;
   final Color? color;
   final bool busy;
-  const MStickyButton({super.key, required this.label, this.icon, this.onPressed, this.color, this.busy = false});
+  /// On a computer the button sits in the page instead of fixed at the bottom.
+  final bool inline;
+  const MStickyButton({super.key, required this.label, this.icon, this.onPressed, this.color,
+      this.busy = false, this.inline = false});
 
   @override
   Widget build(BuildContext context) => Container(
-        padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
-        decoration: const BoxDecoration(
-          color: AppTheme.pageBackground,
-          border: Border(top: BorderSide(color: MobileUi.line)),
-        ),
+        padding: inline ? EdgeInsets.zero : const EdgeInsets.fromLTRB(16, 10, 16, 12),
+        decoration: inline
+            ? null
+            : const BoxDecoration(
+                color: AppTheme.pageBackground,
+                border: Border(top: BorderSide(color: MobileUi.line)),
+              ),
         child: SizedBox(
           height: 50,
           width: double.infinity,

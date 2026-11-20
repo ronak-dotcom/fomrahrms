@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../widgets/back_button.dart';
 import '../widgets/mobile_shell.dart';
+import '../widgets/desktop_shell.dart' show DesktopChrome;
 import 'my_attendance_page.dart';
 import 'employee_leave_page.dart';
 import '../theme/app_theme.dart';
@@ -53,18 +54,22 @@ class _MyAttendanceAndLeavePageState extends State<MyAttendanceAndLeavePage> {
             ),
           ),
         );
-    return Scaffold(
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+    final desktop = DesktopChrome.active(context);
+    final page = ListView(
+        padding: desktop ? const EdgeInsets.fromLTRB(28, 22, 28, 28) : const EdgeInsets.fromLTRB(16, 16, 16, 24),
         children: [
-          Container(
+          Align(
+            alignment: Alignment.centerLeft,
+            child: ConstrainedBox(
+            constraints: BoxConstraints(maxWidth: desktop ? 440 : double.infinity),
+            child: Container(
             padding: const EdgeInsets.all(3),
             decoration: BoxDecoration(
               color: const Color(0xFFE8ECF4),
               borderRadius: BorderRadius.circular(12),
             ),
             child: Row(children: [tab(0, 'Attendance'), tab(1, 'Leave & permission')]),
-          ),
+          ))),
           const SizedBox(height: 14),
           // Both stay alive so switching back does not reload.
           Visibility(
@@ -78,13 +83,20 @@ class _MyAttendanceAndLeavePageState extends State<MyAttendanceAndLeavePage> {
             child: EmployeeLeavePage(prefix: leavePrefix, embedded: true),
           ),
         ],
-      ),
+      );
+    return Scaffold(
+      body: desktop
+          ? Align(
+              alignment: Alignment.topCenter,
+              child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 1176), child: page),
+            )
+          : page,
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    if (MobileChrome.active(context)) return _buildMobile(context);
+    if (MobileChrome.active(context) || DesktopChrome.active(context)) return _buildMobile(context);
     return Scaffold(
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(24),

@@ -13,6 +13,7 @@ import '../utils/tenure.dart';
 import '../utils/weekly_off.dart';
 import '../widgets/back_button.dart';
 import '../widgets/mobile_shell.dart';
+import '../widgets/desktop_shell.dart' show DesktopChrome;
 import '../theme/mobile_ui.dart';
 import '../theme/app_theme.dart';
 
@@ -446,13 +447,11 @@ class _MyAttendancePageState extends State<MyAttendancePage> {
     final atCurrentMonth = _month.year == now.year && _month.month == now.month;
     String days(double v) => v == v.roundToDouble() ? '${v.toInt()}' : v.toStringAsFixed(1);
 
-    final body = Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      _MobileTodayRow(
-        record: _todayRecord,
-        onOpen: () => context.push(widget.checkInRoute),
-      ),
-      const SizedBox(height: 14),
-      MCard(
+    final today = _MobileTodayRow(
+      record: _todayRecord,
+      onOpen: () => context.push(widget.checkInRoute),
+    );
+    final calendar = MCard(
         padding: const EdgeInsets.fromLTRB(6, 6, 6, 14),
         child: Column(children: [
           Row(children: [
@@ -521,7 +520,8 @@ class _MyAttendancePageState extends State<MyAttendancePage> {
             ]),
           ),
         ]),
-      ),
+      );
+    final cycle = <Widget>[
       if (!_loading) ...[
         MSection('This pay cycle · ${attendanceCycleRange(_month)}'),
         MStats([
@@ -540,7 +540,40 @@ class _MyAttendancePageState extends State<MyAttendancePage> {
             ),
           ),
       ],
-    ]);
+    ];
+
+    // On a computer (approved 20 Nov 2026): the month on the left, today and
+    // the cycle's figures beside it.
+    final Widget body = DesktopChrome.active(context)
+        ? LayoutBuilder(
+            builder: (context, c) => c.maxWidth >= 860
+                ? Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Expanded(child: calendar),
+                    const SizedBox(width: 18),
+                    SizedBox(
+                      width: 340,
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                        today,
+                        ...cycle,
+                        const SizedBox(height: 14),
+                        MCard(
+                          child: Row(children: [
+                            Icon(Icons.info_outline_rounded, color: AppTheme.primaryBlue, size: 20),
+                            const SizedBox(width: 10),
+                            const Expanded(
+                              child: Text('Click a day to see check-in, check-out, location and any leave or permission.',
+                                  style: TextStyle(fontSize: 13)),
+                            ),
+                          ]),
+                        ),
+                      ]),
+                    ),
+                  ])
+                : Column(crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [today, const SizedBox(height: 14), calendar, ...cycle]),
+          )
+        : Column(crossAxisAlignment: CrossAxisAlignment.start,
+            children: [today, const SizedBox(height: 14), calendar, ...cycle]);
 
     if (widget.embedded) return body;
     return Scaffold(
@@ -553,7 +586,7 @@ class _MyAttendancePageState extends State<MyAttendancePage> {
 
   @override
   Widget build(BuildContext context) {
-    if (MobileChrome.active(context)) return _buildMobile(context);
+    if (MobileChrome.active(context) || DesktopChrome.active(context)) return _buildMobile(context);
     final cs  = Theme.of(context).colorScheme;
     final now = DateTime.now();
     final narrow = MediaQuery.of(context).size.width < 600;

@@ -10,6 +10,7 @@ import '../services/supabase_service.dart';
 import '../services/user_store.dart';
 import '../widgets/back_button.dart';
 import '../widgets/mobile_shell.dart';
+import '../widgets/desktop_shell.dart' show DesktopChrome;
 import '../theme/mobile_ui.dart';
 import '../utils/attendance_cycle.dart';
 import '../theme/app_theme.dart';
@@ -132,20 +133,21 @@ class _MyPayslipsPageState extends State<MyPayslipsPage> {
     final earlier = slips.skip(1).toList();
     final pending = _requests.where((r) => r.status == PayslipRequestStatus.pending).toList();
 
-    return Scaffold(
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : RefreshIndicator(
-              onRefresh: _load,
-              child: ListView(
-                padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
-                children: [
-                  if (user == null)
-                    const MCard(
-                      child: Text('Employee record not found.',
-                          style: TextStyle(color: AppTheme.textSecondary)),
-                    )
-                  else ...[
+    if (user == null || _loading) {
+      return Scaffold(
+        body: _loading
+            ? const Center(child: CircularProgressIndicator())
+            : const Padding(
+                padding: EdgeInsets.all(16),
+                child: MCard(
+                  child: Text('Employee record not found.',
+                      style: TextStyle(color: AppTheme.textSecondary)),
+                ),
+              ),
+      );
+    }
+
+    final main = <Widget>[
                     if (latest != null)
                       _LatestPayslipCard(payslip: latest)
                     else
@@ -171,6 +173,8 @@ class _MyPayslipsPageState extends State<MyPayslipsPage> {
                           ]),
                         ),
                     ],
+    ];
+    final side = <Widget>[
                     if (user.isElEligible) ...[
                       const MSection('Earned leave'),
                       _ElBalanceCard(
@@ -208,10 +212,59 @@ class _MyPayslipsPageState extends State<MyPayslipsPage> {
                         const Icon(Icons.chevron_right_rounded, color: AppTheme.textSecondary),
                       ]),
                     ),
-                  ],
-                ],
+    ];
+
+    // On a computer (approved 20 Nov 2026): the payslips on the left, the
+    // request, earned leave and how pay is worked out beside them.
+    if (DesktopChrome.active(context)) {
+      return Scaffold(
+        body: RefreshIndicator(
+          onRefresh: _load,
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(28, 22, 28, 28),
+            children: [
+              Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 1120),
+                  child: LayoutBuilder(
+                    builder: (context, c) => c.maxWidth >= 860
+                        ? Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: main)),
+                            const SizedBox(width: 22),
+                            SizedBox(
+                              width: 340,
+                              child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                                ...side,
+                                const MSection('How your pay is worked out'),
+                                const MCard(
+                                  child: Text(
+                                      'Monthly gross × payable days ÷ days in the cycle, less PT, EPF, ESI '
+                                      'and TDS, rounded to the nearest rupee. Payable days are the days in the '
+                                      'cycle less LOP days: unpaid leave, late and permission LOP, and days '
+                                      'absent without leave.',
+                                      style: TextStyle(fontSize: 13, height: 1.5)),
+                                ),
+                              ]),
+                            ),
+                          ])
+                        : Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [...main, ...side]),
+                  ),
+                ),
               ),
-            ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return Scaffold(
+      body: RefreshIndicator(
+        onRefresh: _load,
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+          children: [...main, ...side],
+        ),
+      ),
     );
   }
 
@@ -243,7 +296,7 @@ class _MyPayslipsPageState extends State<MyPayslipsPage> {
 
   @override
   Widget build(BuildContext context) {
-    if (MobileChrome.active(context)) return _buildMobile(context);
+    if (MobileChrome.active(context) || DesktopChrome.active(context)) return _buildMobile(context);
     final user = _appUser;
 
     return Scaffold(

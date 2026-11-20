@@ -13,6 +13,7 @@ import '../utils/leave_balance_math.dart';
 import '../utils/attendance_cycle.dart';
 import 'attendance_shortcut_card.dart' show showHrPolicy;
 import 'quick_actions_bar.dart' show AroundFomraCard;
+import 'desktop_shell.dart' show DesktopChrome;
 
 /// The employee Home on a phone (approved redesign, 19 Nov 2026).
 ///
@@ -130,8 +131,92 @@ class _MobileHomeState extends State<MobileHome> {
 
   num _num(Map<String, dynamic>? m, String k) => (m?[k] as num?) ?? 0;
 
+  List<Widget> _waitingList() => [
+        for (final a in _waiting.take(3)) ...[
+          _waitingCard(a),
+          const SizedBox(height: 8),
+        ],
+      ];
+
+  /// The computer layout (approved 20 Nov 2026): today and quick actions on
+  /// the left; balance, this cycle, requests and company news on the right.
+  /// The greeting is in the top bar.
+  Widget _buildDesktop(BuildContext context) {
+    final now = DateTime.now();
+    final cycle = MSection('This pay cycle · ${attendanceCycleRange(attendanceCycleEnd(now))}');
+    return RefreshIndicator(
+      onRefresh: _load,
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(28, 10, 28, 28),
+        children: [
+          Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 1120),
+              child: LayoutBuilder(builder: (context, c) {
+                if (c.maxWidth < 900) {
+                  // Narrow window: the phone order, one column.
+                  return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                    const SizedBox(height: 14),
+                    _todayCard(),
+                    const MSection('Leave balance'),
+                    _balanceTiles(),
+                    cycle,
+                    _cycleStats(),
+                    const MSection('Quick actions'),
+                    _quickActions(),
+                    if (_waiting.isNotEmpty) ...[const MSection('Waiting for approval'), ..._waitingList()],
+                    const MSection('Around FOMRA'),
+                    const AroundFomraCard(),
+                  ]);
+                }
+                return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  SizedBox(
+                    width: 380,
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                      const SizedBox(height: 14),
+                      _todayCard(),
+                      const MSection('Quick actions'),
+                      _quickActions(),
+                    ]),
+                  ),
+                  const SizedBox(width: 22),
+                  Expanded(
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                      const MSection('Leave balance'),
+                      _balanceTiles(),
+                      cycle,
+                      _cycleStats(),
+                      Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        if (_waiting.isNotEmpty) ...[
+                          Expanded(
+                            child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                              const MSection('Waiting for approval'),
+                              ..._waitingList(),
+                            ]),
+                          ),
+                          const SizedBox(width: 18),
+                        ],
+                        const Expanded(
+                          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                            MSection('Around FOMRA'),
+                            AroundFomraCard(),
+                          ]),
+                        ),
+                      ]),
+                    ]),
+                  ),
+                ]);
+              }),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    if (DesktopChrome.active(context)) return _buildDesktop(context);
     final now = DateTime.now();
     final first = UserSession.name.split(' ').first;
     return RefreshIndicator(
@@ -154,10 +239,7 @@ class _MobileHomeState extends State<MobileHome> {
           _quickActions(),
           if (_waiting.isNotEmpty) ...[
             const MSection('Waiting for approval'),
-            for (final a in _waiting.take(3)) ...[
-              _waitingCard(a),
-              const SizedBox(height: 8),
-            ],
+            ..._waitingList(),
           ],
           const MSection('Around FOMRA'),
           const AroundFomraCard(),

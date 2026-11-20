@@ -16,6 +16,7 @@ import '../utils/checkin_status.dart';
 import '../utils/location_consent.dart';
 import '../widgets/back_button.dart';
 import '../widgets/mobile_shell.dart';
+import '../widgets/desktop_shell.dart' show DesktopChrome;
 import '../theme/mobile_ui.dart';
 import '../widgets/route_map_view.dart';
 import '../theme/app_theme.dart';
@@ -418,9 +419,8 @@ class _EmployeeAttendancePageState extends State<EmployeeAttendancePage> {
           ]),
         );
 
-    return Scaffold(
-      backgroundColor: AppTheme.pageBackground,
-      bottomNavigationBar: _loading || done
+    final desktop = DesktopChrome.active(context);
+    final Widget? action = _loading || done
           ? null
           : checkedIn
               ? MStickyButton(
@@ -429,18 +429,16 @@ class _EmployeeAttendancePageState extends State<EmployeeAttendancePage> {
                   color: _teal,
                   busy: _submitting,
                   onPressed: _checkOut,
+                  inline: desktop,
                 )
               : MStickyButton(
                   label: 'Check in at ${_checkInCtrl.text}',
                   icon: Icons.login_rounded,
                   busy: _submitting,
                   onPressed: _checkIn,
-                ),
-      body: RefreshIndicator(
-        onRefresh: _load,
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
-          children: [
+                  inline: desktop,
+                );
+    final content = <Widget>[
             if (_loading)
               const Padding(
                 padding: EdgeInsets.symmetric(vertical: 60),
@@ -519,15 +517,103 @@ class _EmployeeAttendancePageState extends State<EmployeeAttendancePage> {
                 ),
               ],
             ],
+    ];
+
+    if (desktop) {
+      // On a computer (approved 20 Nov 2026): the clock and the action in a
+      // column of readable width, and today's facts beside it.
+      final main = Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        ...content,
+        if (action != null) ...[const SizedBox(height: 14), action],
+      ]);
+      return Scaffold(
+        backgroundColor: AppTheme.pageBackground,
+        body: ListView(
+          padding: const EdgeInsets.fromLTRB(28, 22, 28, 28),
+          children: [
+            Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 1000),
+                child: LayoutBuilder(
+                  builder: (context, c) => c.maxWidth >= 860
+                      ? Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                          SizedBox(width: 560, child: main),
+                          const SizedBox(width: 22),
+                          Expanded(child: _desktopToday(rec, schedule)),
+                        ])
+                      : main,
+                ),
+              ),
+            ),
           ],
+        ),
+      );
+    }
+
+    return Scaffold(
+      backgroundColor: AppTheme.pageBackground,
+      bottomNavigationBar: action,
+      body: RefreshIndicator(
+        onRefresh: _load,
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+          children: content,
         ),
       ),
     );
   }
 
+  /// "Today" beside the clock on a computer.
+  Widget _desktopToday(AttendanceRecord? rec, OfficeTiming schedule) {
+    Widget line(IconData icon, Color color, Color bg, String title, String sub) => Padding(
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          child: Row(children: [
+            Container(
+              width: 38, height: 38,
+              decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(10)),
+              child: Icon(icon, color: color, size: 20),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
+                if (sub.isNotEmpty)
+                  Text(sub, style: const TextStyle(fontSize: 12.5, color: AppTheme.textSecondary)),
+              ]),
+            ),
+          ]),
+        );
+    final checkedIn = rec != null && rec.checkInTime.isNotEmpty;
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      const MSection('Today'),
+      MCard(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+        child: Column(children: [
+          checkedIn
+              ? line(Icons.login_rounded, MobileUi.present, MobileUi.presentBg,
+                  'Checked in ${rec.checkInTime}',
+                  rec.checkOutTime.isNotEmpty ? 'Checked out ${rec.checkOutTime}' : rec.location)
+              : line(Icons.schedule_rounded, MobileUi.late, MobileUi.lateBg, 'Not checked in yet', ''),
+          if (!schedule.noFixedTiming) ...[
+            const Divider(height: 1, color: MobileUi.line),
+            line(Icons.access_time_rounded, const Color(0xFF475569), const Color(0xFFEEF1F6),
+                'Office hours ${_hhmm(schedule.checkInMinutes)} – ${_hhmm(schedule.checkOutMinutes)}',
+                'Grace until ${_hhmm(schedule.graceEndMinutes)}'),
+          ],
+          if (_permissionMinutes > 0) ...[
+            const Divider(height: 1, color: MobileUi.line),
+            line(Icons.timer_outlined, AppTheme.primaryBlue, AppTheme.primaryBlue.withValues(alpha: 0.08),
+                'Approved permission today: $_permissionMinutes min',
+                'Your check-out time is earlier by this much'),
+          ],
+        ]),
+      ),
+    ]);
+  }
+
   @override
   Widget build(BuildContext context) {
-    _mobile = MobileChrome.active(context);
+    _mobile = MobileChrome.active(context) || DesktopChrome.active(context);
     if (_mobile) return _buildMobile(context);
     final cs     = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
