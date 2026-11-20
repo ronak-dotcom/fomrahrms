@@ -255,6 +255,14 @@ begin
     res := res || jsonb_build_array(jsonb_build_object('t', 'payslip: refused without a salary structure',
       'e', 'no_salary_structure', 'a', t));
 
+    -- From the November 2026 cycle, absence is counted day by day: working a
+    -- Sunday does not cancel a weekday absence (Ronak, 20 Nov 2026).
+    insert into attendance_records(id, employee_name, employee_id, date, check_in_time, check_out_time)
+    values ('ZZT-02_06-10-2030', 'ZZ Selftest ZZT-02', 'ZZT-02', '06/10/2030', '10:00', '14:00');
+    select trim_scale(days_lost)::text into t from generate_payroll(ce) where employee_code = 'ZZT-02';
+    res := res || jsonb_build_array(jsonb_build_object('t', 'payroll: working a Sunday does not cancel a weekday absence',
+      'e', '1', 'a', t));
+
     if (select count(*) from generate_payroll(ce) where employee_code like 'ZZT-%') <> 10 then
       res := res || jsonb_build_array(jsonb_build_object('t', 'payroll: every active payroll employee gets a row',
         'e', '10', 'a', (select count(*) from generate_payroll(ce) where employee_code like 'ZZT-%')::text));
