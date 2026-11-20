@@ -519,22 +519,6 @@ class _AlreadyCheckedOut extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    String? duration;
-    try {
-      final inParts = record.checkInTime.split(':');
-      final outParts = record.checkOutTime.split(':');
-      if (inParts.length == 2 && outParts.length == 2) {
-        final inMin = int.parse(inParts[0]) * 60 + int.parse(inParts[1]);
-        final outMin = int.parse(outParts[0]) * 60 + int.parse(outParts[1]);
-        final diff = outMin - inMin;
-        if (diff > 0) {
-          final h = diff ~/ 60;
-          final m = diff % 60;
-          duration = h > 0 ? '${h}h ${m}m' : '${m}m';
-        }
-      }
-    } catch (_) {}
-
     return Column(children: [
       Container(
         width: double.infinity,
@@ -563,20 +547,6 @@ class _AlreadyCheckedOut extends StatelessWidget {
             ),
             _TimeBlock(label: 'Check-Out', time: record.checkOutTime, isDark: isDark),
           ]),
-          if (duration != null) ...[
-            const SizedBox(height: 12),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-              decoration: BoxDecoration(
-                color: isDark ? Colors.blue.withValues(alpha: 0.2) : Colors.blue.shade100,
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: Text('Duration: $duration',
-                  style: TextStyle(
-                      fontSize: 13, fontWeight: FontWeight.w600,
-                      color: isDark ? Colors.blue.shade200 : Colors.blue.shade800)),
-            ),
-          ],
           if (record.checkInNote.isNotEmpty || record.checkOutNote.isNotEmpty) ...[
             const SizedBox(height: 14),
             if (record.checkInNote.isNotEmpty)

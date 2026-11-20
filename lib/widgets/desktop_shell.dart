@@ -159,7 +159,7 @@ class _TopBar extends StatelessWidget {
     final atHome = location == homeRoute;
     final now = DateTime.now();
     final first = UserSession.name.trim().split(' ').first;
-    final greeting = now.hour < 12 ? 'Good morning' : now.hour < 17 ? 'Good afternoon' : 'Good evening';
+    final greeting = now.hour < 12 ? 'Happy morning' : now.hour < 17 ? 'Happy afternoon' : 'Happy evening';
     final title = atHome && first.isNotEmpty ? '$greeting, $first' : mobileTitleFor(location, sections, homeRoute);
 
     // The menu section this page sits under, as a link back to it.

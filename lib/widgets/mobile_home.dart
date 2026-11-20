@@ -105,29 +105,15 @@ class _MobileHomeState extends State<MobileHome> {
 
   static String _greeting() {
     final h = DateTime.now().hour;
-    if (h < 12) return 'Good morning';
-    if (h < 17) return 'Good afternoon';
-    return 'Good evening';
+    if (h < 12) return 'Happy morning';
+    if (h < 17) return 'Happy afternoon';
+    return 'Happy evening';
   }
 
   static const _weekdays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
   static const _months = ['January', 'February', 'March', 'April', 'May', 'June', 'July',
       'August', 'September', 'October', 'November', 'December'];
   static const _shortMonths = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-
-  static String _worked(String from, [String? to]) {
-    int? mins(String t) {
-      final p = t.split(':');
-      if (p.length < 2) return null;
-      return (int.tryParse(p[0]) ?? 0) * 60 + (int.tryParse(p[1]) ?? 0);
-    }
-    final start = mins(from);
-    if (start == null) return '';
-    final now = DateTime.now();
-    final end = to != null && to.isNotEmpty ? mins(to) : now.hour * 60 + now.minute;
-    final d = ((end ?? start) - start).clamp(0, 24 * 60);
-    return '${d ~/ 60}h ${d % 60}m';
-  }
 
   num _num(Map<String, dynamic>? m, String k) => (m?[k] as num?) ?? 0;
 
@@ -292,10 +278,10 @@ class _MobileHomeState extends State<MobileHome> {
           const SizedBox(height: 12),
           Row(children: [
             figure('IN AT', rec.checkInTime),
-            const SizedBox(width: 24),
-            done
-                ? figure('OUT AT', rec.checkOutTime)
-                : figure('WORKED', _worked(rec.checkInTime), color: const Color(0xFF334155)),
+            if (done) ...[
+              const SizedBox(width: 24),
+              figure('OUT AT', rec.checkOutTime),
+            ],
           ]),
         ],
         if (!done && !_loading) ...[
@@ -317,11 +303,6 @@ class _MobileHomeState extends State<MobileHome> {
               label: Text(checkedIn ? 'Check out' : 'Check in'),
             ),
           ),
-        ],
-        if (done) ...[
-          const SizedBox(height: 6),
-          Text('Worked ${_worked(rec.checkInTime, rec.checkOutTime)} today.',
-              style: const TextStyle(fontSize: 13, color: AppTheme.textSecondary)),
         ],
       ]),
     );

@@ -979,25 +979,8 @@ class _DaySummary extends StatelessWidget {
   final bool isDark;
   const _DaySummary({required this.record, required this.isDark});
 
-  String? get _duration {
-    try {
-      final inP  = record.checkInTime.split(':');
-      final outP = record.checkOutTime.split(':');
-      if (inP.length == 2 && outP.length == 2) {
-        final diff = (int.parse(outP[0]) * 60 + int.parse(outP[1])) -
-                     (int.parse(inP[0])  * 60 + int.parse(inP[1]));
-        if (diff > 0) {
-          final h = diff ~/ 60, m = diff % 60;
-          return h > 0 ? '${h}h ${m}m' : '${m}m';
-        }
-      }
-    } catch (_) {}
-    return null;
-  }
-
   @override
   Widget build(BuildContext context) {
-    final dur = _duration;
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(20),
@@ -1029,20 +1012,6 @@ class _DaySummary extends StatelessWidget {
           ),
           _TimeBlock(label: 'Check Out', time: record.checkOutTime, isDark: isDark),
         ]),
-        if (dur != null) ...[
-          const SizedBox(height: 14),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 6),
-            decoration: BoxDecoration(
-              color: isDark ? Colors.blue.withValues(alpha: 0.2) : Colors.blue.shade100,
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: Text('Duration: $dur',
-                style: TextStyle(
-                    fontSize: 13, fontWeight: FontWeight.w600,
-                    color: isDark ? Colors.blue.shade200 : Colors.blue.shade800)),
-          ),
-        ],
         if (record.checkInNote.isNotEmpty || record.checkOutNote.isNotEmpty) ...[
           const SizedBox(height: 16),
           Align(

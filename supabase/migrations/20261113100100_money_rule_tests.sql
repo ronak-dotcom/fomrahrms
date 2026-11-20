@@ -277,6 +277,95 @@ begin
         'e', '1800/128', 'a', trim_scale(payroll_scaled_epf(1800, 29, 30, date '2026-10-25'))::text || '/'
                               || trim_scale(payroll_scaled_esi(128, 29, 30, date '2026-10-25'))::text));
 
+    -- Draft payslips follow their records (Ronak, 20 Nov 2026). ZZT-05's
+    -- three CL days were agreed as 1.5 LOP; making it 2.5 shows on the draft
+    -- at once, with the engine's figures.
+    select lop_days into v from payslips where employee_id = 'ZZT-05' and status = 'draft';
+    update leave_applications set lop_days_override = 2.5, lop_days = 2.5 where id = 'zzt-05-cl';
+    select trim_scale(ps.lop_days - v)::text || ' ' || (ps.net_pay = g.net_pay and ps.lop_days = g.days_lost)::text
+      into t
+      from payslips ps join generate_payroll(ce) g on g.employee_code = ps.employee_id
+     where ps.employee_id = 'ZZT-05' and ps.status = 'draft';
+    res := res || jsonb_build_array(jsonb_build_object('t', 'payslip: a draft follows a change in agreed LOP at once (1 more day, as the engine)',
+      'e', '1 true', 'a', t));
+    -- ...and back again (the leave-balance tests below rely on 1.5).
+    update leave_applications set lop_days_override = 1.5, lop_days = 1.5 where id = 'zzt-05-cl';
+    select trim_scale(ps.lop_days - v)::text into t from payslips ps
+     where ps.employee_id = 'ZZT-05' and ps.status = 'draft';
+    res := res || jsonb_build_array(jsonb_build_object('t', 'payslip: a draft follows the LOP back when it is changed back',
+      'e', '0', 'a', t));
+    perform _issue_payslips(ce, array['ZZT-10'], false, ce + 1, 'selftest');
+    select lop_days into v from payslips where employee_id = 'ZZT-10';
+    delete from attendance_records where employee_id = 'ZZT-10' and date_iso = date '2030-10-09';
+    select trim_scale(lop_days - v)::text into t from payslips where employee_id = 'ZZT-10';
+    res := res || jsonb_build_array(jsonb_build_object('t', 'payslip: a draft follows attendance at once (a check-in removed: 1 more LOP day)',
+      'e', '1', 'a', t));
+    -- A published payslip is what was paid: it is not changed, it is flagged.
+    perform _issue_payslips(ce, array['ZZT-03'], false, ce + 1, 'selftest');
+    perform _publish_payslips(ce, array['ZZT-03'], 'selftest');
+    select net_pay into v from payslips where employee_id = 'ZZT-03';
+    delete from attendance_records where employee_id = 'ZZT-03' and date_iso = date '2030-10-09';
+    select (ps.net_pay = v)::text || ' ' || (m.net_pay = v)::text || ' ' || m.records_changed::text
+      into t
+      from payslips ps join _salary_master_sheet(ce) m on m.employee_id = ps.employee_id
+     where ps.employee_id = 'ZZT-03';
+    res := res || jsonb_build_array(jsonb_build_object('t', 'payslip: later records do not change a published payslip; the master sheet shows it as paid and flags it',
+      'e', 'true true true', 'a', t));
+    -- While a cycle runs, a day with no check-in counts once it has passed.
+    res := res || jsonb_build_array(
+      jsonb_build_object('t', 'payroll: in a running cycle, absence is counted up to yesterday',
+        'e', '2030-10-14', 'a', payroll_absence_until(cs, ce, date '2030-10-15')::text),
+      jsonb_build_object('t', 'payroll: a closed cycle counts every day',
+        'e', '2030-10-25', 'a', payroll_absence_until(cs, ce, date '2030-10-26')::text));
+    -- The master sheet: everyone on payroll, each line adds up, LOP split by
+    -- cause adds up, and the person with no salary structure is listed.
+    select (count(*) filter (where m.payslip_status is distinct from 'no_salary_structure'))::text || ' '
+           || coalesce(bool_and(m.net_pay = m.gross_earned - m.total_deductions + m.rounded_off)
+                         filter (where m.payslip_status is distinct from 'no_salary_structure'), false)::text || ' '
+           || coalesce(bool_and(m.absence_lop + m.leave_lop + m.late_lop + m.permission_lop = m.days_lost)
+                         filter (where m.payslip_status is distinct from 'no_salary_structure'), false)::text || ' '
+           || string_agg(m.employee_id, ',') filter (where m.payslip_status = 'no_salary_structure')
+      into t
+      from _salary_master_sheet(ce) m where m.employee_id like 'ZZT-%';
+    res := res || jsonb_build_array(jsonb_build_object('t', 'master sheet: 10 on payroll, each net = earned - deductions +/- rounding, LOP causes add up, ZZT-11 listed without a structure',
+      'e', '10 true true ZZT-11', 'a', t));
+
+    -- Permission may be 90 minutes (Ronak, 20 Nov 2026); 90 + 30 is the
+    -- whole 2-hour allowance, and another 30 is half a day's LOP.
+    insert into leave_applications(id, employee_name, employee_id, department, leave_type,
+                                   from_date, to_date, days, reason, applied_on,
+                                   manager_status, management_status, leave_bucket, is_half_day,
+                                   permission_minutes)
+    values ('zzt-06-p90', 'ZZ Selftest ZZT-06', 'ZZT-06', 'ZZ Selftest Dept', 'Permission',
+            date '2030-10-14', date '2030-10-14', 1, 'Permission: 09:30–11:00 (90 min) | selftest',
+            now() - interval '3 minutes', 'pending', 'pending', null, true, 90),
+           ('zzt-06-p30', 'ZZ Selftest ZZT-06', 'ZZT-06', 'ZZ Selftest Dept', 'Permission',
+            date '2030-10-15', date '2030-10-15', 1, 'Permission: 09:30–10:00 (30 min) | selftest',
+            now() - interval '2 minutes', 'pending', 'pending', null, true, 30),
+           ('zzt-06-p30b', 'ZZ Selftest ZZT-06', 'ZZT-06', 'ZZ Selftest Dept', 'Permission',
+            date '2030-10-16', date '2030-10-16', 1, 'Permission: 09:30–10:00 (30 min) | selftest',
+            now() - interval '1 minute', 'pending', 'pending', null, true, 30);
+    select string_agg(id || ':' || permission_lop_half_day::text, ',' order by id) into t
+      from leave_applications where id like 'zzt-06-p%';
+    res := res || jsonb_build_array(
+      jsonb_build_object('t', 'permission: 90 minutes is accepted; 90 + 30 fills the 2 hours; one more is half-day LOP',
+        'e', 'zzt-06-p30:false,zzt-06-p30b:true,zzt-06-p90:false', 'a', t),
+      jsonb_build_object('t', 'permission: "1 Hour 30 Minutes" reads as 90',
+        'e', '90', 'a', permission_minutes_from_text('1 Hour 30 Minutes')::text));
+    begin
+      insert into leave_applications(id, employee_name, employee_id, department, leave_type,
+                                     from_date, to_date, days, reason, applied_on,
+                                     manager_status, management_status, is_half_day, permission_minutes)
+      values ('zzt-06-p45', 'ZZ Selftest ZZT-06', 'ZZT-06', 'ZZ Selftest Dept', 'Permission',
+              date '2030-10-17', date '2030-10-17', 1, 'Permission: 45 min | selftest', now(),
+              'pending', 'pending', true, 45);
+      t := 'accepted';
+    exception when others then
+      t := 'refused';
+    end;
+    res := res || jsonb_build_array(jsonb_build_object('t', 'permission: 45 minutes is not a 30-minute step',
+      'e', 'refused', 'a', t));
+
     if (select count(*) from generate_payroll(ce) where employee_code like 'ZZT-%') <> 10 then
       res := res || jsonb_build_array(jsonb_build_object('t', 'payroll: every active payroll employee gets a row',
         'e', '10', 'a', (select count(*) from generate_payroll(ce) where employee_code like 'ZZT-%')::text));

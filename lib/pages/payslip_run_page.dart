@@ -6,6 +6,7 @@ import '../theme/app_theme.dart';
 import '../theme/mobile_ui.dart';
 import '../utils/attendance_cycle.dart';
 import '../widgets/back_button.dart';
+import 'salary_master_sheet_page.dart';
 
 /// Payroll for one closed attendance cycle (approved with HR, Nov 2026).
 ///
@@ -16,7 +17,9 @@ import '../widgets/back_button.dart';
 /// 3. Publish: employees can then see and download it, and are notified.
 ///
 /// A wrong count is never corrected here. It is fixed at its source (the
-/// leave, permission or attendance record) and the counts update.
+/// leave, permission or attendance record) and the counts update. A draft
+/// follows its records by itself; a published payslip does not change (it
+/// is what was paid) and is flagged when its records change, for reissue.
 class PayslipRunPage extends StatefulWidget {
   /// Opens on the cycle ending on this date; defaults to the latest closed one.
   final DateTime? initialCycleEnd;
@@ -96,10 +99,15 @@ class _PayslipRunPageState extends State<PayslipRunPage> {
 
   static String _days(num v) =>
       v == 0 ? '–' : (v == v.roundToDouble() ? v.toInt().toString() : v.toStringAsFixed(1));
+  /// As [_days], but 0 for none: for sentences ("LOP 0 → 1 days").
+  static String _dz(num v) => v == 0 ? '0' : _days(v);
 
   String? _status(Map<String, dynamic> r) => r['payslip_status'] as String?;
   bool _isPublished(Map<String, dynamic> r) => _status(r) == 'published';
   bool _isDraft(Map<String, dynamic> r) => _status(r) == 'draft';
+  /// Published, but a record behind it changed since: the payslip still
+  /// shows what was paid; a reissue brings it up to date.
+  bool _changed(Map<String, dynamic> r) => _isPublished(r) && r['records_changed'] == true;
 
   List<Map<String, dynamic>> get _toIssue =>
       _rows.where((r) => !_isPublished(r) && _confirmed.contains(r['employee_id'])).toList();
@@ -153,9 +161,13 @@ class _PayslipRunPageState extends State<PayslipRunPage> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text('Reissue ${r['employee_name']}\'s payslip?'),
-        content: const Text(
-            'A new draft is calculated from the current records. The published payslip stays '
-            'visible until you publish the new one, and is kept in the history after that.'),
+        content: Text(
+            '${_changed(r) ? 'Its records changed after it was published: LOP '
+                '${_dz(_n(r, 'payslip_days_lost'))} → ${_dz(_n(r, 'days_lost'))} days, net pay '
+                '${formatRupees(_n(r, 'payslip_net'))} → ${formatRupees(_n(r, 'net_pay'))}.\n\n' : ''}'
+            'A new draft is calculated from the current records and the published one is kept in the '
+            'history. ${r['employee_name']} will not see a payslip for $_label until you publish the '
+            'new draft. If the salary was already credited, settle the difference with the next one.'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
           FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Reissue')),
@@ -220,6 +232,12 @@ class _PayslipRunPageState extends State<PayslipRunPage> {
               _cyclePicker(),
               IconButton(tooltip: 'Refresh', onPressed: _loading ? null : _load,
                   icon: const Icon(Icons.refresh_rounded)),
+              IconButton(
+                tooltip: 'Salary master sheet',
+                icon: const Icon(Icons.table_view_rounded),
+                onPressed: () => Navigator.push(context, MaterialPageRoute(
+                    builder: (_) => SalaryMasterSheetPage(initialCycleEnd: _cycleEnd))),
+              ),
             ]),
             Padding(
               padding: const EdgeInsets.only(left: 4, top: 2),
@@ -243,6 +261,25 @@ class _PayslipRunPageState extends State<PayslipRunPage> {
             else if (_rows.isEmpty)
               const MCard(child: Text('No one is on payroll for this cycle.'))
             else ...[
+              if (_rows.any(_changed)) ...[
+                MCard(
+                  color: MobileUi.lopBg,
+                  borderColor: const Color(0xFFF5C2C2),
+                  child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    const Icon(Icons.sync_problem_rounded, color: MobileUi.lop, size: 20),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                          'Records changed after publishing for '
+                          '${_rows.where(_changed).map((r) => r['employee_name']).join(', ')}. '
+                          'Their payslips still show what was published. Reissue from the ⋮ menu '
+                          'to bring them up to date.',
+                          style: const TextStyle(color: MobileUi.lop, fontSize: 13)),
+                    ),
+                  ]),
+                ),
+                const SizedBox(height: 12),
+              ],
               wide ? _table() : _cards(),
               const SizedBox(height: 14),
               MCard(
@@ -251,7 +288,7 @@ class _PayslipRunPageState extends State<PayslipRunPage> {
                 child: const Text.rich(TextSpan(children: [
                   TextSpan(text: 'Something wrong? Don\'t change the number here. '),
                   TextSpan(text: 'Fix the leave, permission or attendance record it comes from, then refresh: '
-                      'the counts and the pay update. '),
+                      'the counts and the pay update, and so does a draft payslip, by itself. '),
                   TextSpan(text: 'LOP days', style: TextStyle(fontWeight: FontWeight.w700)),
                   TextSpan(text: ' = unpaid leave + late LOP + permission LOP + days absent without leave. '
                       'Net pay is rounded to the nearest rupee.'),
@@ -337,6 +374,15 @@ class _PayslipRunPageState extends State<PayslipRunPage> {
   Widget _statusChip(Map<String, dynamic> r) {
     final s = _status(r);
     final v = _n(r, 'payslip_version').toInt();
+    if (_changed(r)) {
+      return Tooltip(
+        message: 'Published with LOP ${_dz(_n(r, 'payslip_days_lost'))} days and net '
+            '${formatRupees(_n(r, 'payslip_net'))}; the records now give LOP '
+            '${_dz(_n(r, 'days_lost'))} and ${formatRupees(_n(r, 'net_pay'))}. Reissue to update.',
+        child: const MChip('Changed since', color: MobileUi.lop, background: MobileUi.lopBg,
+            icon: Icons.sync_problem_rounded),
+      );
+    }
     if (s == 'published') {
       return MChip(v > 1 ? 'Published v$v' : 'Published',
           color: MobileUi.present, background: MobileUi.presentBg);
@@ -446,7 +492,21 @@ class _PayslipRunPageState extends State<PayslipRunPage> {
                   num_(_days(_n(r, 'late_count'))),
                   num_(_days(_n(r, 'days_lost'))),
                   num_(_days(_n(r, 'payable_days'))),
-                  num_(formatRupees(_n(r, 'net_pay')), bold: true),
+                  _changed(r)
+                      ? DataCell(Align(
+                          alignment: Alignment.centerRight,
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: [
+                              Text(formatRupees(_n(r, 'net_pay')),
+                                  style: const TextStyle(fontWeight: FontWeight.w700)),
+                              Text('paid ${formatRupees(_n(r, 'payslip_net'))}',
+                                  style: const TextStyle(fontSize: 11.5, color: MobileUi.lop)),
+                            ],
+                          ),
+                        ))
+                      : num_(formatRupees(_n(r, 'net_pay')), bold: true),
                   DataCell(_statusChip(r)),
                   DataCell(Center(child: _confirmBox(r))),
                 ],
@@ -497,6 +557,10 @@ class _PayslipRunPageState extends State<PayslipRunPage> {
                 const SizedBox(height: 6),
                 Text('Net pay ${formatRupees(_n(r, 'net_pay'))}',
                     style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+                if (_changed(r))
+                  Text('Published as ${formatRupees(_n(r, 'payslip_net'))} '
+                      '(LOP ${_dz(_n(r, 'payslip_days_lost'))}); records changed since',
+                      style: const TextStyle(fontSize: 12, color: MobileUi.lop)),
               ]),
             ),
           ),

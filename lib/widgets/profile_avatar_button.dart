@@ -350,6 +350,24 @@ class _ProfileDropdown extends StatelessWidget {
 
           const Divider(height: 1),
 
+          // Management's own pages live here rather than in the menu, which
+          // is kept for running the company (20 Nov 2026). Not for oversight
+          // accounts, which have no attendance, leave or payslips.
+          if (UserSession.isManagement && !UserSession.oversightOnly)
+            for (final (icon, label, route) in const [
+              (Icons.calendar_month_rounded, 'My attendance & leave', '/management/attendance-leaves'),
+              (Icons.account_balance_wallet_rounded, 'My leave balance', '/management/leave/balance'),
+              (Icons.receipt_long_rounded, 'My payslips', '/management/my-payslips'),
+            ]) ...[
+              ListTile(
+                dense: true,
+                leading: Icon(icon, size: 18, color: AppTheme.primaryBlue),
+                title: Text(label, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500)),
+                onTap: () => onNavigate(route),
+              ),
+              const Divider(height: 1),
+            ],
+
           // ── Change Password ─────────────────────────────────────────────
           ListTile(
             dense: true,

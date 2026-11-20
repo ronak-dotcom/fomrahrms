@@ -47,6 +47,7 @@ import 'pages/salary_hike_engine_page.dart';
 import 'models/app_user.dart';
 import 'models/appraisal_store.dart';
 import 'pages/payroll_management_page.dart';
+import 'pages/salary_master_sheet_page.dart';
 import 'pages/interview_process_page.dart';
 import 'pages/candidate_application_form_page.dart';
 import 'pages/employee_onboarding_page.dart';
@@ -81,7 +82,7 @@ import 'pages/manager_dashboard_page.dart';
 import 'pages/manager_leave_page.dart';
 import 'pages/team_leave_approvals_page.dart';
 import 'widgets/management_shell.dart';
-import 'pages/management_dashboard_page.dart';
+import 'pages/management_overview_page.dart';
 import 'pages/onroll_approvals_page.dart';
 import 'pages/my_onboarding_form_page.dart';
 import 'pages/candidate_detail_page.dart';
@@ -336,6 +337,7 @@ final _router = GoRouter(
         }),
         GoRoute(path: '/salary-hike-engine',              builder: (_, __) => const SalaryHikeEnginePage()),
         GoRoute(path: '/payroll-management',              builder: (_, __) => const PayrollManagementPage()),
+        GoRoute(path: '/salary-master-sheet',             builder: (_, __) => const SalaryMasterSheetPage()),
         GoRoute(path: '/interview-process',               builder: (_, __) => const InterviewProcessPage()),
         GoRoute(path: '/email-logs',                      builder: (_, __) => const EmailLogsPage()),
         GoRoute(path: '/edit-form',                       builder: (_, __) => const EditFormPage()),
@@ -529,7 +531,7 @@ final _router = GoRouter(
       builder: (context, state, child) =>
           ManagementShell(child: child, location: state.uri.path),
       routes: [
-        GoRoute(path: '/management/dashboard',              builder: (_, __) => const ManagementDashboardPage()),
+        GoRoute(path: '/management/dashboard',              builder: (_, __) => const ManagementOverviewPage()),
         GoRoute(path: '/management/employee-management',    builder: (_, __) => const HrEmployeeRecordsPage()),
         GoRoute(path: '/management/employee-management/add',builder: (_, __) => const AddEmployeePage()),
         GoRoute(path: '/management/employee-management/profile', redirect: (_, __) => '/management/employee-management'),
@@ -591,6 +593,7 @@ final _router = GoRouter(
         }),
         GoRoute(path: '/management/salary-hike-engine',     builder: (_, __) => const SalaryHikeEnginePage()),
         GoRoute(path: '/management/payroll-management',     builder: (_, __) => const PayrollManagementPage()),
+        GoRoute(path: '/management/salary-master-sheet',    builder: (_, __) => const SalaryMasterSheetPage()),
         GoRoute(path: '/management/interview-process',      builder: (_, __) => const InterviewProcessPage()),
         GoRoute(path: '/management/interview-review',       builder: (_, __) => const ManagementInterviewReviewPage()),
         GoRoute(path: '/management/edit-form',              builder: (_, __) => const EditFormPage()),

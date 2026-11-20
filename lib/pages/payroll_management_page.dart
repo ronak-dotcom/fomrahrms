@@ -9,6 +9,7 @@ import '../services/supabase_service.dart';
 import '../services/user_store.dart';
 import '../widgets/back_button.dart';
 import 'payslip_run_page.dart';
+import 'salary_master_sheet_page.dart';
 import '../theme/app_theme.dart';
 
 class PayrollManagementPage extends StatefulWidget {
@@ -197,6 +198,13 @@ class _PayrollManagementPageState extends State<PayrollManagementPage> {
                 ],
               ]),
             ),
+            OutlinedButton.icon(
+              onPressed: () => Navigator.push(context,
+                  MaterialPageRoute(builder: (_) => const SalaryMasterSheetPage())),
+              icon: const Icon(Icons.table_view_rounded, size: 18),
+              label: Text(narrow ? 'Sheet' : 'Master sheet'),
+            ),
+            const SizedBox(width: 8),
             FilledButton.icon(
               onPressed: () => _openPayroll(),
               icon: const Icon(Icons.receipt_long_rounded, size: 18),

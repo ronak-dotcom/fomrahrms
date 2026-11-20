@@ -145,6 +145,13 @@ class _ApplyPermissionPageState extends State<ApplyPermissionPage> {
     if (want <= 0) {
       _snack('End time must be after the start time.'); return;
     }
+    // The database accepts 30-minute steps only; say so here rather than
+    // let the request fail with its error.
+    if (!LeaveStore.permittedPermissionMinutes.contains(want)) {
+      _snack('Permission is taken in 30-minute steps: 30, 60, 90 or 120 minutes. '
+          'This is $want minutes.');
+      return;
+    }
 
     // Exceeding no longer blocks the request. Blocking meant an employee who
     // genuinely needed the time simply took it without recording anything,

@@ -19,14 +19,14 @@ class LeaveFormConfig {
     'LOP or Others',
   ];
 
-  // The monthly allowance is 120 minutes, availed as 4x30, 2x60 or 1x120.
-  // 90 minutes ('1½ Hours') was previously offered and has been withdrawn —
-  // no other interval is permitted. Enforced in the database by
-  // set_and_check_permission_minutes(), which rejects anything that is not
-  // 30, 60 or 120.
+  // The allowance is 2 hours per attendance cycle, in 30-minute steps:
+  // 30, 60, 90 or 120 minutes a time (90 allowed again, 20 Nov 2026).
+  // Enforced in the database by set_and_check_permission_minutes(); beyond
+  // the allowance each permission is half a day's LOP.
   static const defaultPermissionDurations = [
     '30 Minutes',
     '1 Hour',
+    '1 Hour 30 Minutes',
     '2 Hours',
   ];
 
