@@ -966,17 +966,6 @@ class _DaySheet extends StatelessWidget {
     required this.onClose,
   });
 
-  static String? _dur(String inT, String outT) {
-    try {
-      final i = inT.split(':'), o = outT.split(':');
-      final diff = (int.parse(o[0]) * 60 + int.parse(o[1])) -
-                   (int.parse(i[0]) * 60 + int.parse(i[1]));
-      if (diff <= 0) return null;
-      final h = diff ~/ 60, m = diff % 60;
-      return h > 0 ? '${h}h ${m}m' : '${m}m';
-    } catch (_) { return null; }
-  }
-
   @override
   Widget build(BuildContext context) {
     final cs     = Theme.of(context).colorScheme;
@@ -1073,9 +1062,6 @@ class _DaySheet extends StatelessWidget {
             _detailRow(context, Icons.logout_rounded, 'Check Out', rec.checkOutTime,
                 const Color(0xFF15803D)),
             const SizedBox(height: 8),
-            if (_dur(rec.checkInTime, rec.checkOutTime) != null)
-              _detailRow(context, Icons.timelapse_rounded, 'Duration',
-                  _dur(rec.checkInTime, rec.checkOutTime)!, _blue),
           ] else
             _detailRow(context, Icons.logout_rounded, 'Check Out', '— not recorded',
                 cs.onSurface.withValues(alpha: 0.4)),
@@ -1158,17 +1144,6 @@ class _TodayCard extends StatelessWidget {
   final bool isDark;
   const _TodayCard({required this.record, required this.isDark});
 
-  static String? _dur(String inT, String outT) {
-    try {
-      final i = inT.split(':'), o = outT.split(':');
-      final diff = (int.parse(o[0]) * 60 + int.parse(o[1])) -
-                   (int.parse(i[0]) * 60 + int.parse(i[1]));
-      if (diff <= 0) return null;
-      final h = diff ~/ 60, m = diff % 60;
-      return h > 0 ? '${h}h ${m}m' : '${m}m';
-    } catch (_) { return null; }
-  }
-
   @override
   Widget build(BuildContext context) {
     final rec = record;
@@ -1224,7 +1199,6 @@ class _TodayCard extends StatelessWidget {
       );
     }
 
-    final dur  = _dur(rec.checkInTime, rec.checkOutTime);
     final blue = isDark ? Colors.blue.shade300 : _blue;
     return Container(
       width: double.infinity,
@@ -1250,20 +1224,6 @@ class _TodayCard extends StatelessWidget {
             child: Icon(Icons.arrow_forward_rounded, size: 18, color: blue),
           ),
           _tb('Check Out', rec.checkOutTime, blue),
-          if (dur != null) ...[
-            const SizedBox(width: 18),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-              decoration: BoxDecoration(
-                color: isDark
-                    ? Colors.blue.withValues(alpha: 0.2)
-                    : Colors.blue.shade100,
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: Text(dur, style: TextStyle(fontSize: 12,
-                  fontWeight: FontWeight.w700, color: blue)),
-            ),
-          ],
         ]),
       ]),
     );
