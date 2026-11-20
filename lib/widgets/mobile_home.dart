@@ -105,9 +105,9 @@ class _MobileHomeState extends State<MobileHome> {
 
   static String _greeting() {
     final h = DateTime.now().hour;
-    if (h < 12) return 'Good morning';
-    if (h < 17) return 'Good afternoon';
-    return 'Good evening';
+    if (h < 12) return 'Happy morning';
+    if (h < 17) return 'Happy afternoon';
+    return 'Happy evening';
   }
 
   static const _weekdays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];

@@ -82,7 +82,7 @@ import 'pages/manager_dashboard_page.dart';
 import 'pages/manager_leave_page.dart';
 import 'pages/team_leave_approvals_page.dart';
 import 'widgets/management_shell.dart';
-import 'pages/management_dashboard_page.dart';
+import 'pages/management_overview_page.dart';
 import 'pages/onroll_approvals_page.dart';
 import 'pages/my_onboarding_form_page.dart';
 import 'pages/candidate_detail_page.dart';
@@ -531,7 +531,7 @@ final _router = GoRouter(
       builder: (context, state, child) =>
           ManagementShell(child: child, location: state.uri.path),
       routes: [
-        GoRoute(path: '/management/dashboard',              builder: (_, __) => const ManagementDashboardPage()),
+        GoRoute(path: '/management/dashboard',              builder: (_, __) => const ManagementOverviewPage()),
         GoRoute(path: '/management/employee-management',    builder: (_, __) => const HrEmployeeRecordsPage()),
         GoRoute(path: '/management/employee-management/add',builder: (_, __) => const AddEmployeePage()),
         GoRoute(path: '/management/employee-management/profile', redirect: (_, __) => '/management/employee-management'),
