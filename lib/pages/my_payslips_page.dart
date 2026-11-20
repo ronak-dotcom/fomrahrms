@@ -238,10 +238,11 @@ class _MyPayslipsPageState extends State<MyPayslipsPage> {
                                 const MSection('How your pay is worked out'),
                                 const MCard(
                                   child: Text(
-                                      'Monthly gross × payable days ÷ days in the cycle, less PT, EPF, ESI '
-                                      'and TDS, rounded to the nearest rupee. Payable days are the days in the '
-                                      'cycle less LOP days: unpaid leave, late and permission LOP, and days '
-                                      'absent without leave.',
+                                      'Monthly gross × payable days ÷ days in the cycle, less professional '
+                                      'tax and TDS, and EPF and ESI for the days paid; rounded to the nearest '
+                                      'rupee. Payable days are the days in the cycle less LOP days: unpaid '
+                                      'leave, late and permission LOP, and working days with no check-in and '
+                                      'no approved leave.',
                                       style: TextStyle(fontSize: 13, height: 1.5)),
                                 ),
                               ]),

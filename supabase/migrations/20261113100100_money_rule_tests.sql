@@ -263,6 +263,20 @@ begin
     res := res || jsonb_build_array(jsonb_build_object('t', 'payroll: working a Sunday does not cancel a weekday absence',
       'e', '1', 'a', t));
 
+    -- From the November 2026 cycle EPF and ESI follow the days paid (Ronak,
+    -- 20 Nov 2026): EPF to the paisa, ESI rounded up to the rupee.
+    select trim_scale(total_deductions)::text into t from generate_payroll(ce) where employee_code = 'ZZT-02';
+    res := res || jsonb_build_array(jsonb_build_object('t', 'payroll: EPF follows the days paid (29 of 30 days: 1,800 -> 1,740, plus PT 208)',
+      'e', '1948', 'a', t));
+    update salary_structures set esi = 128 where employee_id = 'ZZT-05';
+    select trim_scale(total_deductions)::text into t from generate_payroll(ce) where employee_code = 'ZZT-05';
+    res := res || jsonb_build_array(jsonb_build_object('t', 'payroll: ESI follows the days paid, rounded up (28.5 of 30: 128 -> 122; EPF 1,710; PT 208)',
+      'e', '2040', 'a', t));
+    res := res || jsonb_build_array(
+      jsonb_build_object('t', 'payroll: EPF and ESI are not scaled for cycles up to 25 Oct 2026',
+        'e', '1800/128', 'a', trim_scale(payroll_scaled_epf(1800, 29, 30, date '2026-10-25'))::text || '/'
+                              || trim_scale(payroll_scaled_esi(128, 29, 30, date '2026-10-25'))::text));
+
     if (select count(*) from generate_payroll(ce) where employee_code like 'ZZT-%') <> 10 then
       res := res || jsonb_build_array(jsonb_build_object('t', 'payroll: every active payroll employee gets a row',
         'e', '10', 'a', (select count(*) from generate_payroll(ce) where employee_code like 'ZZT-%')::text));
