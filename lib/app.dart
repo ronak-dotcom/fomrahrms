@@ -47,6 +47,7 @@ import 'pages/salary_hike_engine_page.dart';
 import 'models/app_user.dart';
 import 'models/appraisal_store.dart';
 import 'pages/payroll_management_page.dart';
+import 'pages/salary_master_sheet_page.dart';
 import 'pages/interview_process_page.dart';
 import 'pages/candidate_application_form_page.dart';
 import 'pages/employee_onboarding_page.dart';
@@ -336,6 +337,7 @@ final _router = GoRouter(
         }),
         GoRoute(path: '/salary-hike-engine',              builder: (_, __) => const SalaryHikeEnginePage()),
         GoRoute(path: '/payroll-management',              builder: (_, __) => const PayrollManagementPage()),
+        GoRoute(path: '/salary-master-sheet',             builder: (_, __) => const SalaryMasterSheetPage()),
         GoRoute(path: '/interview-process',               builder: (_, __) => const InterviewProcessPage()),
         GoRoute(path: '/email-logs',                      builder: (_, __) => const EmailLogsPage()),
         GoRoute(path: '/edit-form',                       builder: (_, __) => const EditFormPage()),
@@ -591,6 +593,7 @@ final _router = GoRouter(
         }),
         GoRoute(path: '/management/salary-hike-engine',     builder: (_, __) => const SalaryHikeEnginePage()),
         GoRoute(path: '/management/payroll-management',     builder: (_, __) => const PayrollManagementPage()),
+        GoRoute(path: '/management/salary-master-sheet',    builder: (_, __) => const SalaryMasterSheetPage()),
         GoRoute(path: '/management/interview-process',      builder: (_, __) => const InterviewProcessPage()),
         GoRoute(path: '/management/interview-review',       builder: (_, __) => const ManagementInterviewReviewPage()),
         GoRoute(path: '/management/edit-form',              builder: (_, __) => const EditFormPage()),

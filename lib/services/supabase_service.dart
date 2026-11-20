@@ -3566,6 +3566,19 @@ class SupabaseService {
     return _rows(data);
   }
 
+  /// The salary master sheet for the cycle ending [cycleEnd]: one row per
+  /// person with bank details, days, LOP by cause, fixed and earned
+  /// components, deductions and the net pay to credit. A published
+  /// payslip's own figures; otherwise the payroll engine's now (a running
+  /// cycle counts absence up to yesterday). HR and Management only; throws
+  /// on error.
+  static Future<List<Map<String, dynamic>>> salaryMasterSheet(DateTime cycleEnd) async {
+    final db = _db;
+    if (db == null) return [];
+    final data = await db.rpc('salary_master_sheet', params: {'p_cycle_end': _isoDate(cycleEnd)});
+    return _rows(data);
+  }
+
   static Future<void> savePayslip(Payslip p) async {
     try {
       await _db?.from('payslips').upsert(p.toJson());

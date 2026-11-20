@@ -40,6 +40,8 @@ const _navItems = [
   // Money. payments matches the icon used for salary elsewhere, so the same
   // idea does not wear two faces.
   NavEntry('Payroll Management', Icons.payments_rounded, '/payroll-management'),
+  // What to credit to each person, with the breakup, and the Excel for the bank.
+  NavEntry('Salary Master Sheet', Icons.table_view_rounded, '/salary-master-sheet'),
 
   // Everything else that is run rather than decided.
   NavEntry('Task Management', Icons.task_alt_rounded, '/task-management'),

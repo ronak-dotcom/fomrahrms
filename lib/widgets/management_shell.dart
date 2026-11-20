@@ -61,6 +61,7 @@ const _navGroups = <NavGroupSpec>[
     NavEntry('Interviews', Icons.record_voice_over_rounded, '/management/interview-process'),
     NavEntry('Interview Review', Icons.rate_review_rounded, '/management/interview-review'),
     NavEntry('Payroll', Icons.payments_rounded, '/management/payroll-management'),
+    NavEntry('Salary Master Sheet', Icons.table_view_rounded, '/management/salary-master-sheet'),
   ]),
 
   // Configuration. The four form editors used to sit here as well, which
