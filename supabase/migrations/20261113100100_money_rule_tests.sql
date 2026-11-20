@@ -330,6 +330,42 @@ begin
     res := res || jsonb_build_array(jsonb_build_object('t', 'master sheet: 10 on payroll, each net = earned - deductions +/- rounding, LOP causes add up, ZZT-11 listed without a structure',
       'e', '10 true true ZZT-11', 'a', t));
 
+    -- Permission may be 90 minutes (Ronak, 20 Nov 2026); 90 + 30 is the
+    -- whole 2-hour allowance, and another 30 is half a day's LOP.
+    insert into leave_applications(id, employee_name, employee_id, department, leave_type,
+                                   from_date, to_date, days, reason, applied_on,
+                                   manager_status, management_status, leave_bucket, is_half_day,
+                                   permission_minutes)
+    values ('zzt-06-p90', 'ZZ Selftest ZZT-06', 'ZZT-06', 'ZZ Selftest Dept', 'Permission',
+            date '2030-10-14', date '2030-10-14', 1, 'Permission: 09:30–11:00 (90 min) | selftest',
+            now() - interval '3 minutes', 'pending', 'pending', null, true, 90),
+           ('zzt-06-p30', 'ZZ Selftest ZZT-06', 'ZZT-06', 'ZZ Selftest Dept', 'Permission',
+            date '2030-10-15', date '2030-10-15', 1, 'Permission: 09:30–10:00 (30 min) | selftest',
+            now() - interval '2 minutes', 'pending', 'pending', null, true, 30),
+           ('zzt-06-p30b', 'ZZ Selftest ZZT-06', 'ZZT-06', 'ZZ Selftest Dept', 'Permission',
+            date '2030-10-16', date '2030-10-16', 1, 'Permission: 09:30–10:00 (30 min) | selftest',
+            now() - interval '1 minute', 'pending', 'pending', null, true, 30);
+    select string_agg(id || ':' || permission_lop_half_day::text, ',' order by id) into t
+      from leave_applications where id like 'zzt-06-p%';
+    res := res || jsonb_build_array(
+      jsonb_build_object('t', 'permission: 90 minutes is accepted; 90 + 30 fills the 2 hours; one more is half-day LOP',
+        'e', 'zzt-06-p30:false,zzt-06-p30b:true,zzt-06-p90:false', 'a', t),
+      jsonb_build_object('t', 'permission: "1 Hour 30 Minutes" reads as 90',
+        'e', '90', 'a', permission_minutes_from_text('1 Hour 30 Minutes')::text));
+    begin
+      insert into leave_applications(id, employee_name, employee_id, department, leave_type,
+                                     from_date, to_date, days, reason, applied_on,
+                                     manager_status, management_status, is_half_day, permission_minutes)
+      values ('zzt-06-p45', 'ZZ Selftest ZZT-06', 'ZZT-06', 'ZZ Selftest Dept', 'Permission',
+              date '2030-10-17', date '2030-10-17', 1, 'Permission: 45 min | selftest', now(),
+              'pending', 'pending', true, 45);
+      t := 'accepted';
+    exception when others then
+      t := 'refused';
+    end;
+    res := res || jsonb_build_array(jsonb_build_object('t', 'permission: 45 minutes is not a 30-minute step',
+      'e', 'refused', 'a', t));
+
     if (select count(*) from generate_payroll(ce) where employee_code like 'ZZT-%') <> 10 then
       res := res || jsonb_build_array(jsonb_build_object('t', 'payroll: every active payroll employee gets a row',
         'e', '10', 'a', (select count(*) from generate_payroll(ce) where employee_code like 'ZZT-%')::text));

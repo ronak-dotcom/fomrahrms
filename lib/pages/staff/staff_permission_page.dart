@@ -10,14 +10,14 @@ import 'staff_history.dart';
 // Canonical English values — stored as-is in LeaveApplication.reason so HR's
 // (English-only) approval screens and LeaveStore.permMinutesFromReason keep
 // working regardless of the Staff Portal's display language.
-// 90 minutes withdrawn: the allowance is 4x30, 2x60 or 1x120.
-// Note '1 Hour 30 Minutes' was ALSO charged only 30 minutes by the old
-// substring parser, so staff taking it were under-charged quota while
-// being under-credited against lateness.
-const _durations = ['30 Minutes', '1 Hour', '2 Hours'];
+// The allowance is 2 hours per cycle in 30-minute steps: 30, 60, 90 or 120
+// a time (90 allowed again, 20 Nov 2026). '1 Hour 30 Minutes' is read as 90
+// by both the app and the database.
+const _durations = ['30 Minutes', '1 Hour', '1 Hour 30 Minutes', '2 Hours'];
 const _durationKeys = {
   '30 Minutes':         'duration_30m',
   '1 Hour':             'duration_1h',
+  '1 Hour 30 Minutes':  'duration_1h30m',
   '2 Hours':            'duration_2h',
 };
 

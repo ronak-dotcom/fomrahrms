@@ -9,7 +9,7 @@ import 'package:fomra_hrms/models/leave_store.dart';
 /// The earlier version scanned the whole string, so the employee's own
 /// description could steer the charge ("2 Hours | back in 30 Minutes" was
 /// charged 30) and anything unrecognised defaulted to an hour. It now reads
-/// only the part before the first '|', rejects the withdrawn 90-minute slot,
+/// only the part before the first '|', reads 90 minutes before 1 hour or 30,
 /// and returns 0 for anything it does not recognise. These tests were
 /// characterisation tests for those bugs; they now pin the fix.
 ///
@@ -23,8 +23,8 @@ void main() {
       expect(LeaveStore.permMinutesFromReason('Permission: 2 Hours | Bank Work'), 120);
     });
 
-    test('the permitted durations are 30, 60 and 120 minutes', () {
-      expect(LeaveStore.permittedPermissionMinutes, [30, 60, 120]);
+    test('the permitted durations are 30, 60, 90 and 120 minutes', () {
+      expect(LeaveStore.permittedPermissionMinutes, [30, 60, 90, 120]);
     });
 
     test('the employee\'s description cannot change the charge', () {
@@ -37,10 +37,10 @@ void main() {
       expect(LeaveStore.permMinutesFromReason(approved) >= 90, isTrue);
     });
 
-    test('the withdrawn 90-minute slot is rejected, however it is written', () {
-      expect(LeaveStore.permMinutesFromReason('Permission: 1½ Hours | X'), 0);
-      expect(LeaveStore.permMinutesFromReason('Permission: 1 Hour 30 Minutes | X'), 0);
-      expect(LeaveStore.permMinutesFromReason('Permission: 90 Minutes | X'), 0);
+    test('90 minutes reads as 90, however it is written (allowed again, 20 Nov 2026)', () {
+      expect(LeaveStore.permMinutesFromReason('Permission: 1½ Hours | X'), 90);
+      expect(LeaveStore.permMinutesFromReason('Permission: 1 Hour 30 Minutes | X'), 90);
+      expect(LeaveStore.permMinutesFromReason('Permission: 09:30–11:00 (90 min) | X'), 90);
     });
 
     test('an unrecognised duration is 0, not a silent hour', () {

@@ -183,20 +183,20 @@ class LeaveStore {
   ///    approved permission so the arrival counted as late and cost half a
   ///    day's pay.
   ///
-  ///  * Retired 90-minute phrasings are rejected BEFORE the substring tests.
+  ///  * 90-minute phrasings are matched BEFORE the substring tests.
   ///    '1 Hour 30 Minutes' contains '1 Hour', and the old order matched
   ///    '30 Minutes' first, so the Staff Portal's 1h30m option was charged 30.
   static int permMinutesFromReason(String reason) {
     final duration = reason.split('|').first;
     final r = duration.toLowerCase();
 
-    // Withdrawn slot — reject rather than round to a neighbouring value.
+    // 90 minutes first: '1 Hour 30 Minutes' also contains '1 Hour' and '30'.
     if (r.contains('1½') ||
         r.contains('1 1/2') ||
         r.contains('90') ||
         r.contains('1 hour 30') ||
         r.contains('1 hr 30')) {
-      return 0;
+      return 90;
     }
 
     if (r.contains('2 hours') || r.contains('2 hrs') || r.contains('120')) return 120;
@@ -205,8 +205,9 @@ class LeaveStore {
     return 0;
   }
 
-  /// The three permitted permission durations, in minutes.
-  static const permittedPermissionMinutes = [30, 60, 120];
+  /// The permitted permission durations, in minutes: 30-minute steps up to
+  /// the 2-hour allowance (90 allowed again, Ronak, 20 Nov 2026).
+  static const permittedPermissionMinutes = [30, 60, 90, 120];
 
   /// Minutes used in the CURRENT ATTENDANCE CYCLE (26th -> 25th), not the
   /// calendar month. Comparing calendar months put 26 July and 3 August in
