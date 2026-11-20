@@ -221,15 +221,15 @@ begin
     res := res || jsonb_build_array(jsonb_build_object('t', 'payslip: refused while the cycle is still running',
       'e', 'refused', 'a', t));
     perform _issue_payslips(ce, array['ZZT-01', 'ZZT-05'], false, ce + 1, 'selftest');
-    select string_agg(p.employee_id || ':' || p.status, ',' order by p.employee_id) into t
-      from payslips p where p.employee_id in ('ZZT-01', 'ZZT-05');
+    select string_agg(ps.employee_id || ':' || ps.status, ',' order by ps.employee_id) into t
+      from payslips ps where ps.employee_id in ('ZZT-01', 'ZZT-05');
     res := res || jsonb_build_array(jsonb_build_object('t', 'payslip: issued as drafts once the cycle has closed',
       'e', 'ZZT-01:draft,ZZT-05:draft', 'a', t));
     select count(*)::text into t
-      from payslips p join generate_payroll(ce) g on g.employee_code = p.employee_id
-     where p.employee_id in ('ZZT-01', 'ZZT-05')
-       and p.net_pay = g.net_pay and p.gross_earned = g.gross
-       and p.lop_days = g.days_lost and p.days_worked = g.nowd;
+      from payslips ps join generate_payroll(ce) g on g.employee_code = ps.employee_id
+     where ps.employee_id in ('ZZT-01', 'ZZT-05')
+       and ps.net_pay = g.net_pay and ps.gross_earned = g.gross
+       and ps.lop_days = g.days_lost and ps.days_worked = g.nowd;
     res := res || jsonb_build_array(jsonb_build_object('t', 'payslip: net pay, gross and LOP are the payroll engine''s',
       'e', '2', 'a', t));
     select trim_scale(cl_used)::text || '/' || trim_scale(leave_lop)::text into t
@@ -241,9 +241,9 @@ begin
     res := res || jsonb_build_array(jsonb_build_object('t', 'payslip: a published payslip is not overwritten without a reissue',
       'e', 'already_published', 'a', t));
     perform _issue_payslips(ce, array['ZZT-01'], true, ce + 1, 'selftest');
-    select p.status || ' v' || p.version || ', history ' ||
+    select ps.status || ' v' || ps.version || ', history ' ||
            (select count(*) from payslip_history h where h.employee_id = 'ZZT-01')
-      into t from payslips p where p.employee_id = 'ZZT-01';
+      into t from payslips ps where ps.employee_id = 'ZZT-01';
     res := res || jsonb_build_array(jsonb_build_object('t', 'payslip: a reissue is a new draft and keeps the old one',
       'e', 'draft v2, history 1', 'a', t));
     insert into app_users(email, name, employee_id, role, active, date_of_joining,
