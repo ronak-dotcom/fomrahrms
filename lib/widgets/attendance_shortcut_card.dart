@@ -92,32 +92,7 @@ class _AttendanceShortcutCardState extends State<AttendanceShortcutCard> {
     }
   }
 
-  Future<void> _showHRPolicy() async {
-    if (!mounted) return;
-
-    String policyText = _kHRPolicyText;
-    Map<String, dynamic>? pending;
-    try {
-      final results = await Future.wait([
-        SupabaseService.fetchHRPolicy(),
-        SupabaseService.fetchPendingHRPolicyVersion(),
-      ]).timeout(const Duration(seconds: 6), onTimeout: () => [null, null]);
-      policyText = (results[0] as String?) ?? _kHRPolicyText;
-      pending    = results[1] as Map<String, dynamic>?;
-    } catch (_) {}
-
-    if (!mounted) return;
-
-    await showDialog(
-      context: context,
-      builder: (dlgCtx) => _HRPolicyDialog(
-        approvedText: policyText,
-        pendingVersion: pending,
-        canEdit: UserSession.role == UserRole.hr,
-        isManagement: UserSession.role == UserRole.management,
-      ),
-    );
-  }
+  Future<void> _showHRPolicy() => showHrPolicy(context);
 
   static const String _kHRPolicyText = '''
 FOMRA HOUSING & INFRASTRUCTURE PVT LTD
@@ -656,6 +631,32 @@ void showHelpCenterDialog(BuildContext context) {
 }
 
 // ── HR Policy dialog ─────────────────────────────────────────────────────────
+
+/// Opens the HR policy. Shared by the Quick Access tile and the phone Home.
+Future<void> showHrPolicy(BuildContext context) async {
+  String policyText = _AttendanceShortcutCardState._kHRPolicyText;
+  Map<String, dynamic>? pending;
+  try {
+    final results = await Future.wait([
+      SupabaseService.fetchHRPolicy(),
+      SupabaseService.fetchPendingHRPolicyVersion(),
+    ]).timeout(const Duration(seconds: 6), onTimeout: () => [null, null]);
+    policyText = (results[0] as String?) ?? _AttendanceShortcutCardState._kHRPolicyText;
+    pending    = results[1] as Map<String, dynamic>?;
+  } catch (_) {}
+
+  if (!context.mounted) return;
+
+  await showDialog(
+    context: context,
+    builder: (dlgCtx) => _HRPolicyDialog(
+      approvedText: policyText,
+      pendingVersion: pending,
+      canEdit: UserSession.role == UserRole.hr,
+      isManagement: UserSession.role == UserRole.management,
+    ),
+  );
+}
 class _HRPolicyDialog extends StatefulWidget {
   final String approvedText;
   final Map<String, dynamic>? pendingVersion;

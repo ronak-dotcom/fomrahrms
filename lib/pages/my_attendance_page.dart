@@ -12,6 +12,9 @@ import '../utils/checkin_status.dart';
 import '../utils/tenure.dart';
 import '../utils/weekly_off.dart';
 import '../widgets/back_button.dart';
+import '../widgets/mobile_shell.dart';
+import '../widgets/desktop_shell.dart' show DesktopChrome;
+import '../theme/mobile_ui.dart';
 import '../theme/app_theme.dart';
 
 // Fixed status colors — not theme-driven. Chosen as a set (not just
@@ -422,8 +425,168 @@ class _MyAttendancePageState extends State<MyAttendancePage> {
     );
   }
 
+  static const _legendItems = [
+    (_green, 'Present'),
+    (_purple, 'Late'),
+    (_magenta, 'Leave'),
+    (_teal, 'Permission'),
+    (_violet, 'Comp off'),
+    (_red, 'Absent'),
+    (_yellow, 'Holiday / off'),
+  ];
+
+  /// Phone layout (approved redesign): today's status with one action, the
+  /// month as filled colour squares (Monday first, like the Apply leave
+  /// calendar), and the pay-cycle figures as large numbers. Same data, same
+  /// colours and same day details as the wide layout.
+  Widget _buildMobile(BuildContext context) {
+    final now = DateTime.now();
+    final cs = Theme.of(context).colorScheme;
+    const mNames = ['January','February','March','April','May','June',
+                    'July','August','September','October','November','December'];
+    final atCurrentMonth = _month.year == now.year && _month.month == now.month;
+    String days(double v) => v == v.roundToDouble() ? '${v.toInt()}' : v.toStringAsFixed(1);
+
+    final today = _MobileTodayRow(
+      record: _todayRecord,
+      onOpen: () => context.push(widget.checkInRoute),
+    );
+    final calendar = MCard(
+        padding: const EdgeInsets.fromLTRB(6, 6, 6, 14),
+        child: Column(children: [
+          Row(children: [
+            IconButton(
+              tooltip: 'Previous month',
+              icon: const Icon(Icons.chevron_left_rounded),
+              onPressed: () {
+                _month = DateTime(_month.year, _month.month - 1);
+                _load();
+              },
+            ),
+            Expanded(
+              child: Text('${mNames[_month.month - 1]} ${_month.year}',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+            ),
+            IconButton(
+              tooltip: 'Next month',
+              icon: Icon(Icons.chevron_right_rounded,
+                  color: atCurrentMonth ? cs.onSurface.withValues(alpha: 0.2) : null),
+              onPressed: atCurrentMonth
+                  ? null
+                  : () {
+                      _month = DateTime(_month.year, _month.month + 1);
+                      _load();
+                    },
+            ),
+          ]),
+          Row(children: [
+            for (final wd in const [
+              (DateTime.monday, 'M'), (DateTime.tuesday, 'T'), (DateTime.wednesday, 'W'),
+              (DateTime.thursday, 'T'), (DateTime.friday, 'F'), (DateTime.saturday, 'S'),
+              (DateTime.sunday, 'S'),
+            ])
+              _WDay(wd.$2, color: wd.$1 == _offWeekday ? _yellow : null),
+          ]),
+          const SizedBox(height: 6),
+          if (_loading)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 48),
+              child: Center(child: CircularProgressIndicator(color: _blue, strokeWidth: 2)),
+            )
+          else
+            _CalendarGrid(
+              month: _month,
+              today: now,
+              statusColor: _statusColor,
+              holidayDays: _holidayDays,
+              onTap: _onTap,
+              selectedDay: _selectedDay,
+              selectedDayContent: null,
+              filled: true,
+              mondayFirst: true,
+            ),
+          const SizedBox(height: 12),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10),
+            child: Wrap(spacing: 14, runSpacing: 8, children: [
+              for (final (c, l) in _legendItems)
+                Row(mainAxisSize: MainAxisSize.min, children: [
+                  Container(width: 10, height: 10,
+                      decoration: BoxDecoration(color: c, shape: BoxShape.circle)),
+                  const SizedBox(width: 5),
+                  Text(l, style: const TextStyle(fontSize: 12.5, color: AppTheme.textSecondary)),
+                ]),
+            ]),
+          ),
+        ]),
+      );
+    final cycle = <Widget>[
+      if (!_loading) ...[
+        MSection('This pay cycle · ${attendanceCycleRange(_month)}'),
+        MStats([
+          ('$_cyclePresent', 'Present', _green),
+          ('$_cycleLate', 'Late', _purple),
+          (days(_cycleLeaveDays), 'Leave', const Color(0xFFC2185B)),
+          ('${_cyclePermissionMinutes}m', 'Permission', const Color(0xFF0F7A55)),
+        ]),
+        if (_cycleWaived > 0)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(4, 8, 4, 0),
+            child: Text(
+              '$_cycleWaived late arrival${_cycleWaived == 1 ? '' : 's'} excused by Management '
+              '— not counted above.',
+              style: TextStyle(fontSize: 12, color: Colors.green.shade700),
+            ),
+          ),
+      ],
+    ];
+
+    // On a computer (approved 20 Nov 2026): the month on the left, today and
+    // the cycle's figures beside it.
+    final Widget body = DesktopChrome.active(context)
+        ? LayoutBuilder(
+            builder: (context, c) => c.maxWidth >= 860
+                ? Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Expanded(child: calendar),
+                    const SizedBox(width: 18),
+                    SizedBox(
+                      width: 340,
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                        today,
+                        ...cycle,
+                        const SizedBox(height: 14),
+                        MCard(
+                          child: Row(children: [
+                            Icon(Icons.info_outline_rounded, color: AppTheme.primaryBlue, size: 20),
+                            const SizedBox(width: 10),
+                            const Expanded(
+                              child: Text('Click a day to see check-in, check-out, location and any leave or permission.',
+                                  style: TextStyle(fontSize: 13)),
+                            ),
+                          ]),
+                        ),
+                      ]),
+                    ),
+                  ])
+                : Column(crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [today, const SizedBox(height: 14), calendar, ...cycle]),
+          )
+        : Column(crossAxisAlignment: CrossAxisAlignment.start,
+            children: [today, const SizedBox(height: 14), calendar, ...cycle]);
+
+    if (widget.embedded) return body;
+    return Scaffold(
+      body: RefreshIndicator(
+        onRefresh: _load,
+        child: ListView(padding: const EdgeInsets.fromLTRB(16, 16, 16, 24), children: [body]),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    if (MobileChrome.active(context) || DesktopChrome.active(context)) return _buildMobile(context);
     final cs  = Theme.of(context).colorScheme;
     final now = DateTime.now();
     final narrow = MediaQuery.of(context).size.width < 600;
@@ -614,6 +777,9 @@ class _CalendarGrid extends StatelessWidget {
   final void Function(int day) onTap;
   final int? selectedDay;
   final Widget? selectedDayContent;
+  /// Phone style: filled rounded squares instead of rings.
+  final bool filled;
+  final bool mondayFirst;
 
   const _CalendarGrid({
     required this.month,
@@ -623,6 +789,8 @@ class _CalendarGrid extends StatelessWidget {
     required this.onTap,
     this.selectedDay,
     this.selectedDayContent,
+    this.filled = false,
+    this.mondayFirst = false,
   });
 
   @override
@@ -634,7 +802,9 @@ class _CalendarGrid extends StatelessWidget {
     final cs          = Theme.of(context).colorScheme;
     final firstDay    = DateTime(month.year, month.month, 1);
     final daysInMonth = DateTime(month.year, month.month + 1, 0).day;
-    final offset      = firstDay.weekday % 7; // Sun=0 … Sat=6
+    final offset      = mondayFirst
+        ? firstDay.weekday - 1   // Mon=0 … Sun=6
+        : firstDay.weekday % 7;  // Sun=0 … Sat=6
 
     final cells = <Widget>[];
     for (int i = 0; i < offset; i++) {
@@ -667,6 +837,36 @@ class _CalendarGrid extends StatelessWidget {
                     ? _blue
                     : sColor ?? cs.onSurface.withValues(alpha: 0.35))),
       );
+
+      if (filled) {
+        // Text a shade darker than the fill so light statuses (holiday,
+        // leave) stay readable.
+        final textColor = sColor != null
+            ? Color.lerp(sColor, Colors.black, 0.22)!
+            : isToday ? _blue : cs.onSurface.withValues(alpha: 0.4);
+        cells.add(Expanded(
+          child: GestureDetector(
+            onTap: () => onTap(day),
+            behavior: HitTestBehavior.opaque,
+            child: Container(
+              height: 40,
+              margin: const EdgeInsets.all(3),
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: sColor?.withValues(alpha: 0.14),
+                borderRadius: BorderRadius.circular(10),
+                border: isToday ? Border.all(color: _blue, width: 2) : null,
+              ),
+              child: Text('$day',
+                  style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: (isToday || sColor != null) ? FontWeight.w700 : FontWeight.w500,
+                      color: textColor)),
+            ),
+          ),
+        ));
+        continue;
+      }
 
       cells.add(Expanded(
         child: GestureDetector(
@@ -1112,4 +1312,58 @@ class _Legend extends StatelessWidget {
     Text(label, style: TextStyle(fontSize: 12,
         color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.65))),
   ]);
+}
+
+/// Today's attendance in one line with the one action that makes sense now.
+class _MobileTodayRow extends StatelessWidget {
+  final AttendanceRecord? record;
+  final VoidCallback onOpen;
+  const _MobileTodayRow({required this.record, required this.onOpen});
+
+  @override
+  Widget build(BuildContext context) {
+    final r = record;
+    final checkedIn = r != null && r.checkInTime.isNotEmpty && r.checkOutTime.isEmpty;
+    final done = r != null && r.checkOutTime.isNotEmpty;
+    final (icon, color, bg, title, subtitle, action) = done
+        ? (Icons.task_alt_rounded, AppTheme.primaryBlue, MobileUi.permissionBg,
+            'Done for today', 'In ${r.checkInTime} · Out ${r.checkOutTime}', null)
+        : checkedIn
+            ? (Icons.check_circle_rounded, MobileUi.present, MobileUi.presentBg,
+                'Checked in at ${r.checkInTime}',
+                r.location.isNotEmpty ? 'Today · ${r.location}' : 'Today', 'Check out')
+            : (Icons.schedule_rounded, MobileUi.late, MobileUi.lateBg,
+                'Not checked in yet', 'Today', 'Check in');
+    return MCard(
+      padding: const EdgeInsets.fromLTRB(12, 12, 10, 12),
+      child: Row(children: [
+        Container(
+          width: 40, height: 40,
+          decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(12)),
+          child: Icon(icon, color: color, size: 22),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(title, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+            Text(subtitle,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontSize: 12.5, color: AppTheme.textSecondary)),
+          ]),
+        ),
+        if (action != null)
+          FilledButton.tonal(
+            onPressed: onOpen,
+            style: FilledButton.styleFrom(
+              backgroundColor: AppTheme.primaryBlue.withValues(alpha: 0.10),
+              foregroundColor: AppTheme.primaryBlue,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+              textStyle: const TextStyle(fontWeight: FontWeight.w700),
+            ),
+            child: Text(action),
+          ),
+      ]),
+    );
+  }
 }

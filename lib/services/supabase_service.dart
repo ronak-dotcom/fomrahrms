@@ -1,4 +1,5 @@
 // ignore_for_file: avoid_catches_without_on_clauses
+import 'error_reporter.dart';
 import 'dart:async';
 import 'package:flutter/foundation.dart' show kIsWeb, defaultTargetPlatform;
 import 'gps_tracking_service.dart';
@@ -620,6 +621,8 @@ class SupabaseService {
   /// console and recorded, so the next one is diagnosable in minutes rather
   /// than by tracing a user complaint back through the code.
   static void _writeFailed(String operation, Object error) {
+    ErrorReporter.log('write_failed', '$operation: $error',
+        context: {'operation': operation});
     // ignore: avoid_print
     print('[write-failed] $operation: $error');
     lastWriteFailure = '$operation: $error';
@@ -2456,6 +2459,92 @@ class SupabaseService {
     }
   }
 
+  // ── Leave corrections: HR proposes, Management approves ────────────────
+  //
+  // A wrong leave type (Jose's CL that should have been ML) could only be
+  // rejected, after which the person had to apply again. HR now proposes
+  // the correction, with a reason, and Management approves it, optionally
+  // approving the leave in the same step. See
+  // supabase/migrations/20261119100000_leave_rejection_probation_corrections.sql.
+
+  static String _rpcError(Object e) {
+    final text = e.toString();
+    final m = RegExp(r'message: ([^,]+)').firstMatch(text);
+    return m?.group(1) ?? text;
+  }
+
+  /// Null on success, or the reason it was refused.
+  static Future<String?> proposeLeaveCorrection({
+    required String leaveId,
+    required String leaveType,
+    required String bucket,
+    required DateTime from,
+    required DateTime to,
+    required bool halfDay,
+    required String reason,
+  }) async {
+    final db = _db;
+    if (db == null) return 'Database not connected';
+    String iso(DateTime d) =>
+        '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+    try {
+      await db.rpc('propose_leave_correction', params: {
+        'p_leave_id': leaveId,
+        'p_leave_type': leaveType,
+        'p_bucket': bucket,
+        'p_from': iso(from),
+        'p_to': iso(to),
+        'p_half_day': halfDay,
+        'p_reason': reason,
+      });
+      return null;
+    } catch (e) {
+      _writeFailed('proposeLeaveCorrection', e);
+      return _rpcError(e);
+    }
+  }
+
+  /// Corrections waiting for Management, keyed by leave id.
+  static Future<Map<String, Map<String, dynamic>>> fetchPendingLeaveCorrections() async {
+    try {
+      final data = await _db
+          ?.from('leave_corrections')
+          .select()
+          .eq('status', 'pending')
+          .order('proposed_at');
+      if (data == null) return {};
+      return {
+        for (final row in data as List)
+          (row['leave_id'] as String): Map<String, dynamic>.from(row as Map),
+      };
+    } catch (_) {
+      return {};
+    }
+  }
+
+  /// Null on success, or the reason it was refused.
+  static Future<String?> decideLeaveCorrection({
+    required int id,
+    required bool approve,
+    bool approveLeave = false,
+    String? note,
+  }) async {
+    final db = _db;
+    if (db == null) return 'Database not connected';
+    try {
+      await db.rpc('decide_leave_correction', params: {
+        'p_id': id,
+        'p_approve': approve,
+        'p_note': note,
+        'p_approve_leave': approveLeave,
+      });
+      return null;
+    } catch (e) {
+      _writeFailed('decideLeaveCorrection', e);
+      return _rpcError(e);
+    }
+  }
+
   static Future<String?> saveCheckIn({
     required String employeeName,
     required String employeeId,
@@ -3388,20 +3477,93 @@ class SupabaseService {
 
   // ── Payslips ──────────────────────────────────────────────────────────────
 
+  /// The person's own payslips, published ones only. HR and Management may
+  /// read every payslip, drafts included, so without the filter a draft
+  /// waiting for review would appear on their own payslips page.
   static Future<List<Payslip>> fetchPayslips(String employeeId) async {
+    List<Payslip> parse(dynamic data) => data == null
+        ? <Payslip>[]
+        : (data as List)
+            .map((row) => Payslip.fromJson(Map<String, dynamic>.from(row as Map)))
+            .toList();
     try {
       final data = await _db
           ?.from('payslips')
           .select()
           .eq('employee_id', employeeId)
+          .eq('status', 'published')
           .order('month_year', ascending: false);
-      if (data == null) return [];
-      return (data as List)
-          .map((row) => Payslip.fromJson(Map<String, dynamic>.from(row as Map)))
-          .toList();
+      return parse(data);
     } catch (_) {
-      return [];
+      // Before the database had payslip status (Nov 2026) the filter fails;
+      // every payslip then was published.
+      try {
+        final data = await _db
+            ?.from('payslips')
+            .select()
+            .eq('employee_id', employeeId)
+            .order('month_year', ascending: false);
+        return parse(data);
+      } catch (_) {
+        return [];
+      }
     }
+  }
+
+  // ── Issuing payslips (HR / Management) ──────────────────────────────────
+  // The database works every payslip out from the payroll engine; the app
+  // only shows the figures, asks HR to confirm the counts, and publishes.
+
+  static List<Map<String, dynamic>> _rows(dynamic data) => data is List
+      ? data.map((r) => Map<String, dynamic>.from(r as Map)).toList()
+      : <Map<String, dynamic>>[];
+
+  /// Everyone on payroll for the cycle ending [cycleEnd]: the counts HR
+  /// confirms, the figures, and where each payslip stands. Throws on error.
+  static Future<List<Map<String, dynamic>>> payslipPreview(DateTime cycleEnd) async {
+    final db = _db;
+    if (db == null) return [];
+    final data = await db.rpc('payslip_preview', params: {'p_cycle_end': _isoDate(cycleEnd)});
+    return _rows(data);
+  }
+
+  /// Issues draft payslips for [employeeIds] (everyone when null). A
+  /// published payslip is replaced only with [reissue]; the old one is kept.
+  /// Returns one row per person with an `outcome`: draft,
+  /// already_published or no_salary_structure. Throws on error, including
+  /// for a cycle that has not closed.
+  static Future<List<Map<String, dynamic>>> issuePayslips(
+    DateTime cycleEnd, {
+    List<String>? employeeIds,
+    bool reissue = false,
+  }) async {
+    final db = _db;
+    if (db == null) return [];
+    final data = await db.rpc('issue_payslips', params: {
+      'p_cycle_end': _isoDate(cycleEnd),
+      'p_employee_ids': employeeIds,
+      'p_reissue': reissue,
+    });
+    logAuditEvent('payslips_issued', targetType: 'payslips',
+        targetId: _isoDate(cycleEnd), details: {'reissue': reissue, 'count': (data as List?)?.length ?? 0});
+    return _rows(data);
+  }
+
+  /// Publishes the drafts for [employeeIds] (all drafts when null): the
+  /// employees can then see them and are notified. Throws on error.
+  static Future<List<Map<String, dynamic>>> publishPayslips(
+    DateTime cycleEnd, {
+    List<String>? employeeIds,
+  }) async {
+    final db = _db;
+    if (db == null) return [];
+    final data = await db.rpc('publish_payslips', params: {
+      'p_cycle_end': _isoDate(cycleEnd),
+      'p_employee_ids': employeeIds,
+    });
+    logAuditEvent('payslips_published', targetType: 'payslips',
+        targetId: _isoDate(cycleEnd), details: {'count': (data as List?)?.length ?? 0});
+    return _rows(data);
   }
 
   static Future<void> savePayslip(Payslip p) async {
@@ -4334,8 +4496,16 @@ class SupabaseService {
   /// get one leave per cycle instead of the full CL/ML/EL entitlement.
   ///
   /// HR raising it also counts as HR's own acceptance: requiring HR to
-  /// approve a request HR just made is a signature with no meaning. It still
-  /// needs the reporting manager and Management.
+  /// approve a request HR just made is a signature with no meaning.
+  ///
+  /// Confirmation is decided by HR and Management (Management's decision,
+  /// 19 Nov 2026), so the reporting-manager stage is marked not required and
+  /// the request goes straight to Management. Management's acceptance sets
+  /// onroll_confirmed_at, and from that date leave starts to accrue
+  /// (app_users.leave_accrual_from, set by the database).
+  static const onrollManagerNotRequired =
+      'Not required: confirmation is decided by HR and Management';
+
   static Future<String?> requestOnrollForEmployee(String employeeId,
       {String comment = ''}) async {
     try {
@@ -4350,9 +4520,11 @@ class SupabaseService {
             ? 'Raised by ${UserSession.name} (HR) on the employee\u2019s behalf'
             : comment,
         'onroll_hr_decided_at': now,
+        'onroll_manager_status': 'accepted',
+        'onroll_manager_comment': onrollManagerNotRequired,
+        'onroll_manager_decided_at': now,
         // Cleared so a previously denied request can be re-raised rather than
         // staying dead.
-        'onroll_manager_status': 'pending',
         'onroll_management_status': 'pending',
       }).eq('employee_id', employeeId);
       logAuditEvent('onroll_requested_by_hr',

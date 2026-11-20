@@ -10,6 +10,7 @@ import '../services/user_store.dart';
 import '../widgets/back_button.dart';
 import '../widgets/filter_panel.dart';
 import '../widgets/filter_popup_button.dart';
+import '../widgets/leave_correction.dart';
 import '../theme/app_theme.dart';
 import 'hr_employee_records_page.dart' show EmployeeProfileDialog, EmployeeEditDialog;
 
@@ -49,6 +50,10 @@ class _TeamLeaveApprovalsPageState extends State<TeamLeaveApprovalsPage>
   late TabController _tabController;
 
   Set<String> _teamNames = {};
+  /// Corrections HR has proposed that Management has not decided, by leave id.
+  Map<String, Map<String, dynamic>> _corrections = {};
+  bool get _canCorrect =>
+      UserSession.role == UserRole.hr || UserSession.role == UserRole.management;
   List<AppUser> _users = [];
   bool _teamLoaded = false;
   String _search = '';
@@ -217,9 +222,13 @@ class _TeamLeaveApprovalsPageState extends State<TeamLeaveApprovalsPage>
         SupabaseService.fetchLeaveApplications()
             .timeout(const Duration(seconds: 8)),
         UserStore.load(),
+        _canCorrect
+            ? SupabaseService.fetchPendingLeaveCorrections()
+            : Future.value(<String, Map<String, dynamic>>{}),
       ]);
       final leaves = results[0] as List<LeaveApplication>;
       final users  = results[1] as List<AppUser>;
+      final corrections = results[2] as Map<String, Map<String, dynamic>>;
 
       if (leaves.isNotEmpty) {
         LeaveStore.applications..clear()..addAll(leaves);
@@ -251,6 +260,7 @@ class _TeamLeaveApprovalsPageState extends State<TeamLeaveApprovalsPage>
       if (mounted) {
         setState(() {
           _teamNames  = myTeam;
+          _corrections = corrections;
           _users      = users;
           _teamLoaded = true;
           _loading    = false;
@@ -645,6 +655,37 @@ class _TeamLeaveApprovalsPageState extends State<TeamLeaveApprovalsPage>
                           style: TextStyle(fontSize: 12.5)),
                     ),
                   ),
+                // Wrong type, dates or half / full day: HR proposes the fix
+                // and Management approves it, rather than rejecting the leave
+                // and making the employee start again.
+                if (req.leaveType != 'Permission' && _corrections[req.id] != null) ...[
+                  const SizedBox(height: 8),
+                  PendingLeaveCorrection(
+                    correction: _corrections[req.id]!,
+                    onDecided: () {
+                      if (ctx.mounted) Navigator.pop(ctx);
+                      _loadData();
+                    },
+                  ),
+                ] else if (req.leaveType != 'Permission' && _canCorrect)
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: TextButton.icon(
+                      onPressed: () async {
+                        final sent = await showProposeLeaveCorrection(ctx, req);
+                        if (!sent) return;
+                        if (ctx.mounted) Navigator.pop(ctx);
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                            content: Text('Correction sent to Management for approval.')));
+                        }
+                        _loadData();
+                      },
+                      icon: const Icon(Icons.edit_note_rounded, size: 16),
+                      label: const Text('Propose a correction (type, dates, half day)',
+                          style: TextStyle(fontSize: 12.5)),
+                    ),
+                  ),
                 if (req.effectiveDays > 2) ...[
                   const SizedBox(height: 10),
                   Align(
@@ -858,6 +899,16 @@ class _TeamLeaveApprovalsPageState extends State<TeamLeaveApprovalsPage>
               approvalRate: _approvalRate,
             ),
             const SizedBox(height: 16),
+            if (_corrections.isNotEmpty && UserSession.role == UserRole.management) ...[
+              _CorrectionsBanner(
+                corrections: _corrections,
+                onOpen: (leaveId) {
+                  final match = LeaveStore.applications.where((a) => a.id == leaveId);
+                  if (match.isNotEmpty) _showDetails(match.first);
+                },
+              ),
+              const SizedBox(height: 16),
+            ],
 
             // ── Tabs + filter toggle ───────────────────────────────────
             Row(children: [
@@ -1973,6 +2024,60 @@ class _StatusPill extends StatelessWidget {
         Icon(icon, size: 12, color: color),
         const SizedBox(width: 5),
         Text(label, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: color)),
+      ]),
+    );
+  }
+}
+
+
+/// Leave corrections HR has proposed, for Management to decide. They are
+/// listed here because the leave itself may already be rejected and so not
+/// in the pending list.
+class _CorrectionsBanner extends StatelessWidget {
+  final Map<String, Map<String, dynamic>> corrections;
+  final void Function(String leaveId) onOpen;
+  const _CorrectionsBanner({required this.corrections, required this.onOpen});
+
+  @override
+  Widget build(BuildContext context) {
+    final items = corrections.values.toList();
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppTheme.warning.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: AppTheme.warning.withValues(alpha: 0.4)),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Icon(Icons.edit_note_rounded, size: 18, color: Colors.orange.shade800),
+          const SizedBox(width: 6),
+          Text(
+            '${items.length} leave correction${items.length == 1 ? '' : 's'} waiting for your approval',
+            style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: Colors.orange.shade900),
+          ),
+        ]),
+        const SizedBox(height: 6),
+        for (final c in items)
+          InkWell(
+            onTap: () => onOpen(c['leave_id'] as String),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: Row(children: [
+                Expanded(
+                  child: Text(
+                    '${LeaveStore.applications.where((a) => a.id == c['leave_id']).map((a) => a.employeeName).firstOrNull ?? c['leave_id']}: '
+                    '${(c['previous'] as Map)['leave_type']} → ${(c['proposed'] as Map)['leave_type']} · ${c['reason']}',
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 12.5),
+                  ),
+                ),
+                const Icon(Icons.chevron_right_rounded, size: 18),
+              ]),
+            ),
+          ),
       ]),
     );
   }

@@ -9,6 +9,10 @@ import '../services/notification_service.dart';
 import '../services/supabase_service.dart';
 import '../services/user_store.dart';
 import '../widgets/back_button.dart';
+import '../widgets/mobile_shell.dart';
+import '../widgets/desktop_shell.dart' show DesktopChrome;
+import '../theme/mobile_ui.dart';
+import '../utils/attendance_cycle.dart';
 import '../theme/app_theme.dart';
 
 class MyPayslipsPage extends StatefulWidget {
@@ -118,8 +122,182 @@ class _MyPayslipsPageState extends State<MyPayslipsPage> {
         .fold(0.0, (s, a) => s + a.effectiveDays);
   }
 
+  /// Phone layout (approved redesign): the latest payslip first with its net
+  /// pay and a Download button, earlier ones as a list, and requesting a
+  /// missing payslip as a secondary action rather than the first thing on
+  /// the page. Same data and the same request and download calls.
+  Widget _buildMobile(BuildContext context) {
+    final user = _appUser;
+    final slips = [..._payslips]..sort((a, b) => b.monthYear.compareTo(a.monthYear));
+    final latest = slips.isEmpty ? null : slips.first;
+    final earlier = slips.skip(1).toList();
+    final pending = _requests.where((r) => r.status == PayslipRequestStatus.pending).toList();
+
+    if (user == null || _loading) {
+      return Scaffold(
+        body: _loading
+            ? const Center(child: CircularProgressIndicator())
+            : const Padding(
+                padding: EdgeInsets.all(16),
+                child: MCard(
+                  child: Text('Employee record not found.',
+                      style: TextStyle(color: AppTheme.textSecondary)),
+                ),
+              ),
+      );
+    }
+
+    final main = <Widget>[
+                    if (latest != null)
+                      _LatestPayslipCard(payslip: latest)
+                    else
+                      const MCard(
+                        child: Text('No payslips yet. They appear here once HR issues them.',
+                            style: TextStyle(color: AppTheme.textSecondary)),
+                      ),
+                    if (latest != null) ...[
+                      const MSection('Earlier payslips'),
+                      if (earlier.isEmpty)
+                        const MCard(
+                          child: Text('Earlier payslips will appear here as they are issued.',
+                              style: TextStyle(color: AppTheme.textSecondary)),
+                        )
+                      else
+                        MCard(
+                          padding: EdgeInsets.zero,
+                          child: Column(children: [
+                            for (var i = 0; i < earlier.length; i++) ...[
+                              if (i > 0) const Divider(height: 1, color: MobileUi.line),
+                              _EarlierPayslipRow(payslip: earlier[i]),
+                            ],
+                          ]),
+                        ),
+                    ],
+    ];
+    final side = <Widget>[
+                    if (user.isElEligible) ...[
+                      const MSection('Earned leave'),
+                      _ElBalanceCard(
+                        accrued: _elAccrued(user),
+                        used: _elUsed(user),
+                        user: user,
+                        loading: _elAvailLoading,
+                        onRequest: _requestElAvail,
+                      ),
+                    ],
+                    const MSection('Need a missing payslip?'),
+                    MCard(
+                      onTap: () => _openRequestSheet(context),
+                      child: Row(children: [
+                        Container(
+                          width: 40, height: 40,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFEEF1F6),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: const Icon(Icons.send_outlined, color: Color(0xFF334155), size: 20),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                            const Text('Request from HR',
+                                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+                            Text(
+                                pending.isEmpty
+                                    ? 'For a cycle that has closed'
+                                    : '${pending.length} request${pending.length == 1 ? '' : 's'} waiting for HR',
+                                style: const TextStyle(fontSize: 12.5, color: AppTheme.textSecondary)),
+                          ]),
+                        ),
+                        const Icon(Icons.chevron_right_rounded, color: AppTheme.textSecondary),
+                      ]),
+                    ),
+    ];
+
+    // On a computer (approved 20 Nov 2026): the payslips on the left, the
+    // request, earned leave and how pay is worked out beside them.
+    if (DesktopChrome.active(context)) {
+      return Scaffold(
+        body: RefreshIndicator(
+          onRefresh: _load,
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(28, 22, 28, 28),
+            children: [
+              Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 1120),
+                  child: LayoutBuilder(
+                    builder: (context, c) => c.maxWidth >= 860
+                        ? Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: main)),
+                            const SizedBox(width: 22),
+                            SizedBox(
+                              width: 340,
+                              child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                                ...side,
+                                const MSection('How your pay is worked out'),
+                                const MCard(
+                                  child: Text(
+                                      'Monthly gross × payable days ÷ days in the cycle, less professional '
+                                      'tax and TDS, and EPF and ESI for the days paid; rounded to the nearest '
+                                      'rupee. Payable days are the days in the cycle less LOP days: unpaid '
+                                      'leave, late and permission LOP, and working days with no check-in and '
+                                      'no approved leave.',
+                                      style: TextStyle(fontSize: 13, height: 1.5)),
+                                ),
+                              ]),
+                            ),
+                          ])
+                        : Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [...main, ...side]),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return Scaffold(
+      body: RefreshIndicator(
+        onRefresh: _load,
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+          children: [...main, ...side],
+        ),
+      ),
+    );
+  }
+
+  void _openRequestSheet(BuildContext context) {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (ctx) => Padding(
+        padding: EdgeInsets.fromLTRB(16, 0, 16, 16 + MediaQuery.of(ctx).viewInsets.bottom),
+        child: _PayslipSection(
+          requests: _requests,
+          payslips: const [],
+          requesting: _requesting,
+          showHistory: false,
+          onRequest: (m) async {
+            Navigator.of(ctx).pop();
+            await _requestPayslip(m);
+            if (!context.mounted) return;
+            ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+              content: Text('Requested ${_monthLabel(m)} from HR.'),
+              behavior: SnackBarBehavior.floating,
+            ));
+          },
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    if (MobileChrome.active(context) || DesktopChrome.active(context)) return _buildMobile(context);
     final user = _appUser;
 
     return Scaffold(
@@ -371,10 +549,17 @@ const _monthNames = ['Jan','Feb','Mar','Apr','May','Jun',
                       'Jul','Aug','Sep','Oct','Nov','Dec'];
 
 /// Last 12 months as (key='YYYY-MM', label='Mon YYYY'), newest first.
+/// The last 12 cycles that have closed (each ends on the 25th), newest
+/// first. A payslip cannot be issued for a cycle still running, so a
+/// request for one used to sit unanswered.
 List<(String, String)> _recentMonths() {
   final now = DateTime.now();
+  final today = DateTime(now.year, now.month, now.day);
+  final latestClosed = DateTime(today.year, today.month, 25).isBefore(today)
+      ? DateTime(today.year, today.month, 1)
+      : DateTime(today.year, today.month - 1, 1);
   return List.generate(12, (i) {
-    final d = DateTime(now.year, now.month - i, 1);
+    final d = DateTime(latestClosed.year, latestClosed.month - i, 1);
     final key = '${d.year}-${d.month.toString().padLeft(2, '0')}';
     return (key, '${_monthNames[d.month - 1]} ${d.year}');
   });
@@ -393,11 +578,14 @@ class _PayslipSection extends StatefulWidget {
   final List<Payslip> payslips;
   final bool requesting;
   final Future<void> Function(String monthYear) onRequest;
+  /// False inside the phone's request sheet, which only asks for a month.
+  final bool showHistory;
   const _PayslipSection({
     required this.requests,
     required this.payslips,
     required this.requesting,
     required this.onRequest,
+    this.showHistory = true,
   });
 
   @override
@@ -482,6 +670,7 @@ class _PayslipSectionState extends State<_PayslipSection> {
           ],
         ]),
       ),
+      if (widget.showHistory) ...[
       const SizedBox(height: 20),
       Text('Payslip History',
           style: TextStyle(
@@ -504,6 +693,7 @@ class _PayslipSectionState extends State<_PayslipSection> {
         )
       else
         ...widget.payslips.map((p) => _PayslipListTile(payslip: p)),
+      ],
     ]);
   }
 }
@@ -575,6 +765,114 @@ class _PayslipListTile extends StatelessWidget {
   }
 }
 
+const _fullMonthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July',
+    'August', 'September', 'October', 'November', 'December'];
+
+/// The newest payslip on phones: net pay large, how it was reached in one
+/// line, and Download / View details.
+class _LatestPayslipCard extends StatelessWidget {
+  final Payslip payslip;
+  const _LatestPayslipCard({required this.payslip});
+
+  @override
+  Widget build(BuildContext context) {
+    final p = payslip;
+    final parts = p.monthYear.split('-');
+    final y = int.tryParse(parts.first) ?? DateTime.now().year;
+    final m = parts.length == 2 ? (int.tryParse(parts[1]) ?? 1) : 1;
+    final paidDays = (p.workingDays - p.lopDays).clamp(0, p.workingDays).toDouble();
+    const white70 = TextStyle(fontSize: 13, color: Color(0xCCFFFFFF));
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(MobileUi.radius),
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF0F2A6B), Color(0xFF1D4ED8)],
+        ),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text('LATEST · ${_fullMonthNames[m - 1].toUpperCase()} $y',
+            style: const TextStyle(
+                fontSize: 12.5, fontWeight: FontWeight.w700, letterSpacing: 0.5,
+                color: Color(0xE6FFFFFF))),
+        Text('Cycle ${attendanceCycleRange(DateTime(y, m, 25))} · '
+            '${Payslip.fmtDays(paidDays)} of ${p.workingDays} days paid',
+            style: white70),
+        const SizedBox(height: 8),
+        Text(formatRupees(p.netPay),
+            style: const TextStyle(
+                fontSize: 36, fontWeight: FontWeight.w800, color: Colors.white, letterSpacing: -0.5)),
+        Text('Net pay · Gross ${formatRupees(p.actualGrossPay)} · '
+            'Deductions ${formatRupees(p.totalDeductions)}',
+            style: white70),
+        const SizedBox(height: 14),
+        Row(children: [
+          Expanded(
+            child: FilledButton.icon(
+              onPressed: () => _downloadPayslip(context, p),
+              style: FilledButton.styleFrom(
+                backgroundColor: Colors.white,
+                foregroundColor: const Color(0xFF0F2A6B),
+                minimumSize: const Size.fromHeight(44),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                textStyle: const TextStyle(fontWeight: FontWeight.w700),
+              ),
+              icon: const Icon(Icons.download_rounded, size: 20),
+              label: const Text('Download'),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: FilledButton(
+              onPressed: () => Navigator.push(context,
+                  MaterialPageRoute(builder: (_) => PayslipDetailPage(payslip: p))),
+              style: FilledButton.styleFrom(
+                backgroundColor: Colors.white.withValues(alpha: 0.16),
+                foregroundColor: Colors.white,
+                minimumSize: const Size.fromHeight(44),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                textStyle: const TextStyle(fontWeight: FontWeight.w700),
+              ),
+              child: const Text('View details'),
+            ),
+          ),
+        ]),
+      ]),
+    );
+  }
+}
+
+class _EarlierPayslipRow extends StatelessWidget {
+  final Payslip payslip;
+  const _EarlierPayslipRow({required this.payslip});
+
+  @override
+  Widget build(BuildContext context) => InkWell(
+        onTap: () => Navigator.push(context,
+            MaterialPageRoute(builder: (_) => PayslipDetailPage(payslip: payslip))),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(14, 8, 4, 8),
+          child: Row(children: [
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(_monthLabel(payslip.monthYear),
+                    style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+                Text('Net ${formatRupees(payslip.netPay)}',
+                    style: const TextStyle(fontSize: 12.5, color: AppTheme.textSecondary)),
+              ]),
+            ),
+            IconButton(
+              tooltip: 'Download PDF',
+              icon: Icon(Icons.download_rounded, color: AppTheme.primaryBlue),
+              onPressed: () => _downloadPayslip(context, payslip),
+            ),
+          ]),
+        ),
+      );
+}
+
 /// Generates and downloads the payslip PDF, reporting failure rather than
 /// doing nothing — a button that silently fails reads as broken.
 Future<void> _downloadPayslip(BuildContext context, Payslip p) async {
@@ -600,6 +898,8 @@ class PayslipDetailPage extends StatelessWidget {
   static String _fmtRs(double v) =>
       '₹${v.toStringAsFixed(0).replaceAllMapped(RegExp(r'\B(?=(\d{3})+(?!\d))'), (m) => ',')}';
 
+  static String? _d(double? v) => v == null || v == 0 ? null : Payslip.fmtDays(v);
+
   Widget _infoRow(String label, String value) => Padding(
         padding: const EdgeInsets.symmetric(vertical: 6),
         child: Row(children: [
@@ -614,7 +914,7 @@ class PayslipDetailPage extends StatelessWidget {
         ]),
       );
 
-  Widget _amountRow(String label, double value, {bool bold = false}) => Padding(
+  Widget _amountRow(String label, double value, {bool bold = false, bool paise = false}) => Padding(
         padding: const EdgeInsets.symmetric(vertical: 6),
         child: Row(children: [
           Expanded(
@@ -622,7 +922,7 @@ class PayslipDetailPage extends StatelessWidget {
                   style: TextStyle(
                       fontSize: 13,
                       fontWeight: bold ? FontWeight.w700 : FontWeight.normal))),
-          Text(_fmtRs(value),
+          Text(paise ? '₹${value.toStringAsFixed(2)}' : _fmtRs(value),
               style: TextStyle(
                   fontSize: 13, fontWeight: bold ? FontWeight.w700 : FontWeight.w600)),
         ]),
@@ -738,8 +1038,37 @@ class PayslipDetailPage extends StatelessWidget {
                   color: _purple.withValues(alpha: 0.08),
                   borderRadius: BorderRadius.circular(10),
                 ),
-                child: _amountRow('Net Pay (Rs)', p.netPay, bold: true),
+                child: Column(children: [
+                  // Net pay is rounded to the rupee (agreed with HR, Nov 2026).
+                  if (p.roundedOff.abs() >= 0.005) _amountRow('Rounded off', p.roundedOff, paise: true),
+                  _amountRow('Net Pay (Rs)', p.netPay, bold: true),
+                ]),
               ),
+              if (p.isFromEngine) ...[
+                const SizedBox(height: 16),
+                Text('This cycle',
+                    style: TextStyle(fontWeight: FontWeight.w700, color: _purple)),
+                const SizedBox(height: 6),
+                Wrap(spacing: 18, runSpacing: 6, children: [
+                  for (final (l, v) in [
+                    ('Working days', p.attendanceWorkingDays?.toString()),
+                    ('Days present', p.daysPresent?.toString()),
+                    ('CL used', _d(p.clUsed)),
+                    ('ML used', _d(p.mlUsed)),
+                    ('EL used', _d(p.elUsed)),
+                    ('Comp off used', _d(p.compOffUsed)),
+                    ('Permission', (p.permissionMinutes ?? 0) > 0 ? '${p.permissionMinutes} min' : null),
+                    ('Late arrivals', (p.lateCount ?? 0) > 0 ? '${p.lateCount}' : null),
+                    ('LOP days', Payslip.fmtDays(p.lopDays)),
+                    ('Payable days', Payslip.fmtDays(p.daysWorked)),
+                  ])
+                    if (v != null)
+                      Text.rich(TextSpan(children: [
+                        TextSpan(text: '$l  ', style: const TextStyle(fontSize: 12, color: Color(0xFF6B7280))),
+                        TextSpan(text: v, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                      ])),
+                ]),
+              ],
 
               if (p.leaveDetails.isNotEmpty) ...[
                 const SizedBox(height: 24),

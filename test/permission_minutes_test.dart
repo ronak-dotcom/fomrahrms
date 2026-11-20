@@ -1,95 +1,59 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:fomra_hrms/models/leave_store.dart';
 
-/// Characterisation tests for permMinutesFromReason().
-///
-/// This function reads a duration out of a free-text string. The string it is
-/// given is built in apply_permission_page.dart as:
+/// permMinutesFromReason() reads a permission's duration out of its reason
+/// string, built in apply_permission_page.dart as:
 ///
 ///     'Permission: $duration | $reasonText | $description'
 ///
-/// so it contains the employee's own typed description. That makes the parse
-/// steerable by the employee, in both directions:
+/// The earlier version scanned the whole string, so the employee's own
+/// description could steer the charge ("2 Hours | back in 30 Minutes" was
+/// charged 30) and anything unrecognised defaulted to an hour. It now reads
+/// only the part before the first '|', rejects the withdrawn 90-minute slot,
+/// and returns 0 for anything it does not recognise. These tests were
+/// characterisation tests for those bugs; they now pin the fix.
 ///
-///   * fewer minutes charged  -> quota goes further than it should
-///   * fewer minutes credited -> approved Permission no longer covers the
-///     late arrival, so checkin_status marks them late and lateDeduction
-///     takes half a day's pay
-///
-/// Tests marked BUG pin current behaviour and must fail when the parse is
-/// replaced by a stored integer column.
+/// The database (set_and_check_permission_minutes) is the authority for the
+/// minutes actually charged; this is the client-side reading.
 void main() {
-  group('permMinutesFromReason — intended behaviour', () {
-    test('reads each of the four standard durations', () {
+  group('permMinutesFromReason', () {
+    test('reads each permitted duration', () {
       expect(LeaveStore.permMinutesFromReason('Permission: 30 Minutes | Bank Work'), 30);
       expect(LeaveStore.permMinutesFromReason('Permission: 1 Hour | Bank Work'), 60);
-      expect(LeaveStore.permMinutesFromReason('Permission: 1½ Hours | Bank Work'), 90);
       expect(LeaveStore.permMinutesFromReason('Permission: 2 Hours | Bank Work'), 120);
     });
-  });
 
-  group('permMinutesFromReason — defects', () {
-    test(
-      'BUG: the employee\'s own description decides the charge. A 2-hour '
-      'permission whose description mentions "30 Minutes" is charged 30, '
-      'because that branch is tested first. 90 minutes of quota conjured out '
-      'of a free-text box.',
-      () {
-        const asWritten = 'Permission: 2 Hours | Personal Work | back in 30 Minutes';
-        expect(LeaveStore.permMinutesFromReason(asWritten), 30);
-      },
-    );
+    test('the permitted durations are 30, 60 and 120 minutes', () {
+      expect(LeaveStore.permittedPermissionMinutes, [30, 60, 120]);
+    });
 
-    test(
-      'BUG: the same defect docks pay. The employee has an APPROVED 2-hour '
-      'permission and arrives 90 minutes late — fully covered. Only 30 minutes '
-      'are credited, the arrival is not covered, and lateDeduction charges half '
-      'a day. The bug hurts the employee, not just the company.',
-      () {
-        const approved = 'Permission: 2 Hours | Doctor / Medical | should be back in 30 Minutes';
-        final credited = LeaveStore.permMinutesFromReason(approved);
-        const actualLatenessMinutes = 90;
+    test('the employee\'s description cannot change the charge', () {
+      const asWritten = 'Permission: 2 Hours | Personal Work | back in 30 Minutes';
+      expect(LeaveStore.permMinutesFromReason(asWritten), 120);
+    });
 
-        expect(credited, 30);
-        expect(credited >= actualLatenessMinutes, isFalse,
-            reason: 'approved permission fails to cover the lateness it was granted for');
-      },
-    );
+    test('an approved 2-hour permission covers a 90-minute late arrival', () {
+      const approved = 'Permission: 2 Hours | Doctor / Medical | should be back in 30 Minutes';
+      expect(LeaveStore.permMinutesFromReason(approved) >= 90, isTrue);
+    });
 
-    test(
-      'BUG: "1 Hour" is a substring of "1 Hour 30 Minutes". If HR renames a '
-      'duration in the form editor — which the app explicitly allows — the '
-      'parse silently changes. Renaming "1½ Hours" to "1 Hour 30 Minutes" '
-      'charges 30 instead of 90.',
-      () {
-        expect(LeaveStore.permMinutesFromReason('Permission: 1 Hour 30 Minutes | X'), 30);
-      },
-    );
+    test('the withdrawn 90-minute slot is rejected, however it is written', () {
+      expect(LeaveStore.permMinutesFromReason('Permission: 1½ Hours | X'), 0);
+      expect(LeaveStore.permMinutesFromReason('Permission: 1 Hour 30 Minutes | X'), 0);
+      expect(LeaveStore.permMinutesFromReason('Permission: 90 Minutes | X'), 0);
+    });
 
-    test(
-      'BUG: an unrecognised label silently defaults to 60 minutes rather than '
-      'failing. Any new duration HR adds is charged an hour whatever it says.',
-      () {
-        expect(LeaveStore.permMinutesFromReason('Permission: 45 Minutes | X'), 60);
-        expect(LeaveStore.permMinutesFromReason('Permission: 3 Hours | X'), 60);
-        expect(LeaveStore.permMinutesFromReason(''), 60);
-      },
-    );
+    test('an unrecognised duration is 0, not a silent hour', () {
+      expect(LeaveStore.permMinutesFromReason('Permission: 45 Minutes | X'), 0);
+      expect(LeaveStore.permMinutesFromReason(''), 0);
+    });
 
-    test(
-      'BUG: quota arithmetic follows the parse, so the monthly cap is '
-      'bypassable. Four 2-hour permissions described as "30 Minutes" total 120 '
-      'charged minutes — exactly the monthly quota — while 480 minutes were '
-      'actually taken.',
-      () {
-        const sneaky = 'Permission: 2 Hours | Personal Work | 30 Minutes tops';
-        final charged = List.filled(4, sneaky)
-            .map(LeaveStore.permMinutesFromReason)
-            .fold<int>(0, (a, b) => a + b);
-
-        expect(charged, 120);
-        expect(charged, lessThan(4 * 120));
-      },
-    );
+    test('the cycle quota adds up what was actually taken', () {
+      const twoHours = 'Permission: 2 Hours | Personal Work | 30 Minutes tops';
+      final charged = List.filled(4, twoHours)
+          .map(LeaveStore.permMinutesFromReason)
+          .fold<int>(0, (a, b) => a + b);
+      expect(charged, 4 * 120);
+    });
   });
 }

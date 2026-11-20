@@ -1,0 +1,381 @@
+-- Automated tests for the money rules: payroll, leave balance, late and
+-- permission LOP.
+--
+-- These rules live in the database (generate_payroll, leave_balance,
+-- late_lop_days, permission_lop_days and the leave triggers), so that is
+-- where they are tested. run_money_rule_tests() builds a small set of
+-- made-up employees in a far-future cycle (26 Sep - 25 Oct 2030), runs the
+-- real functions against them, compares each figure with the one the rule
+-- says it should be, and then throws the whole fixture away. Nothing it
+-- writes survives the call: the work happens inside a block that always
+-- ends by raising, which rolls back every insert, update and delete.
+--
+-- The nightly consistency run calls it and turns any failure into a
+-- high-severity finding on the App Health page. Run it by hand after any
+-- change to a payroll, leave or attendance function:
+--
+--     select * from run_money_rule_tests() where not passed;
+--
+-- An empty result means every rule still gives the expected figure.
+--
+-- The 2030 cycle used:
+--   30 calendar days, 4 Sundays (29 Sep, 6, 13, 20 Oct), 1 holiday (2 Oct)
+--   -> 25 working days. Real holidays in that window are removed for the
+--   duration of the test so a future holiday list cannot move the figures.
+-- Every fixture employee earns 30,000 a month (basic 15,000, HRA 7,500,
+-- other 7,500), so one day's pay is exactly 1,000, with PT 208 and EPF 1,800.
+
+create or replace function public.run_money_rule_tests()
+returns table(test_name text, passed boolean, expected text, actual text)
+language plpgsql
+security definer
+set search_path to 'public'
+as $$
+declare
+  cs constant date := date '2030-09-26';
+  ce constant date := date '2030-10-25';
+  res jsonb := '[]'::jsonb;
+  p record;
+  b record;
+  v numeric;
+  t text;
+  i int;
+  emp_ids constant text[] := array['ZZT-01','ZZT-02','ZZT-03','ZZT-04','ZZT-05','ZZT-06','ZZT-07','ZZT-08','ZZT-09','ZZT-10'];
+begin
+  -- The nightly job runs with no signed-in user; from the app, HR and
+  -- Management only.
+  if current_app_email() is not null and not current_app_is_hr_or_mgmt() then
+    raise exception 'Only HR or Management can run the money-rule tests';
+  end if;
+
+  begin
+    ------------------------------------------------------------------ setup
+    delete from holidays where holiday_date between cs and ce;
+    insert into holidays(name, holiday_date) values ('ZZ test holiday', date '2030-10-02');
+
+    for i in 1 .. array_length(emp_ids, 1) loop
+      insert into app_users(email, name, employee_id, role, active, date_of_joining,
+                            department, designation, onroll_confirmed_at,
+                            weekly_off_day, payroll_eligible, permission_minutes_quota)
+      values (lower(emp_ids[i]) || '@selftest.invalid', 'ZZ Selftest ' || emp_ids[i],
+              emp_ids[i], 'Employee', true,
+              case emp_ids[i] when 'ZZT-06' then '2030-10-11'
+                              when 'ZZT-08' then '2030-06-01'
+                              else '2025-01-01' end,
+              'ZZ Selftest Dept', 'Tester',
+              case emp_ids[i] when 'ZZT-08' then '' else '2025-04-01' end,
+              'Sunday', true, 120);
+      insert into salary_structures(employee_id, actual_gross, basic, da, hra, conveyance,
+                                    other_allowance, educational, lta, professional_tax,
+                                    effective_from, epf, esi, tds)
+      values (emp_ids[i], 30000, 15000, 0, 7500, 0, 7500, 0, 0, 208,
+              date '2025-01-01', 1800, 0, 0);
+    end loop;
+
+    -- Attendance on every working day at 09:25, except the gaps each case
+    -- needs. ZZT-06 joins on 11 Oct and works from then.
+    insert into attendance_records(id, employee_name, employee_id, date, check_in_time, check_out_time)
+    select e || '_' || to_char(d, 'DD-MM-YYYY'), 'ZZ Selftest ' || e, e,
+           to_char(d, 'DD/MM/YYYY'), '09:25', '18:30'
+      from unnest(emp_ids) e,
+           generate_series(cs, ce, interval '1 day') g(d)
+     where extract(isodow from d) <> 7
+       and d::date <> date '2030-10-02'
+       and not (e = 'ZZT-02' and d::date = date '2030-10-07')
+       and not (e = 'ZZT-03' and d::date = date '2030-10-07')
+       and not (e = 'ZZT-05' and d::date between date '2030-10-07' and date '2030-10-09')
+       and not (e = 'ZZT-06' and d::date < date '2030-10-11')
+       and not (e = 'ZZT-09' and d::date in (date '2030-10-12', date '2030-10-14'))
+       and not (e = 'ZZT-10' and d::date = date '2030-10-08')
+       and not (e = 'ZZT-08' and d::date in (date '2030-10-03', date '2030-10-08', date '2030-10-15'));
+
+    -- ZZT-04: five late arrivals (start 09:30, grace 10 minutes).
+    update attendance_records set check_in_time = '09:45'
+     where employee_id = 'ZZT-04' and date_iso in (date '2030-09-26', date '2030-09-27', date '2030-09-28');
+    update attendance_records set check_in_time = '09:50'
+     where employee_id = 'ZZT-04' and date_iso = date '2030-09-30';
+    update attendance_records set check_in_time = '12:45'
+     where employee_id = 'ZZT-04' and date_iso = date '2030-10-01';
+
+    -- Leave goes in pending and is then approved, as in the app.
+    insert into leave_applications(id, employee_name, employee_id, department, leave_type,
+                                   from_date, to_date, days, reason, applied_on,
+                                   manager_status, management_status, leave_bucket, is_half_day)
+    values
+      ('zzt-03-cl', 'ZZ Selftest ZZT-03', 'ZZT-03', 'ZZ Selftest Dept', 'Casual Leave',
+       date '2030-10-07', date '2030-10-07', 1, 'selftest', now(), 'pending', 'pending', 'CL', false),
+      ('zzt-05-cl', 'ZZ Selftest ZZT-05', 'ZZT-05', 'ZZ Selftest Dept', 'Casual Leave',
+       date '2030-10-07', date '2030-10-09', 3, 'selftest', now(), 'pending', 'pending', 'CL', false),
+      ('zzt-09-cl', 'ZZ Selftest ZZT-09', 'ZZT-09', 'ZZ Selftest Dept', 'Casual Leave',
+       date '2030-10-12', date '2030-10-14', 2, 'selftest', now(), 'pending', 'pending', 'CL', false),
+      ('zzt-10-half', 'ZZ Selftest ZZT-10', 'ZZT-10', 'ZZ Selftest Dept', 'Casual Leave',
+       date '2030-10-08', date '2030-10-08', 0.5, 'selftest', now(), 'pending', 'pending', 'CL', true),
+      ('zzt-07-p1', 'ZZ Selftest ZZT-07', 'ZZT-07', 'ZZ Selftest Dept', 'Permission',
+       date '2030-10-03', date '2030-10-03', 0, 'Permission: 2 Hours | selftest', now(),
+       'pending', 'pending', null, false),
+      ('zzt-07-p2', 'ZZ Selftest ZZT-07', 'ZZT-07', 'ZZ Selftest Dept', 'Permission',
+       date '2030-10-10', date '2030-10-10', 0, 'Permission: 30 Minutes | selftest', now(),
+       'pending', 'pending', null, false),
+      -- ZZT-08 is on probation: a half day, then a full day, then another.
+      ('zzt-08-a', 'ZZ Selftest ZZT-08', 'ZZT-08', 'ZZ Selftest Dept', 'Casual Leave',
+       date '2030-10-03', date '2030-10-03', 0.5, 'selftest', now(), 'pending', 'pending', 'CL', true),
+      ('zzt-08-b', 'ZZ Selftest ZZT-08', 'ZZT-08', 'ZZ Selftest Dept', 'Casual Leave',
+       date '2030-10-08', date '2030-10-08', 1, 'selftest', now(), 'pending', 'pending', 'CL', false),
+      ('zzt-08-c', 'ZZ Selftest ZZT-08', 'ZZT-08', 'ZZ Selftest Dept', 'Casual Leave',
+       date '2030-10-15', date '2030-10-15', 1, 'selftest', now(), 'pending', 'pending', 'CL', false);
+
+    -- Approved at Management level: a Reporting Manager may approve only up
+    -- to two days, and the three-day request below would be refused.
+    update leave_applications set management_status = 'approved'
+     where id like 'zzt-%';
+
+    -- ZZT-05: three days agreed as 1.5 paid and 1.5 LOP.
+    update leave_applications set lop_days_override = 1.5, lop_days = 1.5
+     where id = 'zzt-05-cl';
+
+    --------------------------------------------------------- cycle bounds
+    res := res || jsonb_build_array(
+      jsonb_build_object('t', 'cycle: 10 Oct falls in the cycle starting 26 Sep',
+        'e', '2030-09-26', 'a', attendance_cycle_start(date '2030-10-10')::text),
+      jsonb_build_object('t', 'cycle: 26 Oct starts a new cycle',
+        'e', '2030-10-26', 'a', attendance_cycle_start(date '2030-10-26')::text),
+      jsonb_build_object('t', 'cycle: ends on the 25th',
+        'e', '2030-10-25', 'a', attendance_cycle_end(date '2030-10-01')::text),
+      jsonb_build_object('t', 'cycle: 26 Dec - 25 Jan crosses the year',
+        'e', '2031-01-25', 'a', attendance_cycle_end(date '2030-12-27')::text),
+      jsonb_build_object('t', 'cycle: label is the month the cycle ends in',
+        'e', '2030-10', 'a', attendance_cycle_label(date '2030-09-30')));
+
+    -------------------------------------------------------------- payroll
+    for p in select * from generate_payroll(ce) where employee_code like 'ZZT-%' loop
+      t := 'payroll ' || p.employee_code || ': ';
+      case p.employee_code
+        when 'ZZT-01' then
+          res := res || jsonb_build_array(
+            jsonb_build_object('t', t || 'full attendance loses no days', 'e', '0', 'a', trim_scale(p.days_lost)::text),
+            jsonb_build_object('t', t || 'full attendance is paid the full gross', 'e', '30000', 'a', trim_scale(p.gross)::text),
+            jsonb_build_object('t', t || 'deductions are PT + EPF + ESI + TDS', 'e', '2008', 'a', trim_scale(p.total_deductions)::text),
+            jsonb_build_object('t', t || 'net pay is gross less deductions', 'e', '27992', 'a', trim_scale(p.net_pay)::text));
+        when 'ZZT-02' then
+          res := res || jsonb_build_array(
+            jsonb_build_object('t', t || 'one absence with no leave costs one day', 'e', '1', 'a', trim_scale(p.days_lost)::text),
+            jsonb_build_object('t', t || 'one unpaid day is 1/30 of gross', 'e', '29000', 'a', trim_scale(p.gross)::text));
+        when 'ZZT-03' then
+          res := res || jsonb_build_array(
+            jsonb_build_object('t', t || 'an absence covered by approved CL costs nothing', 'e', '0', 'a', trim_scale(p.days_lost)::text),
+            jsonb_build_object('t', t || 'approved CL is paid', 'e', '30000', 'a', trim_scale(p.gross)::text));
+        when 'ZZT-04' then
+          res := res || jsonb_build_array(
+            jsonb_build_object('t', t || 'three lates free, 4th bought from the permission pool, 5th (over 2h) is half a day',
+              'e', '0.5', 'a', trim_scale(p.late_lop)::text),
+            jsonb_build_object('t', t || 'late LOP reduces pay', 'e', '29500', 'a', trim_scale(p.gross)::text));
+        when 'ZZT-05' then
+          res := res || jsonb_build_array(
+            jsonb_build_object('t', t || 'agreed 1.5 LOP on a 3-day leave costs exactly 1.5 days', 'e', '1.5', 'a', trim_scale(p.days_lost)::text),
+            jsonb_build_object('t', t || 'half-day LOP is not rounded', 'e', '28500', 'a', trim_scale(p.gross)::text));
+        when 'ZZT-06' then
+          res := res || jsonb_build_array(
+            jsonb_build_object('t', t || 'joiner on 11 Oct is paid for 15 of 30 days', 'e', '15', 'a', trim_scale(p.nowd)::text),
+            jsonb_build_object('t', t || 'joiner gross is pro-rated', 'e', '15000', 'a', trim_scale(p.gross)::text));
+        when 'ZZT-07' then
+          res := res || jsonb_build_array(
+            -- 2 hours then 30 minutes: only the second goes over the 120-minute
+            -- quota, so only it costs half a day.
+            jsonb_build_object('t', t || 'only the permission that goes over the 120-minute quota costs half a day',
+              'e', '0.5', 'a', trim_scale(p.permission_lop)::text),
+            jsonb_build_object('t', t || 'permission LOP reduces pay', 'e', '29500', 'a', trim_scale(p.gross)::text));
+        when 'ZZT-09' then
+          res := res || jsonb_build_array(
+            jsonb_build_object('t', t || 'Sat-Mon CL is 3 days with the Sunday; the third is LOP (two paid days per request)',
+              'e', '1', 'a', trim_scale(p.days_lost)::text));
+        when 'ZZT-10' then
+          res := res || jsonb_build_array(
+            jsonb_build_object('t', t || 'a half-day CL on a day not worked: half paid by leave, half unpaid',
+              'e', '0.5', 'a', trim_scale(p.days_lost)::text));
+        else null;
+      end case;
+    end loop;
+
+    -- Net pay is rounded to the nearest rupee (HR, October 2026 check:
+    -- 19,999.80 is paid as 20,000). Halves round up.
+    res := res || jsonb_build_array(
+      jsonb_build_object('t', 'payroll: net pay rounds to the nearest rupee (19,999.80 -> 20,000)',
+        'e', '20000', 'a', trim_scale(payroll_round_net(19999.80))::text),
+      jsonb_build_object('t', 'payroll: net pay rounds to the nearest rupee (44,719.52 -> 44,720)',
+        'e', '44720', 'a', trim_scale(payroll_round_net(44719.52))::text),
+      jsonb_build_object('t', 'payroll: net pay rounds down below 50 paise (77,899.15 -> 77,899)',
+        'e', '77899', 'a', trim_scale(payroll_round_net(77899.15))::text),
+      jsonb_build_object('t', 'payroll: 50 paise rounds up',
+        'e', '101', 'a', trim_scale(payroll_round_net(100.50))::text),
+      jsonb_build_object('t', 'payroll: every net pay is a whole rupee',
+        'e', '0', 'a', (select count(*) from generate_payroll(ce)
+                         where employee_code like 'ZZT-%' and net_pay <> round(net_pay))::text));
+
+    -- Payslips are issued from the payroll engine (Nov 2026).
+    begin
+      perform _issue_payslips(ce, array['ZZT-01'], false, ce, 'selftest');
+      t := 'issued';
+    exception when others then
+      t := 'refused';
+    end;
+    res := res || jsonb_build_array(jsonb_build_object('t', 'payslip: refused while the cycle is still running',
+      'e', 'refused', 'a', t));
+    perform _issue_payslips(ce, array['ZZT-01', 'ZZT-05'], false, ce + 1, 'selftest');
+    select string_agg(ps.employee_id || ':' || ps.status, ',' order by ps.employee_id) into t
+      from payslips ps where ps.employee_id in ('ZZT-01', 'ZZT-05');
+    res := res || jsonb_build_array(jsonb_build_object('t', 'payslip: issued as drafts once the cycle has closed',
+      'e', 'ZZT-01:draft,ZZT-05:draft', 'a', t));
+    select count(*)::text into t
+      from payslips ps join generate_payroll(ce) g on g.employee_code = ps.employee_id
+     where ps.employee_id in ('ZZT-01', 'ZZT-05')
+       and ps.net_pay = g.net_pay and ps.gross_earned = g.gross
+       and ps.lop_days = g.days_lost and ps.days_worked = g.nowd;
+    res := res || jsonb_build_array(jsonb_build_object('t', 'payslip: net pay, gross and LOP are the payroll engine''s',
+      'e', '2', 'a', t));
+    select trim_scale(cl_used)::text || '/' || trim_scale(leave_lop)::text into t
+      from payslips where employee_id = 'ZZT-05';
+    res := res || jsonb_build_array(jsonb_build_object('t', 'payslip: records 3 CL days of which 1.5 LOP',
+      'e', '3/1.5', 'a', t));
+    perform _publish_payslips(ce, array['ZZT-01'], 'selftest');
+    select string_agg(outcome, ',') into t from _issue_payslips(ce, array['ZZT-01'], false, ce + 1, 'selftest');
+    res := res || jsonb_build_array(jsonb_build_object('t', 'payslip: a published payslip is not overwritten without a reissue',
+      'e', 'already_published', 'a', t));
+    perform _issue_payslips(ce, array['ZZT-01'], true, ce + 1, 'selftest');
+    select ps.status || ' v' || ps.version || ', history ' ||
+           (select count(*) from payslip_history h where h.employee_id = 'ZZT-01')
+      into t from payslips ps where ps.employee_id = 'ZZT-01';
+    res := res || jsonb_build_array(jsonb_build_object('t', 'payslip: a reissue is a new draft and keeps the old one',
+      'e', 'draft v2, history 1', 'a', t));
+    insert into app_users(email, name, employee_id, role, active, date_of_joining,
+                          department, designation, onroll_confirmed_at,
+                          weekly_off_day, payroll_eligible, permission_minutes_quota)
+    values ('zzt-11@selftest.invalid', 'ZZ Selftest ZZT-11', 'ZZT-11', 'Employee', true, '2025-01-01',
+            'ZZ Selftest Dept', 'Tester', '2025-04-01', 'Sunday', true, 120);
+    select string_agg(outcome, ',') into t from _issue_payslips(ce, array['ZZT-11'], false, ce + 1, 'selftest');
+    res := res || jsonb_build_array(jsonb_build_object('t', 'payslip: refused without a salary structure',
+      'e', 'no_salary_structure', 'a', t));
+
+    -- From the November 2026 cycle, absence is counted day by day: working a
+    -- Sunday does not cancel a weekday absence (Ronak, 20 Nov 2026).
+    insert into attendance_records(id, employee_name, employee_id, date, check_in_time, check_out_time)
+    values ('ZZT-02_06-10-2030', 'ZZ Selftest ZZT-02', 'ZZT-02', '06/10/2030', '10:00', '14:00');
+    select trim_scale(days_lost)::text into t from generate_payroll(ce) where employee_code = 'ZZT-02';
+    res := res || jsonb_build_array(jsonb_build_object('t', 'payroll: working a Sunday does not cancel a weekday absence',
+      'e', '1', 'a', t));
+
+    -- From the November 2026 cycle EPF and ESI follow the days paid (Ronak,
+    -- 20 Nov 2026): EPF to the paisa, ESI rounded up to the rupee.
+    select trim_scale(total_deductions)::text into t from generate_payroll(ce) where employee_code = 'ZZT-02';
+    res := res || jsonb_build_array(jsonb_build_object('t', 'payroll: EPF follows the days paid (29 of 30 days: 1,800 -> 1,740, plus PT 208)',
+      'e', '1948', 'a', t));
+    update salary_structures set esi = 128 where employee_id = 'ZZT-05';
+    select trim_scale(total_deductions)::text into t from generate_payroll(ce) where employee_code = 'ZZT-05';
+    res := res || jsonb_build_array(jsonb_build_object('t', 'payroll: ESI follows the days paid, rounded up (28.5 of 30: 128 -> 122; EPF 1,710; PT 208)',
+      'e', '2040', 'a', t));
+    res := res || jsonb_build_array(
+      jsonb_build_object('t', 'payroll: EPF and ESI are not scaled for cycles up to 25 Oct 2026',
+        'e', '1800/128', 'a', trim_scale(payroll_scaled_epf(1800, 29, 30, date '2026-10-25'))::text || '/'
+                              || trim_scale(payroll_scaled_esi(128, 29, 30, date '2026-10-25'))::text));
+
+    if (select count(*) from generate_payroll(ce) where employee_code like 'ZZT-%') <> 10 then
+      res := res || jsonb_build_array(jsonb_build_object('t', 'payroll: every active payroll employee gets a row',
+        'e', '10', 'a', (select count(*) from generate_payroll(ce) where employee_code like 'ZZT-%')::text));
+    end if;
+
+    -- A settled late LOP replaces the rule's figure.
+    insert into late_lop_decisions(employee_id, cycle_label, action, note, decided_by, decided_at, lop_days_override)
+    values ('ZZT-04', '2030-10', 'override', 'selftest', 'selftest', now(), 0);
+    res := res || jsonb_build_array(jsonb_build_object('t', 'late LOP: a settled override replaces the rule',
+      'e', '0', 'a', trim_scale(late_lop_days('ZZT-04', ce))::text));
+
+    -------------------------------------------------------- leave balance
+    select * into b from leave_balance('ZZT-01', ce) where bucket = 'CL';
+    res := res || jsonb_build_array(
+      jsonb_build_object('t', 'leave balance: CL accrues one per cycle from the leave year (10 cycles to Oct)',
+        'e', '10', 'a', trim_scale(b.accrued)::text),
+      jsonb_build_object('t', 'leave balance: CL usable in one go is capped at 2', 'e', '2', 'a', trim_scale(b.usable)::text));
+
+    select * into b from leave_balance('ZZT-03', ce) where bucket = 'CL';
+    res := res || jsonb_build_array(jsonb_build_object('t', 'leave balance: one approved CL day is one day used',
+      'e', '1', 'a', trim_scale(b.used)::text));
+
+    select * into b from leave_balance('ZZT-05', ce) where bucket = 'CL';
+    res := res || jsonb_build_array(jsonb_build_object('t', 'leave balance: LOP days are not charged to CL',
+      'e', '1.5', 'a', trim_scale(b.used)::text));
+
+    select * into b from leave_balance('ZZT-10', ce) where bucket = 'CL';
+    res := res || jsonb_build_array(jsonb_build_object('t', 'leave balance: a half day uses half a day',
+      'e', '0.5', 'a', trim_scale(b.used)::text));
+
+    select days into v from leave_applications where id = 'zzt-09-cl';
+    res := res || jsonb_build_array(jsonb_build_object('t', 'sandwich: Sat to Mon charges the Sunday between',
+      'e', '3', 'a', trim_scale(v)::text));
+
+    select * into b from leave_balance('ZZT-08', ce) where bucket = 'ML';
+    res := res || jsonb_build_array(jsonb_build_object('t', 'leave balance: no ML before confirmation',
+      'e', '0', 'a', trim_scale(b.accrued)::text));
+    -- Probation (decided 14 and 19 Nov 2026): one paid day per cycle, the
+    -- rest LOP rather than refused; a half day counts half; CL lapses at the
+    -- end of the cycle, so the balance never shows more than 1.
+    select * into b from leave_balance('ZZT-08', ce) where bucket = 'CL';
+    res := res || jsonb_build_array(
+      jsonb_build_object('t', 'probation: CL is 1 per cycle and does not carry forward',
+        'e', '1', 'a', trim_scale(b.accrued)::text),
+      jsonb_build_object('t', 'probation: half day + full day uses the 1 paid day, nothing left',
+        'e', '0', 'a', trim_scale(b.available)::text));
+    select lop_days into v from leave_applications where id = 'zzt-08-a';
+    res := res || jsonb_build_array(jsonb_build_object('t', 'probation: first half day of the cycle is paid',
+      'e', '0', 'a', trim_scale(v)::text));
+    select lop_days into v from leave_applications where id = 'zzt-08-b';
+    res := res || jsonb_build_array(jsonb_build_object('t', 'probation: a full day after a half day is half paid, half LOP',
+      'e', '0.5', 'a', trim_scale(v)::text));
+    select lop_days into v from leave_applications where id = 'zzt-08-c';
+    res := res || jsonb_build_array(jsonb_build_object('t', 'probation: a third leave in the cycle is accepted, all LOP',
+      'e', '1', 'a', trim_scale(v)::text));
+
+    -- A leave rejected by Management frees the date (Jose, 19 Nov 2026).
+    insert into leave_applications(id, employee_name, employee_id, department, leave_type,
+                                   from_date, to_date, days, reason, applied_on,
+                                   manager_status, management_status, leave_bucket, is_half_day)
+    values ('zzt-02-r1', 'ZZ Selftest ZZT-02', 'ZZT-02', 'ZZ Selftest Dept', 'Casual Leave',
+            date '2030-10-07', date '2030-10-07', 1, 'selftest', now(), 'pending', 'pending', 'CL', false);
+    update leave_applications set management_status = 'denied' where id = 'zzt-02-r1';
+    begin
+      insert into leave_applications(id, employee_name, employee_id, department, leave_type,
+                                     from_date, to_date, days, reason, applied_on,
+                                     manager_status, management_status, leave_bucket, is_half_day)
+      values ('zzt-02-r2', 'ZZ Selftest ZZT-02', 'ZZT-02', 'ZZ Selftest Dept', 'Casual Leave',
+              date '2030-10-07', date '2030-10-07', 1, 'selftest', now(), 'pending', 'pending', 'CL', false);
+      t := 'allowed';
+    exception when others then
+      t := 'refused: ' || sqlerrm;
+    end;
+    res := res || jsonb_build_array(jsonb_build_object('t', 'a date rejected by Management can be applied for again',
+      'e', 'allowed', 'a', t));
+
+    -- Confirmed from now on: leave accrues from the confirmation date.
+    update app_users set onroll_confirmed_at = '2030-09-30T10:00:00' where employee_id = 'ZZT-08';
+    select leave_accrual_from::text into t from app_users where employee_id = 'ZZT-08';
+    res := res || jsonb_build_array(jsonb_build_object('t', 'confirmation records the date leave accrues from',
+      'e', '2030-09-30', 'a', t));
+    select * into b from leave_balance('ZZT-08', ce) where bucket = 'ML';
+    res := res || jsonb_build_array(jsonb_build_object('t', 'after confirmation, ML accrues from the confirmation cycle only (1 by Oct)',
+      'e', '1', 'a', trim_scale(b.accrued)::text));
+
+    raise exception using errcode = 'ZZTST', message = 'selftest rollback';
+  exception
+    when sqlstate 'ZZTST' then
+      null;  -- the expected end: everything above is rolled back
+    when others then
+      res := res || jsonb_build_array(jsonb_build_object('t', 'test fixture could not be built',
+        'e', 'no error', 'a', sqlerrm));
+  end;
+
+  return query
+    select r->>'t', (r->>'e') is not distinct from (r->>'a'), r->>'e', r->>'a'
+      from jsonb_array_elements(res) r;
+end;
+$$;
+
+revoke all on function public.run_money_rule_tests() from public, anon;
+grant execute on function public.run_money_rule_tests() to authenticated;

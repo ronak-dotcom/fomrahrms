@@ -100,14 +100,20 @@ class LeaveStore {
 
   /// Available for a bucket, or null when balances have not loaded yet —
   /// callers show their existing fallback rather than a confident zero.
-  static int? availableFor(String bucket) {
+  static double? availableFor(String bucket) {
     final b = balance[bucket];
     if (b == null) return null;
     // usable, not available: CL carries forward but caps at 2 that may
     // actually be taken, and showing the uncapped figure invites someone to
-    // apply for days the form will refuse.
-    return (b['usable'] ?? b['available'] ?? 0).round();
+    // apply for days the form will refuse. Kept to the half day: it was
+    // rounded to a whole number, so a probationer with half a day of CL left
+    // was shown 1.
+    return (b['usable'] ?? b['available'] ?? 0).toDouble();
   }
+
+  /// 2 -> "2", 0.5 -> "0.5".
+  static String fmtDays(num v) =>
+      v == v.roundToDouble() ? v.toStringAsFixed(0) : v.toStringAsFixed(1);
 
   static final List<LeaveApplication> applications = [];
   static int _counter = 0;

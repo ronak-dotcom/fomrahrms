@@ -3,7 +3,7 @@ import '../models/notification_store.dart';
 import '../theme/app_theme.dart';
 
 /// Bell icon with an unread-count badge, driven by [NotificationStore.unreadCount].
-/// Used both in the wide-layout [ShellTopBar] and each shell's mobile AppBar.
+/// Used in the computer layout's top bar and each shell's phone header.
 class NotificationBellIcon extends StatelessWidget {
   final Color color;
   final double size;

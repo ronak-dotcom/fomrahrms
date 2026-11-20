@@ -18,11 +18,12 @@ import 'user_store.dart';
 class NotificationService {
   /// Shared '' / '/employee' / '/manager' / '/management' route-prefix
   /// mapping — several call sites already duplicated this switch inline.
-  /// The employee's own payslip screen. Every role except employee has a
-  /// prefixed copy; the employee's is unprefixed, so building
-  /// "/employee/my-payslips" pointed at a route that does not exist.
+  /// The person's own payslips page. Employees have /employee/payslips; the
+  /// other roles /{role}/my-payslips. This used to send employees to
+  /// "/my-payslips", which is not a page, so "payslip ready" opened the
+  /// dashboard instead.
   static String routeForPayslips(String prefix) =>
-      prefix == '/employee' ? '/my-payslips' : '$prefix/my-payslips';
+      prefix == '/employee' ? '/employee/payslips' : '$prefix/my-payslips';
 
   /// Placeholder for "whatever prefix the person opening this needs".
   ///
@@ -519,8 +520,8 @@ class NotificationService {
 
   static Future<void> onrollReachedManagement({required String employeeName}) => _create(
         type: 'onroll_management_pending',
-        title: 'On-roll confirmation awaiting final approval',
-        body: '$employeeName — HR and Manager both accepted',
+        title: 'Confirmation awaiting your approval',
+        body: '$employeeName: HR has recommended confirmation',
         route: '/management/onroll-approvals',
         targetRole: 'Management',
       );

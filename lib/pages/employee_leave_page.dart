@@ -248,13 +248,17 @@ class _EmployeeLeavePageState extends State<EmployeeLeavePage> {
       if (user != null) _CompactBalance(
         // Shared figure first; the per-cycle subtraction is only a fallback
         // for before balances have loaded.
+        // ML and EL used the one-cycle estimate even after CL moved to the
+        // real balance, so a confirmed employee with 10 ML saw "1d".
         clAvail: LeaveStore.availableFor('CL') ??
-            (user.monthlyCl - _usedBucket('CL')).clamp(0, 99).toInt(),
+            (user.monthlyCl - _usedBucket('CL')).clamp(0, 99).toDouble(),
         mlAvail: user.isOnroll || user.isElEligible
-            ? (user.monthlyMl - _usedBucket('ML')).clamp(0, 99).toInt()
+            ? (LeaveStore.availableFor('ML') ??
+                (user.monthlyMl - _usedBucket('ML')).clamp(0, 99).toDouble())
             : -1,
         elAvail: user.isElEligible
-            ? (_elAccrued() - _usedElSinceAvail()).clamp(0, 999).toInt()
+            ? (LeaveStore.availableFor('EL') ??
+                (_elAccrued() - _usedElSinceAvail()).clamp(0, 999).toDouble())
             : -1,
       ),
       const SizedBox(width: 10),
@@ -472,9 +476,9 @@ PopupMenuItem<String> _menuItem(String val, IconData icon, String label, Color c
 
 // ── Compact balance (header row) ──────────────────────────────────────────────
 class _CompactBalance extends StatelessWidget {
-  final int clAvail;
-  final int mlAvail; // -1 = not applicable
-  final int elAvail; // -1 = not applicable
+  final double clAvail;
+  final double mlAvail; // -1 = not applicable
+  final double elAvail; // -1 = not applicable
   const _CompactBalance(
       {required this.clAvail, required this.mlAvail, required this.elAvail});
 
@@ -508,7 +512,7 @@ class _CompactBalance extends StatelessWidget {
 
 class _Pill extends StatelessWidget {
   final String label;
-  final int avail;
+  final double avail;
   final Color color;
   const _Pill(this.label, this.avail, this.color);
 
@@ -522,7 +526,7 @@ class _Pill extends StatelessWidget {
                 fontSize: 9, fontWeight: FontWeight.w700,
                 color: color, letterSpacing: 0.5)),
         const SizedBox(height: 2),
-        Text('${avail}d',
+        Text('${LeaveStore.fmtDays(avail)}d',
             style: TextStyle(
                 fontSize: 13, fontWeight: FontWeight.w800, color: color)),
         Text('avail',

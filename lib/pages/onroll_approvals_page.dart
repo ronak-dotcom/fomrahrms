@@ -2,13 +2,15 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import '../models/app_user.dart';
 import '../services/notification_service.dart';
+import '../services/supabase_service.dart';
 import '../services/user_store.dart';
 import '../widgets/back_button.dart';
 import '../theme/app_theme.dart';
 
-/// Management-only queue: requests that both HR and the Reporting Manager
-/// have already accepted (or that Management has already decided on).
-/// Requests denied at the HR/Manager stage never reach this page.
+/// Management-only queue: confirmations HR has recommended (or that
+/// Management has already decided on). Since 19 Nov 2026 confirmation is
+/// decided by HR and Management only; older requests also passed the
+/// reporting manager. Requests denied before Management never reach this page.
 class OnrollApprovalsPage extends StatefulWidget {
   const OnrollApprovalsPage({super.key});
 
@@ -153,7 +155,7 @@ class _OnrollApprovalsPageState extends State<OnrollApprovalsPage> {
                       overflow: TextOverflow.ellipsis,
                       style: Theme.of(context).textTheme.headlineMedium),
                   if (!narrow)
-                    const Text('Requests already accepted by HR and Reporting Manager',
+                    const Text('Confirmations recommended by HR',
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(fontSize: 12, color: Color(0xFF6B7280))),
@@ -224,7 +226,7 @@ class _OnrollApprovalsPageState extends State<OnrollApprovalsPage> {
             _emptyCard(
               icon: Icons.inbox_rounded,
               title: 'No requests awaiting Management yet',
-              subtitle: 'Requests appear here once both HR and the Reporting Manager have accepted.',
+              subtitle: 'Confirmations appear here once HR has recommended them.',
             )
           else if (filtered.isEmpty)
             _emptyCard(icon: Icons.search_off_rounded, title: 'No results match your search', subtitle: '')
@@ -381,9 +383,13 @@ class _OnrollRequestCardState extends State<_OnrollRequestCard> {
               const SizedBox(height: 8),
               _detailRow(Icons.verified_user_rounded, 'HR Decision',
                   'Accepted${u.onrollHrComment.isNotEmpty ? ' — "${u.onrollHrComment}"' : ''}'),
-              const SizedBox(height: 8),
-              _detailRow(Icons.manage_accounts_rounded, 'Manager Decision',
-                  'Accepted${u.onrollManagerComment.isNotEmpty ? ' — "${u.onrollManagerComment}"' : ''}'),
+              // Older requests also went through the reporting manager; new
+              // ones are decided by HR and Management only.
+              if (u.onrollManagerComment != SupabaseService.onrollManagerNotRequired) ...[
+                const SizedBox(height: 8),
+                _detailRow(Icons.manage_accounts_rounded, 'Manager Decision',
+                    'Accepted${u.onrollManagerComment.isNotEmpty ? ' — "${u.onrollManagerComment}"' : ''}'),
+              ],
             ]),
           ),
           const SizedBox(height: 14),

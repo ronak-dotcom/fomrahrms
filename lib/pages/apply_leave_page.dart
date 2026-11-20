@@ -1,4 +1,5 @@
 import 'package:file_picker/file_picker.dart';
+import '../utils/leave_balance_math.dart';
 import '../utils/leave_deduction.dart';
 import '../utils/attendance_cycle.dart';
 import 'package:flutter/material.dart';
@@ -11,6 +12,9 @@ import '../services/notification_service.dart';
 import '../services/supabase_service.dart';
 import '../services/user_store.dart';
 import '../widgets/back_button.dart';
+import '../widgets/mobile_shell.dart';
+import '../widgets/desktop_shell.dart' show DesktopChrome;
+import '../theme/mobile_ui.dart';
 import '../theme/app_theme.dart';
 
 class ApplyLeavePage extends StatefulWidget {
@@ -242,21 +246,14 @@ class _ApplyLeavePageState extends State<ApplyLeavePage> {
       if (UserSession.employeeId.isNotEmpty) {
         final rows = await SupabaseService.fetchLeaveBalance(UserSession.employeeId);
         if (rows.isNotEmpty) {
-          usable = {
-            for (final r in rows)
-              (r['bucket'] as String): ((r['usable'] as num?) ?? 0).toDouble(),
-          };
-          final today = DateTime(now.year, now.month, now.day);
-          for (final a in _myLeaves) {
-            final pending = a.managerStatus == LeaveApprovalStatus.pending;
-            final upcoming = a.managerStatus == LeaveApprovalStatus.approved &&
-                a.from.isAfter(today);
-            if (!pending && !upcoming) continue;
-            final b = a.bucket;
-            if (usable.containsKey(b)) {
-              usable[b] = (usable[b]! - a.effectiveDays).clamp(0.0, 9999.0).toDouble();
-            }
-          }
+          usable = usableAfterOutstanding(
+            usable: {
+              for (final r in rows)
+                (r['bucket'] as String): ((r['usable'] as num?) ?? 0).toDouble(),
+            },
+            myLeaves: _myLeaves,
+            today: now,
+          );
         }
       }
 
@@ -377,14 +374,20 @@ class _ApplyLeavePageState extends State<ApplyLeavePage> {
 
     // If bucket balance exceeded, show unpaid-leave T&C dialog before proceeding
     if (_remaining != double.infinity && _effectiveDays > _remaining) {
-      final agreed = await _showUnpaidDialog();
+      final paid = _remaining.clamp(0.0, _effectiveDays).toDouble();
+      final agreed = await _showUnpaidDialog(paid: paid, lop: _effectiveDays - paid);
       if (!agreed) return;
     }
 
     await _doSubmit();
   }
 
-  Future<bool> _showUnpaidDialog() async {
+  /// Says exactly how much is paid and how much is loss of pay. It used to
+  /// say only "more than your balance", and that salary would be deducted
+  /// "for the days applied", which read as all of them even when half was
+  /// paid.
+  Future<bool> _showUnpaidDialog({required double paid, required double lop}) async {
+    String d(double v) => '${LeaveStore.fmtDays(v)} day${v == 1 ? '' : 's'}';
     return await showDialog<bool>(
           context: context,
           barrierDismissible: false,
@@ -416,7 +419,11 @@ class _ApplyLeavePageState extends State<ApplyLeavePage> {
                 ),
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Text(
-                    'This is more than your available leave balance.',
+                    paid > 0
+                        ? '${d(paid)} will be paid from your balance and ${d(lop)} '
+                          'will be loss of pay.'
+                        : 'You have no paid leave left for this, so all ${d(lop)} '
+                          'will be loss of pay.',
                     style: TextStyle(
                         fontSize: 13,
                         fontWeight: FontWeight.w600,
@@ -428,8 +435,8 @@ class _ApplyLeavePageState extends State<ApplyLeavePage> {
                     style: TextStyle(fontSize: 12, color: Colors.orange.shade800),
                   ),
                   const SizedBox(height: 6),
-                  _TcPoint('This leave will be treated as Loss of Pay (LOP).'),
-                  _TcPoint('Salary will be deducted for the days applied.'),
+                  _TcPoint('Loss of Pay (LOP): ${d(lop)} beyond your balance.'),
+                  _TcPoint('Salary will be deducted for the LOP ${lop == 1 ? 'day' : 'days'} only.'),
                   _TcPoint('This is subject to manager / management approval.'),
                   _TcPoint('LOP entries are recorded in your attendance.'),
                 ]),
@@ -520,17 +527,246 @@ class _ApplyLeavePageState extends State<ApplyLeavePage> {
     ));
   }
 
+  Widget _maybeCard({required bool mobile, bool desktop = false, required Widget child}) =>
+      mobile ? child : desktop ? MCard(padding: EdgeInsets.zero, child: child) : Card(child: child);
+
+  /// Beside the form on a computer: the balance, what this leave costs, and
+  /// Submit (approved 20 Nov 2026).
+  Widget _desktopSide() {
+    final u = _usable;
+    String v(double d) => d >= 9999 ? '∞' : LeaveStore.fmtDays(d);
+    const names = {'CL': 'Casual (CL)', 'ML': 'Medical (ML)', 'EL': 'Earned (EL)'};
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(0, 8, 28, 28),
+      children: [
+        const MSection('Your balance'),
+        if (u == null)
+          const MCard(child: Text('…'))
+        else
+          Row(children: [
+            for (final b in const ['CL', 'ML', 'EL'])
+              if (u.containsKey(b))
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: MCard(
+                      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Text(names[b]!, style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600,
+                            color: AppTheme.textSecondary)),
+                        Text(v(u[b]!), style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
+                        const Text('left', style: TextStyle(fontSize: 11.5, color: AppTheme.textSecondary)),
+                      ]),
+                    ),
+                  ),
+                ),
+          ]),
+        if (_effectiveDays > 0) ...[
+          const MSection('What this costs'),
+          _mobileSummary(),
+        ],
+        const SizedBox(height: 16),
+        MStickyButton(label: 'Submit request', icon: Icons.send_rounded, onPressed: _submit, inline: true),
+        const SizedBox(height: 6),
+        Center(child: TextButton(onPressed: _clear, child: const Text('Clear the form'))),
+      ],
+    );
+  }
+
+  Widget _desktopFrame(bool desktop, Widget form) => !desktop
+      ? form
+      : LayoutBuilder(
+          builder: (context, c) => c.maxWidth >= 900
+              ? Align(
+                  alignment: Alignment.topCenter,
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 1176),
+                    child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Expanded(child: form),
+                      SizedBox(width: 380, child: _desktopSide()),
+                    ]),
+                  ),
+                )
+              : Column(children: [
+                  Expanded(child: form),
+                  MStickyButton(label: 'Submit request', icon: Icons.send_rounded, onPressed: _submit),
+                ]),
+        );
+
+  List<Widget> _mobileBalanceChips() {
+    final u = _usable;
+    if (u == null) return const [];
+    String v(double d) => d >= 9999 ? '∞' : LeaveStore.fmtDays(d);
+    return [
+      Wrap(spacing: 8, runSpacing: 8, children: [
+        for (final b in const ['CL', 'ML', 'EL'])
+          if (u.containsKey(b))
+            MChip('$b ${v(u[b]!)} left',
+                color: AppTheme.primaryBlue,
+                background: AppTheme.primaryBlue.withValues(alpha: 0.08)),
+      ]),
+    ];
+  }
+
+  /// A rounded option pill for the phone layout.
+  Widget _pill(String label, bool selected, {IconData? trailing}) => Container(
+        height: 38,
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        decoration: BoxDecoration(
+          color: selected ? _color : Colors.white,
+          borderRadius: BorderRadius.circular(19),
+          border: Border.all(color: selected ? _color : MobileUi.line),
+        ),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          Text(label,
+              style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: selected ? Colors.white : const Color(0xFF334155))),
+          if (trailing != null)
+            Icon(trailing, size: 18, color: selected ? Colors.white : const Color(0xFF334155)),
+        ]),
+      );
+
+  Widget _tap(Widget child, VoidCallback onTap) => InkWell(
+        borderRadius: BorderRadius.circular(19),
+        onTap: onTap,
+        child: child,
+      );
+
+  void _selectType(String t) => setState(() {
+        _leaveType = t;
+        _syncBucket();
+      });
+
+  /// The first three configured types as one-tap pills; the rest under
+  /// "Other". The list itself is HR's, unchanged.
+  Widget _mobileTypeChips() {
+    final types = _leaveTypes;
+    final main = types.take(3).toList();
+    final rest = types.skip(3).toList();
+    String short(String t) => t.endsWith(' Leave') ? t.substring(0, t.length - 6) : t;
+    final otherSelected = rest.contains(_leaveType);
+    return Wrap(spacing: 8, runSpacing: 8, children: [
+      for (final t in main) _tap(_pill(short(t), _leaveType == t), () => _selectType(t)),
+      if (rest.isNotEmpty)
+        PopupMenuButton<String>(
+          tooltip: 'Other leave types',
+          onSelected: _selectType,
+          itemBuilder: (_) => [for (final t in rest) PopupMenuItem(value: t, child: Text(t))],
+          child: _pill(otherSelected ? short(_leaveType) : 'Other', otherSelected,
+              trailing: Icons.arrow_drop_down_rounded),
+        ),
+    ]);
+  }
+
+  Widget _mobileBucketChips() => Wrap(spacing: 8, runSpacing: 8, children: [
+        for (final b in _applicableBuckets)
+          _tap(_pill(_bucketLabels[b] ?? b, _bucket == b), () => setState(() => _bucket = b)),
+      ]);
+
+  /// Full day / Half day as a light segmented switch.
+  Widget _mobileDuration() {
+    Widget seg(String label, bool selected, VoidCallback onTap) => Expanded(
+          child: GestureDetector(
+            onTap: onTap,
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 150),
+              height: 38,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: selected ? Colors.white : Colors.transparent,
+                borderRadius: BorderRadius.circular(10),
+                boxShadow: selected
+                    ? const [BoxShadow(color: Color(0x14000000), blurRadius: 4, offset: Offset(0, 1))]
+                    : null,
+              ),
+              child: Text(label,
+                  style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: selected ? AppTheme.textPrimary : AppTheme.textSecondary)),
+            ),
+          ),
+        );
+    return Container(
+      padding: const EdgeInsets.all(3),
+      decoration: BoxDecoration(color: const Color(0xFFE8ECF4), borderRadius: BorderRadius.circular(12)),
+      child: Row(children: [
+        seg('Full day', !_isHalfDay, () => setState(() => _isHalfDay = false)),
+        seg('Half day', _isHalfDay, () => setState(() {
+              _isHalfDay = true;
+              if (_fromDate != null) _toDate = _fromDate;
+            })),
+      ]),
+    );
+  }
+
+  /// What the leave will cost, in one sentence, before it is submitted.
+  Widget _mobileSummary() {
+    final total = _effectiveDays;
+    final ruleLop = (_deduction?.lopDays ?? 0).toDouble();
+    final balancePaid = _bucket == 'LOP'
+        ? 0.0
+        : (_remaining == double.infinity ? total : _remaining.clamp(0.0, total).toDouble());
+    final paid = (balancePaid < total - ruleLop ? balancePaid : total - ruleLop).clamp(0.0, total).toDouble();
+    final lop = total - paid;
+    String d(double v) => '${LeaveStore.fmtDays(v)} day${v == 1 ? '' : 's'}';
+    final allPaid = lop <= 0;
+    final title = allPaid
+        ? '${d(total)}, paid from $_bucket.'
+        : paid <= 0
+            ? '${d(total)}, all loss of pay.'
+            : '${d(paid)} paid from $_bucket, ${d(lop)} loss of pay.';
+    final manager = UserSession.reportingManager.trim();
+    return MCard(
+      color: allPaid ? MobileUi.presentBg : MobileUi.lateBg,
+      borderColor: allPaid ? const Color(0xFFBFE5CC) : const Color(0xFFF6D7A8),
+      padding: const EdgeInsets.all(12),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Icon(allPaid ? Icons.task_alt_rounded : Icons.info_outline_rounded,
+            color: allPaid ? MobileUi.present : MobileUi.late),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(title, style: TextStyle(fontWeight: FontWeight.w700,
+                color: allPaid ? const Color(0xFF14532D) : const Color(0xFF7C2D12))),
+            if (manager.isNotEmpty)
+              Text('Goes to $manager for approval.',
+                  style: const TextStyle(fontSize: 12.5, color: AppTheme.textSecondary)),
+          ]),
+        ),
+      ]),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    // Phones (redesign approved 19 Nov 2026): no page header (the bar above
+    // names the page), the balance first, leave types as one-tap chips, a
+    // plain summary of what the leave costs, and Submit fixed at the bottom.
+    final phone = MobileChrome.active(context);
+    // On a computer (approved 20 Nov 2026) the form is the phone's, in a
+    // card, with the balance, what it costs and Submit beside it.
+    final desktop = DesktopChrome.active(context);
+    final mobile = phone || desktop;
     return Scaffold(
       backgroundColor: null,
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(24),
+      bottomNavigationBar: phone
+          ? MStickyButton(label: 'Submit request', icon: Icons.send_rounded, onPressed: _submit)
+          : null,
+      body: _desktopFrame(desktop, SingleChildScrollView(
+        padding: phone
+            ? const EdgeInsets.fromLTRB(16, 14, 16, 24)
+            : desktop
+                ? const EdgeInsets.fromLTRB(28, 22, 22, 28)
+                : const EdgeInsets.all(24),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            if (phone) ..._mobileBalanceChips(),
             // Header
-            Row(children: [
+            if (!mobile) Row(children: [
               const NavBackButton(),
               const SizedBox(width: 8),
               Container(
@@ -544,14 +780,20 @@ class _ApplyLeavePageState extends State<ApplyLeavePage> {
               const SizedBox(width: 16),
               Text('Apply Leave', style: Theme.of(context).textTheme.headlineMedium),
             ]),
-            const SizedBox(height: 24),
+            if (!mobile) const SizedBox(height: 24),
 
-            Card(
+            _maybeCard(
+              mobile: phone,
+              desktop: desktop,
               child: Padding(
-                padding: const EdgeInsets.all(20),
+                padding: phone ? EdgeInsets.zero : desktop ? const EdgeInsets.fromLTRB(22, 4, 22, 22) : const EdgeInsets.all(20),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    if (mobile) ...[
+                      const MSection('Type'),
+                      _mobileTypeChips(),
+                    ] else
                     // Leave type dropdown
                     DropdownButtonFormField<String>(
                       value: _leaveType,
@@ -581,9 +823,12 @@ class _ApplyLeavePageState extends State<ApplyLeavePage> {
                         });
                       },
                     ),
-                    const SizedBox(height: 14),
+                    if (!mobile) const SizedBox(height: 14),
 
-                    if (_showBucketPicker) ...[
+                    if (_showBucketPicker && mobile) ...[
+                      const MSection('Pay from'),
+                      _mobileBucketChips(),
+                    ] else if (_showBucketPicker) ...[
                       Text('Deduct From',
                           style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.grey.shade700)),
                       const SizedBox(height: 8),
@@ -608,6 +853,10 @@ class _ApplyLeavePageState extends State<ApplyLeavePage> {
                       const SizedBox(height: 14),
                     ],
 
+                    if (mobile) ...[
+                      const MSection('Duration'),
+                      _mobileDuration(),
+                    ] else
                     // Half day / Full day toggle
                     Row(children: [
                       Expanded(
@@ -656,13 +905,14 @@ class _ApplyLeavePageState extends State<ApplyLeavePage> {
                         ),
                       ),
                     ]),
-                    const SizedBox(height: 14),
+                    if (!mobile) const SizedBox(height: 14),
 
                     // Calendar rather than two date fields. Holidays and the
                     // employee's weekly off are shaded, so a request is not
                     // built across them unknowingly — previously the reduced
                     // day count only appeared after selecting, which read as
                     // the app miscounting.
+                    if (mobile) const MSection('Dates'),
                     Row(children: [
                       Expanded(child: _DateTile(
                         label: 'From Date',
@@ -680,25 +930,30 @@ class _ApplyLeavePageState extends State<ApplyLeavePage> {
                       )),
                     ]),
                     const SizedBox(height: 12),
-                    LeaveMonthCalendar(
-                      from: _fromDate,
-                      to: _isHalfDay ? _fromDate : _toDate,
-                      firstDate: DateTime.now().subtract(const Duration(days: 365)),
-                      lastDate: DateTime.now().add(const Duration(days: 365)),
-                      color: _color,
-                      singleDate: _isHalfDay,
-                      isNonWorking: _isNonWorkingDay,
-                      onRangeChanged: (f, t) => setState(() {
-                        _fromDate = f;
-                        _toDate = _isHalfDay ? f : t;
-                      }),
+                    // Kept to a readable size; on a wide screen each day
+                    // used to stretch to about 170 px.
+                    ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 380),
+                      child: LeaveMonthCalendar(
+                        from: _fromDate,
+                        to: _isHalfDay ? _fromDate : _toDate,
+                        firstDate: DateTime.now().subtract(const Duration(days: 365)),
+                        lastDate: DateTime.now().add(const Duration(days: 365)),
+                        color: _color,
+                        singleDate: _isHalfDay,
+                        isNonWorking: _isNonWorkingDay,
+                        onRangeChanged: (f, t) => setState(() {
+                          _fromDate = f;
+                          _toDate = _isHalfDay ? f : t;
+                        }),
+                      ),
                     ),
 
                     // What this will actually cost, and why — shown before
                     // submitting rather than discovered afterwards.
                     if (_effectiveDays > 0) ...[
                       const SizedBox(height: 12),
-                      Center(
+                      if (phone) _mobileSummary() else if (!desktop) Center(
                         child: Container(
                           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
                           decoration: BoxDecoration(
@@ -842,7 +1097,7 @@ class _ApplyLeavePageState extends State<ApplyLeavePage> {
             ),
             const SizedBox(height: 16),
 
-            Row(children: [
+            if (!mobile) Row(children: [
               Expanded(
                 child: OutlinedButton.icon(
                   onPressed: _clear,
@@ -872,7 +1127,7 @@ class _ApplyLeavePageState extends State<ApplyLeavePage> {
             ]),
           ],
         ),
-      ),
+      )),
     );
   }
 }

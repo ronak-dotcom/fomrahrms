@@ -11,6 +11,7 @@ import 'models/office_timing.dart';
 import 'models/user_session.dart';
 import 'services/notification_service.dart';
 import 'services/push_notification_service.dart';
+import 'services/error_reporter.dart';
 import 'services/supabase_service.dart';
 import 'services/session_storage.dart';
 import 'utils/secure_local_storage.dart';
@@ -20,6 +21,8 @@ import 'widgets/notification_popup_overlay.dart';
 void main() async {
   configureUrlStrategy();
   WidgetsFlutterBinding.ensureInitialized();
+  // Record crashes and uncaught errors for Management's App Health page.
+  ErrorReporter.install();
 
   // Restore persisted login before the router guard runs — must be awaited
   // since the router reads UserSession synchronously at first build.

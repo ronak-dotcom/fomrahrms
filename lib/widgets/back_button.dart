@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'mobile_shell.dart';
 
 class NavBackButton extends StatelessWidget {
   const NavBackButton({super.key});
@@ -23,6 +24,11 @@ class NavBackButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // On phones the header already shows a back arrow; a second one in the
+    // page was one of the four stacked bands the redesign removed.
+    if (MobileChrome.maybeOf(context)?.providesBack ?? false) {
+      return const SizedBox.shrink();
+    }
     return IconButton(
       onPressed: () => _back(context),
       icon: const Icon(Icons.arrow_back_rounded),
