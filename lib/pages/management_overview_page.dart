@@ -15,6 +15,7 @@ import '../theme/mobile_ui.dart';
 import '../utils/attendance_cycle.dart';
 import '../utils/attendance_day.dart';
 import '../utils/checkin_status.dart';
+import '../widgets/attendance_shortcut_card.dart' show showQuickAttendance;
 import '../widgets/employee_list_dialog.dart';
 import 'hr_employee_records_page.dart' show showEmployeeProfile;
 
@@ -297,10 +298,8 @@ class _ManagementOverviewPageState extends State<ManagementOverviewPage> {
         Expanded(child: Text(text, style: const TextStyle(fontSize: 14))),
         if (action != null)
           FilledButton(
-            onPressed: () async {
-              await context.push('/management/my-attendance');
-              _load();
-            },
+            onPressed: () => showQuickAttendance(context,
+                record: mine, attendanceRoute: '/management/my-attendance', onDone: _load),
             child: Text(action),
           ),
       ]),
