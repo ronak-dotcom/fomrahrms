@@ -241,6 +241,36 @@ class _ProfileAvatarButtonState extends State<ProfileAvatarButton> {
   }
 }
 
+/// Each role's own pages, for the profile menu. Staff have theirs in the
+/// menu and bottom bar already.
+List<(IconData, String, String)> get _personalLinks => switch (UserSession.role) {
+      UserRole.management => const [
+          (Icons.calendar_month_rounded, 'My attendance & leave', '/management/attendance-leaves'),
+          (Icons.account_balance_wallet_rounded, 'My leave balance', '/management/leave/balance'),
+          (Icons.receipt_long_rounded, 'My payslips', '/management/my-payslips'),
+        ],
+      UserRole.hr => const [
+          (Icons.calendar_month_rounded, 'My attendance & leave', '/hr/attendance-leaves'),
+          (Icons.account_balance_wallet_rounded, 'My leave balance', '/leave/balance'),
+          (Icons.timer_outlined, 'Apply permission', '/leave/permission'),
+          (Icons.swap_horiz_rounded, 'Apply comp off', '/leave/compoff'),
+          (Icons.task_alt_rounded, 'My tasks', '/hr/my-tasks'),
+          (Icons.receipt_long_rounded, 'My payslips', '/hr/my-payslips'),
+          (Icons.fact_check_rounded, 'My appraisal', '/hr/appraisal'),
+          (Icons.build_rounded, 'Maintenance requests', '/hr/maintenance-management'),
+        ],
+      UserRole.reportingManager => const [
+          (Icons.calendar_month_rounded, 'My attendance & leave', '/manager/attendance-leaves'),
+          (Icons.account_balance_wallet_rounded, 'My leave balance', '/manager/leave/balance'),
+          (Icons.timer_outlined, 'Apply permission', '/manager/leave/permission'),
+          (Icons.swap_horiz_rounded, 'Apply comp off', '/manager/leave/compoff'),
+          (Icons.receipt_long_rounded, 'My payslips', '/manager/my-payslips'),
+          (Icons.fact_check_rounded, 'My appraisal', '/manager/appraisal'),
+          (Icons.build_rounded, 'Maintenance requests', '/manager/maintenance-management'),
+        ],
+      UserRole.employee => const [],
+    };
+
 // ── Dropdown card ─────────────────────────────────────────────────────────────
 class _ProfileDropdown extends StatelessWidget {
   final void Function(String route) onNavigate;
@@ -350,15 +380,12 @@ class _ProfileDropdown extends StatelessWidget {
 
           const Divider(height: 1),
 
-          // Management's own pages live here rather than in the menu, which
-          // is kept for running the company (20 Nov 2026). Not for oversight
-          // accounts, which have no attendance, leave or payslips.
-          if (UserSession.isManagement && !UserSession.oversightOnly)
-            for (final (icon, label, route) in const [
-              (Icons.calendar_month_rounded, 'My attendance & leave', '/management/attendance-leaves'),
-              (Icons.account_balance_wallet_rounded, 'My leave balance', '/management/leave/balance'),
-              (Icons.receipt_long_rounded, 'My payslips', '/management/my-payslips'),
-            ]) ...[
+          // Management's, HR's and managers' own pages live here rather than
+          // in the menu, which is kept for running the company (20-21 Nov
+          // 2026). Not for oversight accounts, which have no attendance,
+          // leave or payslips.
+          if (!UserSession.oversightOnly)
+            for (final (icon, label, route) in _personalLinks) ...[
               ListTile(
                 dense: true,
                 leading: Icon(icon, size: 18, color: AppTheme.primaryBlue),

@@ -93,27 +93,23 @@ void main() {
       expect(SalaryMasterExport.isRunning(rows, DateTime(2026, 10, 25)), isFalse);
     });
 
-    test('the workbook has the three sheets, totals and the bank transfer list', () {
+    test('the workbook has the master sheet and the summary, with totals; no bank details', () {
       final files = _unzip(SalaryMasterExport.build(rows, DateTime(2026, 10, 25), now: DateTime(2026, 11, 20, 10, 5)));
       final wb = files['xl/workbook.xml']!;
       expect(wb, contains('name="Master sheet"'));
-      expect(wb, contains('name="Bank transfer"'));
+      expect(wb, isNot(contains('Bank transfer')));
       expect(wb, contains('name="Summary"'));
 
       final master = files['xl/worksheets/sheet1.xml']!;
-      expect(SalaryMasterExport.columnHeadings.length, 48);
-      // Net pay is column 47 (AU); data rows are 7 and 8; the total is 39,000.
-      expect(master, contains('<f>SUM(AU7:AU8)</f><v>39000</v>'));
+      expect(SalaryMasterExport.columnHeadings.length, 46);
+      expect(SalaryMasterExport.columnHeadings, isNot(contains('Bank account')));
+      // Net pay is column 45 (AS); data rows are 7 and 8; the total is 39,000.
+      expect(master, contains('<f>SUM(AS7:AS8)</f><v>39000</v>'));
       expect(master, contains('Total (2 people)'));
       expect(master, contains('Not on this sheet (no salary structure): Chitra (FD-03).'));
       expect(master, contains('Records changed after publishing'));
 
-      final bank = files['xl/worksheets/sheet2.xml']!;
-      expect(bank, contains('50100012345678'));
-      expect(bank, contains('Bank details missing'));
-      expect(bank, contains('<v>39000</v>'));
-
-      final summary = files['xl/worksheets/sheet3.xml']!;
+      final summary = files['xl/worksheets/sheet2.xml']!;
       expect(summary, contains('Net salary to credit'));
       expect(summary, contains('<v>39000</v>'));
     });

@@ -3,6 +3,9 @@ import 'package:go_router/go_router.dart';
 
 import '../theme/app_theme.dart';
 import '../theme/mobile_ui.dart';
+import 'breadcrumb_bar.dart';
+import 'desktop_shell.dart';
+import 'mobile_shell.dart';
 
 /// One screen inside a menu section, shown as a tab across the top.
 class SectionTab {
@@ -121,3 +124,28 @@ class SectionTabStrip extends StatelessWidget {
         ),
       );
 }
+
+/// The menu for a set of sections: one entry each (lit for any of its
+/// tabs), then [more] as a collapsible group.
+List<NavGroupSpec> navGroupsForSections(List<SectionSpec> sections, {List<NavEntry> more = const []}) => [
+      NavGroupSpec(items: [
+        for (final s in sections)
+          NavEntry(s.label, s.icon, s.route, alsoMatches: s.allRoutes.skip(1).toList()),
+      ]),
+      if (more.isNotEmpty)
+        NavGroupSpec(title: 'More', icon: Icons.more_horiz_rounded, collapsible: true, items: more),
+    ];
+
+/// Page titles for every destination, for the top bar and breadcrumbs.
+List<BreadcrumbSection> titlesForSections(List<SectionSpec> sections,
+        {List<NavEntry> more = const [], List<BreadcrumbSection> others = const []}) =>
+    [
+      for (final s in sections)
+        for (final t in s.tabs) (label: t.pageTitle, route: t.route),
+      for (final e in more) (label: e.label, route: e.route),
+      ...others,
+    ];
+
+/// A phone bottom-bar tab for a section.
+MobileTab mobileTabForSection(SectionSpec s, IconData icon, IconData selected) =>
+    MobileTab(s.label, icon, s.route, selectedIcon: selected, alsoMatches: s.allRoutes);

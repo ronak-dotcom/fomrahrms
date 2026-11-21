@@ -20,6 +20,11 @@ import 'salary_master_sheet_page.dart';
 /// leave, permission or attendance record) and the counts update. A draft
 /// follows its records by itself; a published payslip does not change (it
 /// is what was paid) and is flagged when its records change, for reissue.
+/// Generating (and reissuing) payslips is paused for the time being
+/// (Ronak, 21 Nov 2026). The figures, the master sheet and publishing
+/// drafts already made are unaffected. Set to false to switch it back on.
+const kPayslipGenerationPaused = true;
+
 class PayslipRunPage extends StatefulWidget {
   /// Opens on the cycle ending on this date; defaults to the latest closed one.
   final DateTime? initialCycleEnd;
@@ -127,6 +132,7 @@ class _PayslipRunPageState extends State<PayslipRunPage> {
 
   // ── actions ────────────────────────────────────────────────────────────
   Future<void> _generate() async {
+    if (kPayslipGenerationPaused) return;
     final ids = _toIssue.map((r) => r['employee_id'] as String).toList();
     if (ids.isEmpty) return;
     await _run(() => SupabaseService.issuePayslips(_cycleEnd, employeeIds: ids),
@@ -157,6 +163,7 @@ class _PayslipRunPageState extends State<PayslipRunPage> {
   }
 
   Future<void> _reissue(Map<String, dynamic> r) async {
+    if (kPayslipGenerationPaused) return;
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -250,6 +257,21 @@ class _PayslipRunPageState extends State<PayslipRunPage> {
             const SizedBox(height: 16),
             _steps(wide),
             const SizedBox(height: 16),
+            if (kPayslipGenerationPaused) ...[
+              const MCard(
+                color: Color(0xFFFFFBEA),
+                borderColor: Color(0xFFF2DE8A),
+                child: Row(children: [
+                  Icon(Icons.pause_circle_outline_rounded, color: MobileUi.late),
+                  SizedBox(width: 10),
+                  Expanded(
+                    child: Text('Generating payslips is paused for now. You can still check the '
+                        'figures here and on the salary master sheet.'),
+                  ),
+                ]),
+              ),
+              const SizedBox(height: 16),
+            ],
             if (_loading)
               const Padding(padding: EdgeInsets.all(48), child: Center(child: CircularProgressIndicator()))
             else if (_error != null)
@@ -272,8 +294,8 @@ class _PayslipRunPageState extends State<PayslipRunPage> {
                       child: Text(
                           'Records changed after publishing for '
                           '${_rows.where(_changed).map((r) => r['employee_name']).join(', ')}. '
-                          'Their payslips still show what was published. Reissue from the ⋮ menu '
-                          'to bring them up to date.',
+                          'Their payslips still show what was published. '
+                          '${kPayslipGenerationPaused ? 'Reissuing is paused for now.' : 'Reissue from the ⋮ menu to bring them up to date.'}',
                           style: const TextStyle(color: MobileUi.lop, fontSize: 13)),
                     ),
                   ]),
@@ -396,6 +418,7 @@ class _PayslipRunPageState extends State<PayslipRunPage> {
   Widget _confirmBox(Map<String, dynamic> r) {
     final id = r['employee_id'] as String;
     if (_isPublished(r)) {
+      if (kPayslipGenerationPaused) return const SizedBox(width: 40);
       return PopupMenuButton<String>(
         tooltip: 'More',
         onSelected: (_) => _reissue(r),
@@ -596,6 +619,12 @@ class _PayslipRunPageState extends State<PayslipRunPage> {
                 label: Text('Publish $drafts draft${drafts == 1 ? '' : 's'}'),
               ),
             if (drafts > 0) const SizedBox(width: 10),
+            if (kPayslipGenerationPaused)
+              const Tooltip(
+                message: 'Generating payslips is paused for now.',
+                child: FilledButton(onPressed: null, child: Text('Generating paused')),
+              )
+            else
             FilledButton.icon(
               onPressed: _busy || toIssue == 0 ? null : _generate,
               icon: _busy
