@@ -881,18 +881,47 @@ class _HRPolicyDialogState extends State<_HRPolicyDialog> {
   }
 }
 
+/// Opens the check-in / check-out panel and starts at once: one tap from a
+/// Home button checks the person in or out (location, selfie, saved). When
+/// a reason is required (late in, early out) the panel opens with the note
+/// box ready instead. [onDone] runs after a successful check-in or out.
+Future<void> showQuickAttendance(
+  BuildContext context, {
+  required AttendanceRecord? record,
+  required String attendanceRoute,
+  required VoidCallback onDone,
+  Color? accentColor,
+}) =>
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _AttendanceSheet(
+        record: record,
+        accentColor: accentColor ?? AppTheme.primaryBlue,
+        attendanceRoute: attendanceRoute,
+        onDone: onDone,
+        autoStart: true,
+      ),
+    );
+
 // ── Bottom-sheet popup ────────────────────────────────────────────────────────
 class _AttendanceSheet extends StatefulWidget {
   final AttendanceRecord? record;
   final Color accentColor;
   final String attendanceRoute;
   final VoidCallback onDone;
+  /// Start checking in or out as soon as the panel opens, so the Home
+  /// button is one tap (Ronak, 21 Nov 2026). Not when a reason is needed
+  /// first (late check-in, early check-out): the panel then waits for it.
+  final bool autoStart;
 
   const _AttendanceSheet({
     required this.record,
     required this.accentColor,
     required this.attendanceRoute,
     required this.onDone,
+    this.autoStart = false,
   });
 
   @override
@@ -923,7 +952,9 @@ class _AttendanceSheetState extends State<_AttendanceSheet> {
   void initState() {
     super.initState();
     _timeCtrl = TextEditingController(text: _nowTime());
-    _loadPermission();
+    _loadPermission().then((_) {
+      if (mounted && widget.autoStart) _autoStart();
+    });
   }
 
   Future<void> _loadPermission() async {
@@ -935,10 +966,32 @@ class _AttendanceSheetState extends State<_AttendanceSheet> {
     });
   }
 
+  final _noteFocus = FocusNode();
+
+  void _autoStart() {
+    final rec = widget.record;
+    final schedule = OfficeTimingStore.scheduleForCurrentUser();
+    if (rec != null && rec.checkOutTime.isNotEmpty) return;
+    if (rec != null && rec.checkInTime.isNotEmpty) {
+      if (isEarlyCheckOut(_timeCtrl.text, schedule, _permissionMinutes)) {
+        _noteFocus.requestFocus();
+        return;
+      }
+      _checkOut();
+      return;
+    }
+    if (isLateCheckIn(_timeCtrl.text, schedule) && _permissionMinutes == 0) {
+      _noteFocus.requestFocus();
+      return;
+    }
+    _checkIn();
+  }
+
   @override
   void dispose() {
     _timeCtrl.dispose();
     _noteCtrl.dispose();
+    _noteFocus.dispose();
     super.dispose();
   }
 
@@ -1392,6 +1445,7 @@ class _AttendanceSheetState extends State<_AttendanceSheet> {
                   const SizedBox(height: 12),
                   TextField(
                     controller: _noteCtrl,
+                    focusNode: _noteFocus,
                     maxLines: 2,
                     decoration: InputDecoration(
                       labelText: isCheckedIn

@@ -11,7 +11,7 @@ import '../theme/app_theme.dart';
 import '../theme/mobile_ui.dart';
 import '../utils/leave_balance_math.dart';
 import '../utils/attendance_cycle.dart';
-import 'attendance_shortcut_card.dart' show showHrPolicy;
+import 'attendance_shortcut_card.dart' show showHrPolicy, showQuickAttendance;
 import 'quick_actions_bar.dart' show AroundFomraCard;
 import 'desktop_shell.dart' show DesktopChrome;
 
@@ -295,10 +295,9 @@ class _MobileHomeState extends State<MobileHome> {
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                 textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
               ),
-              onPressed: () async {
-                await context.push(_attendanceRoute);
-                _load();
-              },
+              // One tap: the panel opens and checks in or out straight away.
+              onPressed: () => showQuickAttendance(context,
+                  record: _today, attendanceRoute: _attendanceRoute, onDone: _load),
               icon: Icon(checkedIn ? Icons.logout_rounded : Icons.login_rounded),
               label: Text(checkedIn ? 'Check out' : 'Check in'),
             ),
