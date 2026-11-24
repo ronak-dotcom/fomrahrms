@@ -10,7 +10,7 @@ import '../utils/file_export.dart';
 import '../widgets/back_button.dart';
 
 /// The salary master sheet (Ronak, 20 Nov 2026): what to credit to each
-/// person for a cycle, with the breakup, and the Excel file for the bank.
+/// person for a cycle, with the breakup, and the Excel file.
 ///
 /// The figures are salary_master_sheet() in the database. A published
 /// payslip is shown as published (that is what was paid). Everyone else is
@@ -325,14 +325,6 @@ class _SalaryMasterSheetPageState extends State<SalaryMasterSheetPage> {
               'The sheet shows what was published; reissue the payslip from Payroll to correct it.',
           red: true));
     }
-    final noBank = _paid.where((r) => SalaryMasterExport.s(r, 'bank_account') == null).toList();
-    if (noBank.isNotEmpty) {
-      out.add(warn(Icons.account_balance_rounded,
-          noBank.length == _paid.length
-              ? 'No bank account is on record for anyone yet. Add each person\'s account and IFSC '
-                  'on their profile so the bank transfer sheet is complete.'
-              : 'No bank account on record for ${noBank.map((r) => r['employee_name']).join(', ')}.'));
-    }
     if (_missing.isNotEmpty) {
       out.add(warn(Icons.person_off_rounded,
           'Not on this sheet, no salary structure: '
@@ -354,11 +346,6 @@ class _SalaryMasterSheetPageState extends State<SalaryMasterSheetPage> {
   String _lopTip(Map<String, dynamic> r) =>
       'Absent without leave ${_days(_n(r, 'absence_lop'))} · unpaid leave ${_days(_n(r, 'leave_lop'))} · '
       'late ${_days(_n(r, 'late_lop'))} · permission ${_days(_n(r, 'permission_lop'))}';
-
-  static String _maskedAccount(String? a) {
-    if (a == null) return 'Missing';
-    return a.length <= 4 ? a : '••${a.substring(a.length - 4)}';
-  }
 
   Widget _table() {
     const head = TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppTheme.textSecondary);
@@ -408,7 +395,6 @@ class _SalaryMasterSheetPageState extends State<SalaryMasterSheetPage> {
             const DataColumn(label: Text('Gross\nearned'), numeric: true),
             const DataColumn(label: Text('Deductions'), numeric: true),
             for (final (l, _) in breakup) DataColumn(label: Text(l), numeric: true),
-            const DataColumn(label: Text('Bank')),
           ],
           rows: [
             for (final r in paid)
@@ -431,9 +417,6 @@ class _SalaryMasterSheetPageState extends State<SalaryMasterSheetPage> {
                 numCell(_rsp(_n(r, 'gross_earned'))),
                 numCell(_rsp(_n(r, 'total_deductions'))),
                 for (final (_, k) in breakup) numCell(_n(r, k) == 0 ? '–' : _rsp(_n(r, k))),
-                DataCell(Text(_maskedAccount(SalaryMasterExport.s(r, 'bank_account')),
-                    style: TextStyle(
-                        color: SalaryMasterExport.s(r, 'bank_account') == null ? MobileUi.late : null))),
               ]),
             DataRow(
               color: WidgetStateProperty.all(const Color(0xFFFFF8E5)),
@@ -447,7 +430,6 @@ class _SalaryMasterSheetPageState extends State<SalaryMasterSheetPage> {
                 numCell(_rsp(_sum('gross_earned')), bold: true),
                 numCell(_rsp(_sum('total_deductions')), bold: true),
                 for (final (_, k) in breakup) numCell(_rsp(_sum(k)), bold: true),
-                const DataCell(SizedBox()),
               ],
             ),
           ],
@@ -503,7 +485,6 @@ class _SalaryMasterSheetPageState extends State<SalaryMasterSheetPage> {
               style: const TextStyle(fontSize: 11, letterSpacing: 0.6, color: AppTheme.textSecondary,
                   fontWeight: FontWeight.w700)),
         );
-    final bank = SalaryMasterExport.s(r, 'bank_account');
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       head('Days'),
       line('Working days', _n(r, 'working_days'), days: true),
@@ -531,11 +512,6 @@ class _SalaryMasterSheetPageState extends State<SalaryMasterSheetPage> {
       if (_n(r, 'rounded_off') != 0) line('Rounded off', _n(r, 'rounded_off')),
       const Divider(height: 14),
       line('Net pay to credit', _n(r, 'net_pay'), bold: true),
-      const SizedBox(height: 4),
-      Text(bank == null
-              ? 'Bank account: not on record'
-              : 'Bank account ${_maskedAccount(bank)}${SalaryMasterExport.s(r, 'ifsc') == null ? '' : ' · ${r['ifsc']}'}',
-          style: TextStyle(fontSize: 12, color: bank == null ? MobileUi.late : AppTheme.textSecondary)),
     ]);
   }
 }

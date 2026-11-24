@@ -5,11 +5,10 @@ import '../utils/xlsx_writer.dart';
 /// The salary master sheet as an Excel workbook (Ronak, 20 Nov 2026): the
 /// salary to credit to each person for a cycle, with the breakup.
 ///
-/// Three sheets:
-///   * Master sheet: one line per person: bank details, days, LOP by cause,
-///     fixed monthly salary, what was earned this cycle, deductions and the
-///     net pay to credit, with totals.
-///   * Bank transfer: name, account, IFSC and amount, for the bank upload.
+/// Two sheets (bank details not needed, Ronak 21 Nov 2026):
+///   * Master sheet: one line per person: days, LOP by cause, fixed monthly
+///     salary, what was earned this cycle, deductions and the net pay to
+///     credit, with totals.
 ///   * Summary: the totals by component and by department, for approval.
 ///
 /// Every figure comes from salary_master_sheet() in the database, the same
@@ -113,8 +112,6 @@ class SalaryMasterExport {
     _Col('Employee', 'Designation', 'designation', _K.text, 18),
     _Col('Employee', 'Department', 'department', _K.text, 16),
     _Col('Employee', 'Date of joining', 'date_of_joining', _K.date, 12),
-    _Col('Employee', 'Bank account', 'bank_account', _K.bank, 18),
-    _Col('Employee', 'IFSC', 'ifsc', _K.text, 12),
     _Col('Employee', 'PF no', 'pf_number', _K.text, 14),
     _Col('Employee', 'ESI no', 'esi_number', _K.text, 14),
     _Col('Days', 'Cycle days', 'cycle_days', _K.days, 7),
@@ -171,7 +168,6 @@ class SalaryMasterExport {
 
     return Xlsx.build([
       _master(paid, missing, cycleEnd, period, basisNote(rows, cycleEnd), prepared),
-      _bank(paid, cycleEnd, period),
       _summary(paid, cycleEnd, period, prepared),
     ]);
   }
@@ -239,14 +235,6 @@ class SalaryMasterExport {
                 '${inr(n(r, 'live_net_pay'))} (paid ${inr(n(r, 'net_pay'))})').join('; ')}', Xlsx.note),
       ]);
     }
-    final noBank = paid.where((r) => s(r, 'bank_account') == null).toList();
-    if (noBank.isNotEmpty) {
-      sh.addRow([
-        XlsxCell('No bank account on record for ${noBank.length} of ${paid.length}: '
-            '${noBank.map((r) => r['employee_name']).join(', ')}. Add it on the employee\'s profile.',
-            Xlsx.note),
-      ]);
-    }
     if (missing.isNotEmpty) {
       sh.addRow([
         XlsxCell('Not on this sheet (no salary structure): '
@@ -267,9 +255,6 @@ class SalaryMasterExport {
         return XlsxCell(serial, Xlsx.number);
       case _K.text:
         return XlsxCell(s(r, c.key), Xlsx.text);
-      case _K.bank:
-        final b = s(r, c.key);
-        return b == null ? const XlsxCell('Missing', Xlsx.flagged) : XlsxCell(b, Xlsx.text);
       case _K.date:
         final d = date(r, c.key);
         return XlsxCell(d == null ? s(r, c.key) : _d(d), Xlsx.text);
@@ -283,54 +268,6 @@ class SalaryMasterExport {
       case _K.status:
         return XlsxCell(statusLabel(r), r['records_changed'] == true ? Xlsx.flagged : Xlsx.text);
     }
-  }
-
-  static XlsxSheet _bank(List<Map<String, dynamic>> paid, DateTime cycleEnd, String period) {
-    final sh = XlsxSheet('Bank transfer')..freezeRows = 4;
-    sh.addRow([const XlsxCell(_company, Xlsx.title)], height: 20);
-    sh.merge(0, 0, 6);
-    sh.addRow([XlsxCell('Salary transfer – ${monthLabel(cycleEnd)} (attendance cycle $period)', Xlsx.subtitle)]);
-    sh.merge(1, 0, 6);
-    sh.addRow([]);
-    const heads = ['S.No', 'Emp code', 'Name', 'Bank account', 'IFSC', 'Amount', 'Remarks'];
-    const widths = [5.0, 10.0, 26.0, 20.0, 13.0, 13.0, 30.0];
-    sh.addRow([for (final h in heads) XlsxCell(h, Xlsx.header)], height: 20);
-    for (var i = 0; i < widths.length; i++) {
-      sh.width(i, widths[i]);
-    }
-    final payees = paid.where((r) => n(r, 'net_pay') > 0).toList();
-    final first = sh.rows.length;
-    for (var i = 0; i < payees.length; i++) {
-      final r = payees[i];
-      final bank = s(r, 'bank_account');
-      final ifsc = s(r, 'ifsc');
-      final remark = bank == null || ifsc == null
-          ? 'Bank details missing'
-          : 'Salary ${monthLabel(cycleEnd)}';
-      sh.addRow([
-        XlsxCell(i + 1, Xlsx.number),
-        XlsxCell(s(r, 'employee_id'), Xlsx.text),
-        XlsxCell(s(r, 'employee_name'), Xlsx.text),
-        bank == null ? const XlsxCell('Missing', Xlsx.flagged) : XlsxCell(bank, Xlsx.text),
-        ifsc == null ? const XlsxCell('Missing', Xlsx.flagged) : XlsxCell(ifsc, Xlsx.text),
-        XlsxCell(n(r, 'net_pay'), Xlsx.moneyBold),
-        XlsxCell(remark, bank == null || ifsc == null ? Xlsx.flagged : Xlsx.text),
-      ]);
-    }
-    if (payees.isNotEmpty) {
-      final last = sh.rows.length - 1;
-      sh.addRow([
-        const XlsxCell(null, Xlsx.totalText),
-        const XlsxCell(null, Xlsx.totalText),
-        XlsxCell('Total (${payees.length})', Xlsx.totalText),
-        const XlsxCell(null, Xlsx.totalText),
-        const XlsxCell(null, Xlsx.totalText),
-        XlsxCell(XlsxFormula('SUM(${Xlsx.ref(first, 5)}:${Xlsx.ref(last, 5)})',
-            payees.fold<num>(0, (t, r) => t + n(r, 'net_pay'))), Xlsx.totalMoney),
-        const XlsxCell(null, Xlsx.totalText),
-      ]);
-    }
-    return sh;
   }
 
   static XlsxSheet _summary(List<Map<String, dynamic>> paid, DateTime cycleEnd, String period, String prepared) {
@@ -394,7 +331,7 @@ class SalaryMasterExport {
   }
 }
 
-enum _K { serial, text, bank, date, days, daysTotal, money, net, status }
+enum _K { serial, text, date, days, daysTotal, money, net, status }
 
 class _Col {
   final String group;

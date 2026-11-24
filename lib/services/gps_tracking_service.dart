@@ -243,6 +243,48 @@ class GpsTrackingService {
     );
   }
 
+  static bool _resuming = false;
+  static DateTime? _lastResumeCheck;
+
+  /// Restarts tracking for someone who is checked in but whose app was
+  /// closed, reloaded or put away since (Ronak, 24 Nov 2026).
+  ///
+  /// Tracking used to be restarted only by the old Home card and the full
+  /// attendance page when they opened. The redesigned Home has no such
+  /// card, and the app runs in the phone's browser, which unloads it when
+  /// the phone sleeps or another app is used; so from 21 Nov a reopened app
+  /// stopped recording the route for everyone. This is called from the app
+  /// itself (on open, on coming back to the screen and on every page
+  /// change), so it no longer depends on which page someone opens.
+  ///
+  /// Cheap to call often: it does nothing while tracking, and asks the
+  /// database at most once every 30 seconds.
+  static Future<void> resumeIfCheckedIn() async {
+    if (isTracking || _resuming) return;
+    if (!UserSession.loggedIn || UserSession.employeeId.isEmpty) return;
+    if (UserSession.exemptFromAttendance || UserSession.oversightOnly) return;
+    final now = DateTime.now();
+    if (_lastResumeCheck != null && now.difference(_lastResumeCheck!) < const Duration(seconds: 30)) {
+      return;
+    }
+    _lastResumeCheck = now;
+    _resuming = true;
+    try {
+      final rec = await SupabaseService.fetchTodayAttendance(UserSession.employeeId);
+      if (rec != null && rec.checkInTime.isNotEmpty && rec.checkOutTime.isEmpty && !isTracking) {
+        await start();
+      }
+    } catch (_) {
+      // Never let this get in the way of the app; the next call tries again.
+    } finally {
+      _resuming = false;
+    }
+  }
+
+  /// Saves the points recorded so far, e.g. as the app goes into the
+  /// background, where the browser may stop it before the next flush.
+  static Future<void> flushNow() => _flush();
+
   static Future<void> stop() async {
     await _subscription?.cancel();
     _subscription = null;
