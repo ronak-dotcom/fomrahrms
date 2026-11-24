@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'services/gps_tracking_service.dart';
 import 'package:go_router/go_router.dart';
 import 'theme/app_theme.dart';
 import 'models/color_theme_notifier.dart';
@@ -650,8 +651,41 @@ final _router = GoRouter(
   ],
 );
 
-class FomraHrmsApp extends StatelessWidget {
+class FomraHrmsApp extends StatefulWidget {
   const FomraHrmsApp({super.key});
+
+  @override
+  State<FomraHrmsApp> createState() => _FomraHrmsAppState();
+}
+
+/// Keeps live location going for whoever is checked in, whichever page the
+/// app opens on (see GpsTrackingService.resumeIfCheckedIn).
+class _FomraHrmsAppState extends State<FomraHrmsApp> with WidgetsBindingObserver {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _router.routerDelegate.addListener(_onRoute);
+    WidgetsBinding.instance.addPostFrameCallback((_) => GpsTrackingService.resumeIfCheckedIn());
+  }
+
+  @override
+  void dispose() {
+    _router.routerDelegate.removeListener(_onRoute);
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  void _onRoute() => GpsTrackingService.resumeIfCheckedIn();
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      GpsTrackingService.resumeIfCheckedIn();
+    } else if (state == AppLifecycleState.paused || state == AppLifecycleState.hidden) {
+      GpsTrackingService.flushNow();
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
