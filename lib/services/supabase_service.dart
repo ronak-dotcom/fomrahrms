@@ -4963,7 +4963,11 @@ class SupabaseService {
     // finished starting, so _db was still null and every link showed as
     // "Invalid Activation Link" without the database ever being asked.
     await awaitReady();
-    final data = await _db?.rpc('app_user_by_activation_token', params: {'p_token': token});
+    // A connection that never came up is not an invalid link: throw, so
+    // the page can say what actually went wrong.
+    final db = _db;
+    if (db == null) throw StateError('Could not connect to the server');
+    final data = await db.rpc('app_user_by_activation_token', params: {'p_token': token});
     if (data is List && data.isNotEmpty) return Map<String, dynamic>.from(data.first as Map);
     return null;
   }
@@ -5089,7 +5093,9 @@ class SupabaseService {
     // Same as the activation link: wait for Supabase to finish starting.
     await awaitReady();
     if (token.isEmpty) return null;
-    final data = await _db?.rpc('app_user_by_reset_token', params: {'p_token': token});
+    final db = _db;
+    if (db == null) throw StateError('Could not connect to the server');
+    final data = await db.rpc('app_user_by_reset_token', params: {'p_token': token});
     if (data is List && data.isNotEmpty) return Map<String, dynamic>.from(data.first as Map);
     return null;
   }
