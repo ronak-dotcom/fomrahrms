@@ -203,6 +203,112 @@ class Payslip {
   bool get isFromEngine => source == 'engine';
   bool get isDraft => status == 'draft';
 
+  // ── Gross minus deductions (HR, 25 Nov 2026) ────────────────────────────
+  // A payslip is read as: the full monthly gross, less PF, ESI, professional
+  // tax and any LOP or late deduction, equals net pay. The engine pays
+  // earnings in proportion to payable days, so its lines held the reduced
+  // ("earned") amounts and the LOP never appeared as a deduction: Gross Pay
+  // minus Total Deductions did not come to Net Pay. The figures below
+  // restate the same payslip that way. Net pay is unchanged.
+
+  /// True for payslips issued by the payroll engine, which carry what the
+  /// restatement needs.
+  bool get showsFullGross =>
+      isFromEngine && grossEarned != null && grossPay > 0 && workingDays > 0;
+
+  static double _r2(double v) => (v * 100).roundToDouble() / 100;
+
+  double get _lateDays => (lateLop ?? 0) + (permissionLop ?? 0);
+  double get _lopOnlyDays => (lopDays - _lateDays) < 0 ? 0 : lopDays - _lateDays;
+  double get _outsideDays {
+    final v = workingDays - daysWorked - lopDays;
+    return v < 0.0001 ? 0 : v;
+  }
+
+  /// Days of loss of pay (absent without leave, unpaid leave) and the
+  /// amount; late and permission days and their amount; days of the cycle
+  /// before joining or after leaving and their amount.
+  ({double lopDays, double lop, double lateDays, double late, double outsideDays, double outside})
+      get payCuts {
+    final perDay = grossPay / workingDays;
+    var lop = _r2(perDay * _lopOnlyDays);
+    var late = _r2(perDay * _lateDays);
+    var outside = _r2(perDay * _outsideDays);
+    // Earnings are rounded line by line, so what was actually cut can differ
+    // from days x per-day rate by a few paise; the difference goes on the
+    // largest cut so the payslip adds up exactly.
+    final cut = _r2(grossPay - (grossEarned ?? grossPay));
+    final residual = _r2(cut - (lop + late + outside));
+    // Only onto a cut that has days behind it; otherwise the paise fall into
+    // "Rounded off" rather than showing a 0-day loss of pay.
+    if (residual != 0) {
+      if (_lopOnlyDays > 0 && lop >= late && lop >= outside) {
+        lop = _r2(lop + residual);
+      } else if (_lateDays > 0 && late >= outside) {
+        late = _r2(late + residual);
+      } else if (_outsideDays > 0) {
+        outside = _r2(outside + residual);
+      } else if (_lopOnlyDays > 0) {
+        lop = _r2(lop + residual);
+      } else if (_lateDays > 0) {
+        late = _r2(late + residual);
+      }
+    }
+    return (
+      lopDays: _lopOnlyDays, lop: lop,
+      lateDays: _lateDays, late: late,
+      outsideDays: _outsideDays, outside: outside,
+    );
+  }
+
+  /// Earnings at the full monthly rate, adding up to [grossPay].
+  List<(String, double)> get fullEarnings {
+    final earned = <(String, double)>[
+      ('Basic', basic),
+      ('Dearness Allowance', da),
+      ('House Rent Allowance', hra),
+      ('Educational Allowance', educationalAllowance),
+      ('LTA', lta),
+      ('Other Allowance', otherAllowance),
+      ('Conveyance Allowance', conveyanceAllowance),
+      ('Special Allowance', specialAllowance),
+    ];
+    if (daysWorked <= 0) return [('Gross Salary', grossPay)];
+    final f = workingDays / daysWorked;
+    final full = [for (final (l, v) in earned) (l, _r2(v * f))];
+    // Make the lines add up to the monthly gross exactly (paise only).
+    final diff = _r2(grossPay - full.fold<double>(0, (s, e) => s + e.$2));
+    if (diff != 0) {
+      var big = 0;
+      for (var i = 1; i < full.length; i++) {
+        if (full[i].$2 > full[big].$2) big = i;
+      }
+      full[big] = (full[big].$1, _r2(full[big].$2 + diff));
+    }
+    return [for (final e in full) if (e.$2 != 0 || e.$1 == 'Basic') e];
+  }
+
+  /// Deductions from the full monthly gross, in payslip order.
+  List<(String, double)> get fullDeductions {
+    final c = payCuts;
+    return [
+      if (c.lop != 0) ('Loss of Pay (${fmtDays(c.lopDays)} days)', c.lop),
+      if (c.late != 0) ('Late / Permission (${fmtDays(c.lateDays)} days)', c.late),
+      if (c.outside != 0) ('Before joining / after leaving (${fmtDays(c.outsideDays)} days)', c.outside),
+      ('EPF', epf),
+      if (esi > 0) ('ESI', esi),
+      ('Professional Tax', professionalTax),
+      if (tds > 0) ('TDS', tds),
+      if (cug > 0) ('CUG', cug),
+    ];
+  }
+
+  double get fullTotalDeductions =>
+      _r2(fullDeductions.fold<double>(0, (s, e) => s + e.$2));
+
+  /// What rounding net pay to the rupee added or took off.
+  double get fullRoundedOff => _r2(netPay - (grossPay - fullTotalDeductions));
+
   /// 30 -> "30", 27.5 -> "27.5".
   static String fmtDays(double v) =>
       v == v.roundToDouble() ? v.toStringAsFixed(0) : v.toStringAsFixed(1);

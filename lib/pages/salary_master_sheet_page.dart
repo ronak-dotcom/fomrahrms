@@ -71,6 +71,62 @@ class _SalaryMasterSheetPageState extends State<SalaryMasterSheetPage> {
   bool get _running => SalaryMasterExport.isRunning(_rows, _cycleEnd);
   num _sum(String k) => _paid.fold<num>(0, (t, r) => t + _n(r, k));
 
+  // ── Gross minus deductions (HR, 25 Nov 2026) ──────────────────────────
+  // Read as: monthly gross, less LOP / late and PF, ESI, PT, TDS, equals
+  // net pay. The engine pays earnings in proportion to payable days, so the
+  // sheet used to show a reduced "gross earned" and deductions that left
+  // LOP out, and gross minus deductions did not come to net pay. Same
+  // restatement as Payslip.payCuts; net pay is unchanged.
+  static double _r2(num v) => (v * 100).roundToDouble() / 100;
+
+  static ({double lopDays, double lop, double lateDays, double late, double outsideDays, double outside})
+      _cuts(Map<String, dynamic> r) {
+    final gross = _n(r, 'monthly_gross').toDouble();
+    final cycle = _n(r, 'cycle_days').toDouble();
+    final lateDays = (_n(r, 'late_lop') + _n(r, 'permission_lop')).toDouble();
+    final lost = _n(r, 'days_lost').toDouble();
+    final lopDays = lost - lateDays < 0 ? 0.0 : lost - lateDays;
+    var outsideDays = cycle - _n(r, 'payable_days').toDouble() - lost;
+    if (outsideDays < 0.0001) outsideDays = 0;
+    if (gross <= 0 || cycle <= 0) {
+      return (lopDays: lopDays, lop: 0.0, lateDays: lateDays, late: 0.0, outsideDays: outsideDays, outside: 0.0);
+    }
+    final perDay = gross / cycle;
+    var lop = _r2(perDay * lopDays);
+    var late = _r2(perDay * lateDays);
+    var outside = _r2(perDay * outsideDays);
+    final residual = _r2(_r2(gross - _n(r, 'gross_earned')) - (lop + late + outside));
+    // Only onto a cut that has days behind it; otherwise the paise fall into
+    // "Rounded off" rather than showing a 0-day loss of pay.
+    if (residual != 0) {
+      if (lopDays > 0 && lop >= late && lop >= outside) {
+        lop = _r2(lop + residual);
+      } else if (lateDays > 0 && late >= outside) {
+        late = _r2(late + residual);
+      } else if (outsideDays > 0) {
+        outside = _r2(outside + residual);
+      } else if (lopDays > 0) {
+        lop = _r2(lop + residual);
+      } else if (lateDays > 0) {
+        late = _r2(late + residual);
+      }
+    }
+    return (lopDays: lopDays, lop: lop, lateDays: lateDays, late: late, outsideDays: outsideDays, outside: outside);
+  }
+
+  /// LOP, late and days outside employment, in rupees.
+  static double _cutTotal(Map<String, dynamic> r) {
+    final c = _cuts(r);
+    return _r2(c.lop + c.late + c.outside);
+  }
+
+  /// Everything taken off the monthly gross.
+  static double _dedFromGross(Map<String, dynamic> r) => _r2(_cutTotal(r) +
+      _n(r, 'epf') + _n(r, 'esi') + _n(r, 'professional_tax') + _n(r, 'tds'));
+
+  double _sumBy(double Function(Map<String, dynamic>) f) =>
+      _paid.fold<double>(0, (t, r) => t + f(r));
+
   Future<void> _load() async {
     setState(() {
       _loading = true;
@@ -267,12 +323,13 @@ class _SalaryMasterSheetPageState extends State<SalaryMasterSheetPage> {
         );
     final tiles = [
       tile('Net salary to credit', _rs(_sum('net_pay')), color: MobileUi.present, big: true),
-      tile('Gross earned', _rs(_sum('gross_earned'))),
-      tile('Loss of pay', _rs(_sum('lop_amount')), color: _sum('lop_amount') > 0 ? MobileUi.lop : null),
-      tile('Deductions', _rs(_sum('total_deductions'))),
+      tile('Gross (monthly)', _rs(_sum('monthly_gross'))),
+      tile('LOP & late', _rs(_sumBy(_cutTotal)), color: _sumBy(_cutTotal) > 0 ? MobileUi.lop : null),
+      tile('Total deductions', _rs(_sumBy(_dedFromGross))),
     ];
     final statutory = Text(
-        'Monthly gross ${_rs(_sum('monthly_gross'))} · EPF ${_rsp(_sum('epf'))} · ESI ${_rs(_sum('esi'))} · '
+        'Gross less deductions = net pay. Deductions: LOP & late ${_rsp(_sumBy(_cutTotal))} · '
+        'EPF ${_rsp(_sum('epf'))} · ESI ${_rs(_sum('esi'))} · '
         'Professional tax ${_rs(_sum('professional_tax'))} · TDS ${_rs(_sum('tds'))}',
         style: const TextStyle(fontSize: 12.5, color: AppTheme.textSecondary));
     if (wide) {
@@ -362,13 +419,14 @@ class _SalaryMasterSheetPageState extends State<SalaryMasterSheetPage> {
     // (the Excel file keeps every column).
     final paid = _paid;
     final breakup = <(String, String)>[
-      ('Basic', 'basic'),
-      ('DA', 'da'),
-      ('HRA', 'hra'),
-      ('Conv.', 'conveyance'),
-      ('Other', 'other_allowance'),
-      ('Edu.', 'educational'),
-      ('LTA', 'lta'),
+      // Full monthly rates: they add up to the monthly gross.
+      ('Basic', 'fixed_basic'),
+      ('DA', 'fixed_da'),
+      ('HRA', 'fixed_hra'),
+      ('Conv.', 'fixed_conveyance'),
+      ('Other', 'fixed_other_allowance'),
+      ('Edu.', 'fixed_educational'),
+      ('LTA', 'fixed_lta'),
       ('EPF', 'epf'),
       ('ESI', 'esi'),
       ('PT', 'professional_tax'),
@@ -391,9 +449,9 @@ class _SalaryMasterSheetPageState extends State<SalaryMasterSheetPage> {
             const DataColumn(label: Text('LOP\ndays'), numeric: true),
             const DataColumn(label: Text('Net pay\nto credit'), numeric: true),
             const DataColumn(label: Text('Payslip')),
-            const DataColumn(label: Text('Monthly\ngross'), numeric: true),
-            const DataColumn(label: Text('Gross\nearned'), numeric: true),
-            const DataColumn(label: Text('Deductions'), numeric: true),
+            const DataColumn(label: Text('Gross\n(monthly)'), numeric: true),
+            const DataColumn(label: Text('LOP &\nlate'), numeric: true),
+            const DataColumn(label: Text('Total\ndeductions'), numeric: true),
             for (final (l, _) in breakup) DataColumn(label: Text(l), numeric: true),
           ],
           rows: [
@@ -414,8 +472,9 @@ class _SalaryMasterSheetPageState extends State<SalaryMasterSheetPage> {
                 numCell(_rs(_n(r, 'net_pay')), bold: true),
                 DataCell(_statusChip(r)),
                 numCell(_rs(_n(r, 'monthly_gross'))),
-                numCell(_rsp(_n(r, 'gross_earned'))),
-                numCell(_rsp(_n(r, 'total_deductions'))),
+                numCell(_cutTotal(r) == 0 ? '–' : _rsp(_cutTotal(r)),
+                    color: _cutTotal(r) > 0 ? MobileUi.lop : null, tip: _lopTip(r)),
+                numCell(_rsp(_dedFromGross(r))),
                 for (final (_, k) in breakup) numCell(_n(r, k) == 0 ? '–' : _rsp(_n(r, k))),
               ]),
             DataRow(
@@ -427,8 +486,8 @@ class _SalaryMasterSheetPageState extends State<SalaryMasterSheetPage> {
                 numCell(_rs(_sum('net_pay')), bold: true),
                 const DataCell(SizedBox()),
                 numCell(_rs(_sum('monthly_gross')), bold: true),
-                numCell(_rsp(_sum('gross_earned')), bold: true),
-                numCell(_rsp(_sum('total_deductions')), bold: true),
+                numCell(_rsp(_sumBy(_cutTotal)), bold: true),
+                numCell(_rsp(_sumBy(_dedFromGross)), bold: true),
                 for (final (_, k) in breakup) numCell(_rsp(_sum(k)), bold: true),
               ],
             ),
@@ -495,21 +554,27 @@ class _SalaryMasterSheetPageState extends State<SalaryMasterSheetPage> {
       line('LOP: unpaid leave', _n(r, 'leave_lop'), days: true),
       line('LOP: late / permission', _n(r, 'late_lop') + _n(r, 'permission_lop'), days: true),
       line('Payable days', _n(r, 'payable_days'), days: true, bold: true),
-      head('Earned this cycle'),
-      line('Basic', _n(r, 'basic')),
-      line('DA', _n(r, 'da')),
-      line('HRA', _n(r, 'hra')),
-      line('Conveyance', _n(r, 'conveyance')),
-      line('Other allowance', _n(r, 'other_allowance')),
-      line('Educational', _n(r, 'educational')),
-      line('LTA', _n(r, 'lta')),
-      line('Gross earned (of ${_rs(_n(r, 'monthly_gross'))})', _n(r, 'gross_earned'), bold: true),
+      head('Gross (monthly)'),
+      line('Basic', _n(r, 'fixed_basic')),
+      line('DA', _n(r, 'fixed_da')),
+      line('HRA', _n(r, 'fixed_hra')),
+      line('Conveyance', _n(r, 'fixed_conveyance')),
+      line('Other allowance', _n(r, 'fixed_other_allowance')),
+      line('Educational', _n(r, 'fixed_educational')),
+      line('LTA', _n(r, 'fixed_lta')),
+      line('Gross salary', _n(r, 'monthly_gross'), bold: true),
       head('Deductions'),
+      if (_cuts(r).lop != 0) line('Loss of pay (${_days(_cuts(r).lopDays)} days)', _cuts(r).lop, minus: true),
+      if (_cuts(r).late != 0) line('Late / permission (${_days(_cuts(r).lateDays)} days)', _cuts(r).late, minus: true),
+      if (_cuts(r).outside != 0)
+        line('Before joining / after leaving (${_days(_cuts(r).outsideDays)} days)', _cuts(r).outside, minus: true),
       line('EPF', _n(r, 'epf'), minus: true),
       line('ESI', _n(r, 'esi'), minus: true),
       line('Professional tax', _n(r, 'professional_tax'), minus: true),
       line('TDS', _n(r, 'tds'), minus: true),
-      if (_n(r, 'rounded_off') != 0) line('Rounded off', _n(r, 'rounded_off')),
+      line('Total deductions', _dedFromGross(r), bold: true, minus: true),
+      if (_r2(_n(r, 'net_pay') - (_n(r, 'monthly_gross') - _dedFromGross(r))) != 0)
+        line('Rounded off', _r2(_n(r, 'net_pay') - (_n(r, 'monthly_gross') - _dedFromGross(r)))),
       const Divider(height: 14),
       line('Net pay to credit', _n(r, 'net_pay'), bold: true),
     ]);

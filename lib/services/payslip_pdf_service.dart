@@ -122,7 +122,10 @@ class PayslipPdfService {
   }
 
   static pw.Widget _earningsDeductions(Payslip p) {
-    final earnings = <(String, double)>[
+    // Engine payslips: full monthly gross, less LOP / late and statutory
+    // deductions, equals net pay (HR, 25 Nov 2026).
+    final full = p.showsFullGross;
+    final earnings = full ? p.fullEarnings : <(String, double)>[
       ('Basic', p.basic),
       if (p.da > 0) ('Dearness Allowance', p.da),
       ('House Rent Allowance', p.hra),
@@ -132,7 +135,7 @@ class PayslipPdfService {
       ('Conveyance Allowance', p.conveyanceAllowance),
       if (p.specialAllowance > 0) ('Special Allowance', p.specialAllowance),
     ];
-    final deductions = <(String, double)>[
+    final deductions = full ? p.fullDeductions : <(String, double)>[
       ('EPF', p.epf),
       if (p.esi > 0) ('ESI', p.esi),
       ('Professional Tax', p.professionalTax),
@@ -157,8 +160,10 @@ class PayslipPdfService {
       ]));
     }
     rows.add(pw.TableRow(decoration: const pw.BoxDecoration(color: _headerFill), children: [
-      _td('Actual Gross Pay', bold: true), _td(_fmtRs(p.actualGrossPay), alignRight: true, bold: true),
-      _td('Total Deductions', bold: true), _td(_fmtRs(p.totalDeductions), alignRight: true, bold: true),
+      _td(full ? 'Gross Salary' : 'Actual Gross Pay', bold: true),
+      _td(_fmtRs(full ? p.grossPay : p.actualGrossPay), alignRight: true, bold: true),
+      _td('Total Deductions', bold: true),
+      _td(_fmtRs(full ? p.fullTotalDeductions : p.totalDeductions), alignRight: true, bold: true),
     ]));
 
     return pw.Table(
@@ -173,11 +178,12 @@ class PayslipPdfService {
 
   static pw.Widget _netPayBar(Payslip p) => pw.Column(children: [
         // Net pay is rounded to the rupee (agreed with HR, Nov 2026).
-        if (p.roundedOff.abs() >= 0.005)
+        if ((p.showsFullGross ? p.fullRoundedOff : p.roundedOff).abs() >= 0.005)
           pw.Padding(
             padding: const pw.EdgeInsets.only(bottom: 2, right: 10),
             child: pw.Row(mainAxisAlignment: pw.MainAxisAlignment.end, children: [
-              pw.Text('Rounded off  Rs. ${p.roundedOff.toStringAsFixed(2)}', style: const pw.TextStyle(fontSize: 8)),
+              pw.Text('Rounded off  Rs. ${(p.showsFullGross ? p.fullRoundedOff : p.roundedOff).toStringAsFixed(2)}',
+                  style: const pw.TextStyle(fontSize: 8)),
             ]),
           ),
         pw.Container(
