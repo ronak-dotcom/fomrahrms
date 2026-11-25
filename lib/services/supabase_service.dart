@@ -4959,6 +4959,10 @@ class SupabaseService {
 
   static Future<Map<String, dynamic>?> fetchAppUserByActivationToken(String token) async {
     if (token.isEmpty) return null;
+    // Opened straight from the email, this page loads before Supabase has
+    // finished starting, so _db was still null and every link showed as
+    // "Invalid Activation Link" without the database ever being asked.
+    await awaitReady();
     final data = await _db?.rpc('app_user_by_activation_token', params: {'p_token': token});
     if (data is List && data.isNotEmpty) return Map<String, dynamic>.from(data.first as Map);
     return null;
@@ -4971,6 +4975,7 @@ class SupabaseService {
   /// unlike the service_role-only set_app_user_password RPC. Returns the
   /// activated email on success, or null if the token was invalid/expired.
   static Future<String?> completeAccountActivation(String token, {required String password}) async {
+    await awaitReady();
     final email = await _db?.rpc('complete_account_activation',
         params: {'p_token': token, 'p_password': password}) as String?;
     if (email == null) return null;
@@ -5081,6 +5086,8 @@ class SupabaseService {
   }
 
   static Future<Map<String, dynamic>?> fetchAppUserByResetToken(String token) async {
+    // Same as the activation link: wait for Supabase to finish starting.
+    await awaitReady();
     if (token.isEmpty) return null;
     final data = await _db?.rpc('app_user_by_reset_token', params: {'p_token': token});
     if (data is List && data.isNotEmpty) return Map<String, dynamic>.from(data.first as Map);
@@ -5092,6 +5099,7 @@ class SupabaseService {
   /// supabase/migrations/20260716000500_password_flow_rpcs.sql. Returns the
   /// reset email on success, or null if the token was invalid/expired.
   static Future<String?> completePasswordReset(String token, {required String password}) async {
+    await awaitReady();
     final email = await _db?.rpc('complete_password_reset',
         params: {'p_token': token, 'p_password': password}) as String?;
     if (email != null) {
