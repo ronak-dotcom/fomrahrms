@@ -103,6 +103,7 @@ import 'pages/staff/staff_leave_page.dart';
 import 'pages/staff/staff_permission_page.dart';
 import 'pages/staff/staff_profile_page.dart';
 import 'pages/exits_page.dart';
+import 'pages/joiner_attendance_page.dart';
 import 'constants/org_lists.dart';
 
 /// Personal, self-service pages — the things an employee does about their own
@@ -359,6 +360,7 @@ final _router = GoRouter(
         GoRoute(path: '/notifications',                   builder: (_, __) => const NotificationsPage()),
         GoRoute(path: '/reports-analytics',               builder: (_, __) => const ReportsAnalyticsPage()),
         GoRoute(path: '/exits',                           builder: (_, __) => const ExitsPage()),
+        GoRoute(path: '/joiner-attendance',               builder: (_, __) => const JoinerAttendancePage()),
         // HR personal pages (My Space)
         GoRoute(path: '/hr/my-details',             builder: (_, __) => const MyProfilePage()),
         GoRoute(path: '/hr/my-attendance',            builder: (_, __) => const MyAttendancePage(checkInRoute: '/hr/attendance/check-in-out')),
@@ -540,6 +542,7 @@ final _router = GoRouter(
         GoRoute(path: '/management/employee-management/profile', redirect: (_, __) => '/management/employee-management'),
         GoRoute(path: '/management/employee-management/reporting-managers', builder: (_, __) => const ReportingManagersPage()),
         GoRoute(path: '/management/exits',                  builder: (_, __) => const ExitsPage()),
+        GoRoute(path: '/management/joiner-attendance',      builder: (_, __) => const JoinerAttendancePage()),
         GoRoute(path: '/management/attendance-management',  builder: (_, __) => const HrAttendanceRecordsPage(routePrefix: '/management')),
         GoRoute(path: '/management/attendance/employee-attendance-calendar', builder: (_, state) {
           final extra = state.extra as Map<String, dynamic>;

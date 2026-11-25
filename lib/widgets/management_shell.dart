@@ -31,6 +31,7 @@ const _sections = <SectionSpec>[
     SectionTab('Leave', '/management/leave-management', title: 'Leave records',
         alsoMatches: ['/management/leave/employee-records', '/management/leave/overview']),
     SectionTab('Late coming', '/management/attendance/late-coming', title: 'Late coming'),
+    SectionTab('New joiners', '/management/joiner-attendance', title: 'New joiners: days before the account opened'),
     SectionTab('Live location', '/management/attendance/gps-tracking', title: 'Live location'),
     SectionTab('Location history', '/management/location-history', title: 'Location history'),
   ]),
