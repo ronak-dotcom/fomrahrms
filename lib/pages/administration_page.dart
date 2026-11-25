@@ -8,6 +8,7 @@ import '../services/email_service.dart';
 import '../constants/org_lists.dart';
 import '../widgets/back_button.dart';
 import '../theme/app_theme.dart';
+import '../widgets/exit_widgets.dart' show showRecordExitDialog;
 import 'employee_onboarding_page.dart' show OnboardingFormReadOnlyBody;
 
 Color get _mgmtColor => AppTheme.sidebarSelectedBg;
@@ -268,8 +269,15 @@ class _UsersTab extends StatelessWidget {
                   visualDensity: VisualDensity.compact,
                 ),
                 IconButton(
-                  tooltip: u.active ? 'Deactivate User' : 'Activate User',
+                  tooltip: u.active ? 'Record exit' : 'Activate User',
                   onPressed: () async {
+                    // Leaving goes through a recorded exit: last working day,
+                    // Management approval, and the account closes itself that
+                    // night. Staff Portal users stay a plain toggle (HR-owned).
+                    if (u.active && !kStaffPortalDepartments.contains(u.department)) {
+                      await showRecordExitDialog(context, u);
+                      return;
+                    }
                     // Activating a brand-new account (never logged in, no
                     // password set yet) sends the secure Set Password link
                     // instead of just flipping active on — same flow as

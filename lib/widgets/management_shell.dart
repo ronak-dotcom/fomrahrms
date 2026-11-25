@@ -37,6 +37,7 @@ const _sections = <SectionSpec>[
   SectionSpec('People', Icons.groups_rounded, [
     SectionTab('Employees', '/management/employee-management', title: 'Employees'),
     SectionTab('Onboarding', '/management/employee-onboarding', title: 'Onboarding'),
+    SectionTab('Exits', '/management/exits', title: 'Exits & F&F'),
     SectionTab('Interviews', '/management/interview-process', title: 'Interviews',
         alsoMatches: ['/management/candidate-detail']),
     SectionTab('Interview review', '/management/interview-review', title: 'Interview review'),

@@ -30,6 +30,7 @@ List<SectionSpec> get _sections => [
       SectionSpec('People', Icons.groups_rounded, [
         const SectionTab('Employees', '/employee-management', title: 'Employees'),
         const SectionTab('Onboarding', '/employee-onboarding', title: 'Onboarding'),
+        const SectionTab('Exits', '/exits', title: 'Exits & F&F'),
         const SectionTab('Interviews', '/interview-process', title: 'Interviews',
             alsoMatches: ['/candidate-detail']),
         const SectionTab('Appraisals', '/appraisals', title: 'Appraisals'),
