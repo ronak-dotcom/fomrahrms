@@ -343,6 +343,17 @@ class _SalaryMasterSheetPageState extends State<SalaryMasterSheetPage> {
     return const MChip('Not issued', color: AppTheme.textSecondary, background: Color(0xFFEEF1F6));
   }
 
+  /// "9.5 → 7.5" (opening → closing) for a leave bucket; "–" when none.
+  String _bal(Map<String, dynamic> r, String b) {
+    if (r['${b}_opening'] == null) return '–';
+    final o = _n(r, '${b}_opening'), c = _n(r, '${b}_closing');
+    String f(num v) => v == v.roundToDouble() ? v.toInt().toString() : v.toStringAsFixed(1);
+    return '${f(o)} → ${f(c)}';
+  }
+
+  String _balTip(Map<String, dynamic> r, String b) =>
+      'Opening ${_n(r, '${b}_opening')} · availed ${_n(r, '${b}_availed')} · closing ${_n(r, '${b}_closing')}';
+
   String _lopTip(Map<String, dynamic> r) =>
       'Absent without leave ${_days(_n(r, 'absence_lop'))} · unpaid leave ${_days(_n(r, 'leave_lop'))} · '
       'late ${_days(_n(r, 'late_lop'))} · permission ${_days(_n(r, 'permission_lop'))}';
@@ -394,6 +405,9 @@ class _SalaryMasterSheetPageState extends State<SalaryMasterSheetPage> {
             const DataColumn(label: Text('Monthly\ngross'), numeric: true),
             const DataColumn(label: Text('Gross\nearned'), numeric: true),
             const DataColumn(label: Text('Deductions'), numeric: true),
+            const DataColumn(label: Text('CL\nopen → close'), numeric: true),
+            const DataColumn(label: Text('ML\nopen → close'), numeric: true),
+            const DataColumn(label: Text('EL\nopen → close'), numeric: true),
             for (final (l, _) in breakup) DataColumn(label: Text(l), numeric: true),
           ],
           rows: [
@@ -416,6 +430,7 @@ class _SalaryMasterSheetPageState extends State<SalaryMasterSheetPage> {
                 numCell(_rs(_n(r, 'monthly_gross'))),
                 numCell(_rsp(_n(r, 'gross_earned'))),
                 numCell(_rsp(_n(r, 'total_deductions'))),
+                for (final b in const ['cl', 'ml', 'el']) numCell(_bal(r, b), tip: _balTip(r, b)),
                 for (final (_, k) in breakup) numCell(_n(r, k) == 0 ? '–' : _rsp(_n(r, k))),
               ]),
             DataRow(
@@ -429,6 +444,9 @@ class _SalaryMasterSheetPageState extends State<SalaryMasterSheetPage> {
                 numCell(_rs(_sum('monthly_gross')), bold: true),
                 numCell(_rsp(_sum('gross_earned')), bold: true),
                 numCell(_rsp(_sum('total_deductions')), bold: true),
+                const DataCell(SizedBox()),
+                const DataCell(SizedBox()),
+                const DataCell(SizedBox()),
                 for (final (_, k) in breakup) numCell(_rsp(_sum(k)), bold: true),
               ],
             ),
@@ -495,6 +513,17 @@ class _SalaryMasterSheetPageState extends State<SalaryMasterSheetPage> {
       line('LOP: unpaid leave', _n(r, 'leave_lop'), days: true),
       line('LOP: late / permission', _n(r, 'late_lop') + _n(r, 'permission_lop'), days: true),
       line('Payable days', _n(r, 'payable_days'), days: true, bold: true),
+      head('Leave balance (opening → availed → closing)'),
+      for (final (b, l) in const [('cl', 'CL'), ('ml', 'ML'), ('el', 'EL')])
+        if (r['${b}_opening'] != null)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 2),
+            child: Row(children: [
+              Expanded(child: Text(l, style: const TextStyle(fontSize: 13))),
+              Text('${_days(_n(r, '${b}_opening'))} → ${_days(_n(r, '${b}_availed'))} → ${_days(_n(r, '${b}_closing'))}',
+                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500)),
+            ]),
+          ),
       head('Earned this cycle'),
       line('Basic', _n(r, 'basic')),
       line('DA', _n(r, 'da')),
