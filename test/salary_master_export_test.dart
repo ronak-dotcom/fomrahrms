@@ -101,11 +101,12 @@ void main() {
       expect(wb, contains('name="Summary"'));
 
       final master = files['xl/worksheets/sheet1.xml']!;
-      expect(SalaryMasterExport.columnHeadings.length, 55);
+      expect(SalaryMasterExport.columnHeadings.length, 57);
+      expect(SalaryMasterExport.columnHeadings, containsAll(<String>['Permissions', 'Permission minutes']));
       expect(SalaryMasterExport.columnHeadings, containsAll(<String>['CL opening', 'CL availed', 'CL closing']));
       expect(SalaryMasterExport.columnHeadings, isNot(contains('Bank account')));
-      // Net pay is column 54 (BB); data rows are 7 and 8; the total is 39,000.
-      expect(master, contains('<f>SUM(BB7:BB8)</f><v>39000</v>'));
+      // Net pay is column 56 (BD); data rows are 7 and 8; the total is 39,000.
+      expect(master, contains('<f>SUM(BD7:BD8)</f><v>39000</v>'));
       expect(master, contains('Total (2 people)'));
       expect(master, contains('Not on this sheet (no salary structure): Chitra (FD-03).'));
       expect(master, contains('Records changed after publishing'));

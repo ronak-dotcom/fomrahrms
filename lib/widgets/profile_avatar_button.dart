@@ -264,6 +264,8 @@ List<(IconData, String, String)> get _personalLinks => switch (UserSession.role)
           (Icons.account_balance_wallet_rounded, 'My leave balance', '/manager/leave/balance'),
           (Icons.timer_outlined, 'Apply permission', '/manager/leave/permission'),
           (Icons.swap_horiz_rounded, 'Apply comp off', '/manager/leave/compoff'),
+          (Icons.work_history_rounded, 'Apply on duty (BTL / site)', '/manager/on-duty'),
+          (Icons.report_problem_rounded, 'Attendance issue', '/manager/attendance-confirmation'),
           (Icons.receipt_long_rounded, 'My payslips', '/manager/my-payslips'),
           (Icons.fact_check_rounded, 'My appraisal', '/manager/appraisal'),
           (Icons.build_rounded, 'Maintenance requests', '/manager/maintenance-management'),

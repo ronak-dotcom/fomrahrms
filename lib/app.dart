@@ -468,6 +468,10 @@ final _router = GoRouter(
         GoRoute(path: '/manager/leave/apply',             builder: (_, __) => const ApplyLeavePage()),
         GoRoute(path: '/manager/leave/permission',        builder: (_, __) => const ApplyPermissionPage()),
         GoRoute(path: '/manager/leave/compoff',           builder: (_, __) => const ApplyCompOffPage()),
+        // Managers on site or at BTL activities raise On Duty themselves
+        // (HR's report, 27 Nov 2026), and can report an attendance problem.
+        GoRoute(path: '/manager/on-duty',                 builder: (_, __) => const ApplyOnDutyPage()),
+        GoRoute(path: '/manager/attendance-confirmation', builder: (_, __) => const RequestAttendanceConfirmationPage()),
         GoRoute(path: '/manager/leave/approvals',         builder: (_, __) => const MyLeaveApprovalsPage()),
         GoRoute(path: '/manager/leave/balance',           builder: (_, __) => const LeaveBalancePage()),
         GoRoute(path: '/manager/leave/team-approvals',    builder: (_, __) => const TeamLeaveApprovalsPage()),

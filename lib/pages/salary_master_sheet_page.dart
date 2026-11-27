@@ -411,6 +411,12 @@ class _SalaryMasterSheetPageState extends State<SalaryMasterSheetPage> {
   String _balTip(Map<String, dynamic> r, String b) =>
       'Opening ${_n(r, '${b}_opening')} · availed ${_n(r, '${b}_availed')} · closing ${_n(r, '${b}_closing')}';
 
+  /// "2 · 90 min" (permissions taken, minutes); "–" for none.
+  String _perm(Map<String, dynamic> r) {
+    final c = _n(r, 'permission_count').toInt();
+    return c == 0 ? '–' : '$c · ${_n(r, 'permission_minutes').toInt()} min';
+  }
+
   String _lopTip(Map<String, dynamic> r) =>
       'Absent without leave ${_days(_n(r, 'absence_lop'))} · unpaid leave ${_days(_n(r, 'leave_lop'))} · '
       'late ${_days(_n(r, 'late_lop'))} · permission ${_days(_n(r, 'permission_lop'))}';
@@ -458,6 +464,7 @@ class _SalaryMasterSheetPageState extends State<SalaryMasterSheetPage> {
             const DataColumn(label: Text('Employee')),
             const DataColumn(label: Text('Paid\ndays'), numeric: true),
             const DataColumn(label: Text('LOP\ndays'), numeric: true),
+            const DataColumn(label: Text('Permis-\nsion'), numeric: true),
             const DataColumn(label: Text('Net pay\nto credit'), numeric: true),
             const DataColumn(label: Text('Payslip')),
             const DataColumn(label: Text('Gross\n(monthly)'), numeric: true),
@@ -483,6 +490,7 @@ class _SalaryMasterSheetPageState extends State<SalaryMasterSheetPage> {
                 numCell('${_days(_n(r, 'payable_days'))} / ${_n(r, 'cycle_days')}'),
                 numCell(_days(_n(r, 'days_lost')),
                     color: _n(r, 'days_lost') > 0 ? MobileUi.lop : null, tip: _lopTip(r)),
+                numCell(_perm(r)),
                 numCell(_rs(_n(r, 'net_pay')), bold: true),
                 DataCell(_statusChip(r)),
                 numCell(_rs(_n(r, 'monthly_gross'))),
@@ -498,6 +506,7 @@ class _SalaryMasterSheetPageState extends State<SalaryMasterSheetPage> {
                 DataCell(Text('Total (${paid.length})', style: const TextStyle(fontWeight: FontWeight.w800))),
                 const DataCell(SizedBox()),
                 numCell(_days(_sum('days_lost')), bold: true),
+                const DataCell(SizedBox()),
                 numCell(_rs(_sum('net_pay')), bold: true),
                 const DataCell(SizedBox()),
                 numCell(_rs(_sum('monthly_gross')), bold: true),
@@ -570,6 +579,13 @@ class _SalaryMasterSheetPageState extends State<SalaryMasterSheetPage> {
           _n(r, 'cl_used') + _n(r, 'ml_used') + _n(r, 'el_used') + _n(r, 'comp_off_used'), days: true),
       line('LOP: absent without leave', _n(r, 'absence_lop'), days: true),
       line('LOP: unpaid leave', _n(r, 'leave_lop'), days: true),
+      Padding(
+        padding: const EdgeInsets.symmetric(vertical: 2),
+        child: Row(children: [
+          const Expanded(child: Text('Permissions (count · minutes)', style: TextStyle(fontSize: 13))),
+          Text(_perm(r), style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500)),
+        ]),
+      ),
       line('LOP: late / permission', _n(r, 'late_lop') + _n(r, 'permission_lop'), days: true),
       line('Payable days', _n(r, 'payable_days'), days: true, bold: true),
       head('Leave balance (opening → availed → closing)'),

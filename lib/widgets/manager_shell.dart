@@ -38,6 +38,8 @@ const _otherTitles = <BreadcrumbSection>[
   (label: 'My leave balance', route: '/manager/leave/balance'),
   (label: 'Apply permission', route: '/manager/leave/permission'),
   (label: 'Apply comp off', route: '/manager/leave/compoff'),
+  (label: 'Apply on duty', route: '/manager/on-duty'),
+  (label: 'Attendance issue', route: '/manager/attendance-confirmation'),
   (label: 'My payslips', route: '/manager/my-payslips'),
   (label: 'My appraisal', route: '/manager/appraisal'),
   (label: 'My maintenance requests', route: '/manager/maintenance-management'),

@@ -122,6 +122,8 @@ class SalaryMasterExport {
     _Col('Days', 'ML', 'ml_used', _K.days, 6),
     _Col('Days', 'EL', 'el_used', _K.days, 6),
     _Col('Days', 'Comp off', 'comp_off_used', _K.days, 7),
+    _Col('Days', 'Permissions', 'permission_count', _K.days, 9),
+    _Col('Days', 'Permission minutes', 'permission_minutes', _K.days, 10),
     _Col('Leave balance', 'CL opening', 'cl_opening', _K.days, 8),
     _Col('Leave balance', 'CL availed', 'cl_availed', _K.days, 8),
     _Col('Leave balance', 'CL closing', 'cl_closing', _K.days, 8),
