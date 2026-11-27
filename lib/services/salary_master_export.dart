@@ -6,7 +6,8 @@ import '../utils/xlsx_writer.dart';
 /// salary to credit to each person for a cycle, with the breakup.
 ///
 /// Two sheets (bank details not needed, Ronak 21 Nov 2026):
-///   * Master sheet: one line per person: days, LOP by cause, fixed monthly
+///   * Master sheet: one line per person: days, leave balances (CL, ML, EL:
+///     opening, availed this cycle, closing), LOP by cause, fixed monthly
 ///     salary, what was earned this cycle, deductions and the net pay to
 ///     credit, with totals.
 ///   * Summary: the totals by component and by department, for approval.
@@ -121,6 +122,15 @@ class SalaryMasterExport {
     _Col('Days', 'ML', 'ml_used', _K.days, 6),
     _Col('Days', 'EL', 'el_used', _K.days, 6),
     _Col('Days', 'Comp off', 'comp_off_used', _K.days, 7),
+    _Col('Leave balance', 'CL opening', 'cl_opening', _K.days, 8),
+    _Col('Leave balance', 'CL availed', 'cl_availed', _K.days, 8),
+    _Col('Leave balance', 'CL closing', 'cl_closing', _K.days, 8),
+    _Col('Leave balance', 'ML opening', 'ml_opening', _K.days, 8),
+    _Col('Leave balance', 'ML availed', 'ml_availed', _K.days, 8),
+    _Col('Leave balance', 'ML closing', 'ml_closing', _K.days, 8),
+    _Col('Leave balance', 'EL opening', 'el_opening', _K.days, 8),
+    _Col('Leave balance', 'EL availed', 'el_availed', _K.days, 8),
+    _Col('Leave balance', 'EL closing', 'el_closing', _K.days, 8),
     _Col('LOP days', 'Absent without leave', 'absence_lop', _K.days, 10),
     _Col('LOP days', 'Unpaid leave', 'leave_lop', _K.days, 8),
     _Col('LOP days', 'Late LOP', 'late_lop', _K.days, 7),

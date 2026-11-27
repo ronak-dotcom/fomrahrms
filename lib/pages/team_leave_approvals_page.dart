@@ -618,8 +618,8 @@ class _TeamLeaveApprovalsPageState extends State<TeamLeaveApprovalsPage>
                     _DetailRow(Icons.date_range_rounded, 'Duration',
                         '${_fmtDate(req.from)}  →  ${_fmtDate(req.to)}'),
                     const SizedBox(height: 8),
-                    _DetailRow(Icons.numbers_rounded, 'Days',
-                        req.isHalfDay ? '½ day' : '${req.days} day${req.days == 1 ? '' : 's'}'),
+                    _DetailRow(Icons.numbers_rounded, req.leaveType == 'Permission' ? 'Time' : 'Days',
+                        req.durationLabel),
                     const SizedBox(height: 8),
                     if (req.leaveType != 'Permission') ...[
                       _DetailRow(
@@ -1726,7 +1726,7 @@ class _RequestRowState extends State<_RequestRow> {
       const SizedBox(height: 4),
       Text('${_fmtDate(req.from)} – ${_fmtDate(req.to)}',
           style: TextStyle(fontSize: 11.5, color: Colors.grey.shade700)),
-      Text(req.isHalfDay ? '½ Day' : '${req.days} Day${req.days == 1 ? '' : 's'}',
+      Text(req.durationLabel,
           style: TextStyle(fontSize: 11, color: Colors.grey.shade500)),
     ]);
 

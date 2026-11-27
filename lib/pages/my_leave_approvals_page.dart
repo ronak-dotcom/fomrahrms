@@ -178,7 +178,7 @@ class _AppCard extends StatelessWidget {
               _InfoChip(Icons.calendar_today_rounded,
                   '${_fmt(app.from)} → ${_fmt(app.to)}'),
               _InfoChip(Icons.numbers_rounded,
-                  app.isHalfDay ? '½ day' : '${app.days} day${app.days == 1 ? '' : 's'}'),
+                  app.durationLabel),
               _InfoChip(Icons.access_time_rounded,
                   'Applied: ${_fmt(app.appliedOn)}'),
               if (app.reason.isNotEmpty)
