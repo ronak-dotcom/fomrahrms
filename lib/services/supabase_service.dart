@@ -4195,6 +4195,48 @@ class SupabaseService {
     }
   }
 
+  /// The cycle's Late Review rows: the decision in force (action), and any
+  /// request from HR still waiting for Management (status 'pending',
+  /// requested_action). Keyed by employee id.
+  static Future<Map<String, Map<String, dynamic>>> fetchLateDecisions(
+      String cycleLabel) async {
+    try {
+      final rows = await _db
+          ?.from('late_lop_decisions')
+          .select('employee_id, action, note, decided_by, status, requested_action, approved_by')
+          .eq('cycle_label', cycleLabel);
+      return {
+        for (final r in List<Map<String, dynamic>>.from(rows ?? []))
+          r['employee_id'] as String: r,
+      };
+    } catch (e) {
+      _writeFailed('fetchLateDecisions', e);
+      return {};
+    }
+  }
+
+  /// Management's answer to HR's Late Review request. Returns an error
+  /// message, or null when it was saved.
+  static Future<String?> decideLateRequest({
+    required String employeeId,
+    required String cycleLabel,
+    required bool approve,
+  }) async {
+    try {
+      await _db?.rpc('decide_late_request', params: {
+        'p_employee_id': employeeId,
+        'p_cycle_label': cycleLabel,
+        'p_approve': approve,
+      });
+      logAuditEvent(approve ? 'late_decision_approved' : 'late_decision_rejected',
+          targetType: 'late_lop_decisions', targetId: '$employeeId/$cycleLabel');
+      return null;
+    } catch (e) {
+      _writeFailed('decideLateRequest', e);
+      return e.toString();
+    }
+  }
+
   static Future<List<Map<String, dynamic>>> fetchCycleReport(
       DateTime cycleEnd, {List<String>? employeeIds}) async {
     try {

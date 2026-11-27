@@ -17,6 +17,10 @@ import '../widgets/back_button.dart';
 ///
 /// Doing nothing is a valid choice: with no decision recorded the days are
 /// unpaid, which is the rule working as written.
+///
+/// HR's decision takes effect only once Management approves it (Ronak, 27
+/// Nov 2026); until then payroll keeps the earlier decision, or the rule.
+/// Management's own decisions apply at once.
 class LateReviewPage extends StatefulWidget {
   const LateReviewPage({super.key});
 
@@ -29,6 +33,7 @@ class _LateReviewPageState extends State<LateReviewPage> {
   DateTime _cycleEnd = attendanceCycleEnd(DateTime.now());
   List<AppUser> _users = const [];
   Map<String, Map<String, dynamic>> _costs = const {};
+  Map<String, Map<String, dynamic>> _decisions = const {};
 
   static const _actions = <String, String>{
     'lop': 'Unpaid (loss of pay)',
@@ -57,10 +62,14 @@ class _LateReviewPageState extends State<LateReviewPage> {
     final costs = await SupabaseService.fetchLateCosts(
         tracked.map((u) => u.employeeId).toList(), _cycleEnd);
 
+    final decisions =
+        await SupabaseService.fetchLateDecisions(attendanceCycleLabel(_cycleEnd));
+
     if (!mounted) return;
     setState(() {
       _users = tracked;
       _costs = costs;
+      _decisions = decisions;
       _loading = false;
     });
   }
@@ -89,7 +98,7 @@ class _LateReviewPageState extends State<LateReviewPage> {
             TextButton(onPressed: () => Navigator.pop(ctx, false),
                 child: const Text('Cancel')),
             ElevatedButton(onPressed: () => Navigator.pop(ctx, true),
-                child: const Text('Apply')),
+                child: Text(UserSession.isManagement ? 'Apply' : 'Send for approval')),
           ],
         ),
       );
@@ -115,7 +124,31 @@ class _LateReviewPageState extends State<LateReviewPage> {
           backgroundColor: Colors.red.shade700));
       return;
     }
+    if (!UserSession.isManagement) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Sent to Management. It applies once they approve.')));
+    }
     await _load();
+  }
+
+  Future<void> _decide(AppUser u, bool approve) async {
+    final err = await SupabaseService.decideLateRequest(
+      employeeId: u.employeeId,
+      cycleLabel: attendanceCycleLabel(_cycleEnd),
+      approve: approve,
+    );
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(err != null
+            ? 'Could not save: $err'
+            : approve ? 'Approved for ${u.name}.' : 'Rejected for ${u.name}.'),
+        backgroundColor: err != null ? Colors.red.shade700 : null));
+    await _load();
+  }
+
+  Map<String, dynamic>? _pending(AppUser u) {
+    final d = _decisions[u.employeeId];
+    return d != null && d['status'] == 'pending' ? d : null;
   }
 
   double _raw(AppUser u) =>
@@ -128,7 +161,11 @@ class _LateReviewPageState extends State<LateReviewPage> {
   @override
   Widget build(BuildContext context) {
     // Only people who actually have lates to decide about.
-    final withLates = _users.where((u) => _raw(u) > 0).toList();
+    final withLates = _users
+        .where((u) => _raw(u) > 0 || _pending(u) != null)
+        .toList()
+      // Requests waiting on Management first.
+      ..sort((a, b) => (_pending(a) != null ? 0 : 1).compareTo(_pending(b) != null ? 0 : 1));
 
     return Scaffold(
       body: SafeArea(
@@ -148,7 +185,8 @@ class _LateReviewPageState extends State<LateReviewPage> {
               'The first 3 lates each cycle are free. After that the time comes '
               'out of the 2-hour permission allowance, and once that is gone '
               'each further late costs half a day. Change what it comes out of '
-              'below — leaving it alone means unpaid.',
+              'below — leaving it alone means unpaid. HR\'s changes apply '
+              'once Management approves them.',
               style: TextStyle(fontSize: 12, color: Color(0xFF6B7280)),
             ),
           ),
@@ -196,7 +234,29 @@ class _LateReviewPageState extends State<LateReviewPage> {
                                       color: Colors.orange.shade800)),
                             ]),
                             const SizedBox(height: 8),
+                            if (_pending(u) != null) ...[
+                              _PendingBanner(
+                                request: _pending(u)!,
+                                label: _actions[_pending(u)!['requested_action']] ??
+                                    '${_pending(u)!['requested_action']}',
+                                canDecide: UserSession.isManagement,
+                                onApprove: () => _decide(u, true),
+                                onReject: () => _decide(u, false),
+                              ),
+                              const SizedBox(height: 8),
+                            ] else if (_decisions[u.employeeId]?['status'] == 'rejected') ...[
+                              Text(
+                                'Management rejected the last request — '
+                                '${_actions[_decisions[u.employeeId]!['requested_action']] ?? ''}.',
+                                style: TextStyle(fontSize: 11.5, color: Colors.red.shade700),
+                              ),
+                              const SizedBox(height: 6),
+                            ],
+                            Text('In force for payroll:',
+                                style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
+                            const SizedBox(height: 4),
                             DropdownButtonFormField<String>(
+                              key: ValueKey('${u.employeeId}-${_action(u)}-${_pending(u)?['requested_action']}'),
                               initialValue: _action(u),
                               isExpanded: true,
                               decoration: const InputDecoration(
@@ -237,6 +297,58 @@ class _LateReviewPageState extends State<LateReviewPage> {
             ),
         ]),
       ),
+    );
+  }
+}
+
+class _PendingBanner extends StatelessWidget {
+  final Map<String, dynamic> request;
+  final String label;
+  final bool canDecide;
+  final VoidCallback onApprove;
+  final VoidCallback onReject;
+  const _PendingBanner({
+    required this.request,
+    required this.label,
+    required this.canDecide,
+    required this.onApprove,
+    required this.onReject,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final by = (request['decided_by'] as String?) ?? '';
+    final note = ((request['note'] as String?) ?? '').trim();
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF7E6),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: const Color(0xFFF5D08A)),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(
+          canDecide ? 'Needs your approval: $label' : 'Waiting for Management: $label',
+          style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600),
+        ),
+        if (by.isNotEmpty || note.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(top: 2),
+            child: Text(
+              [if (by.isNotEmpty) 'Asked by $by', if (note.isNotEmpty) note].join(' · '),
+              style: TextStyle(fontSize: 11.5, color: Colors.grey.shade700),
+            ),
+          ),
+        if (canDecide) ...[
+          const SizedBox(height: 8),
+          Row(children: [
+            ElevatedButton(onPressed: onApprove, child: const Text('Approve')),
+            const SizedBox(width: 8),
+            OutlinedButton(onPressed: onReject, child: const Text('Reject')),
+          ]),
+        ],
+      ]),
     );
   }
 }
