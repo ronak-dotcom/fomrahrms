@@ -3,6 +3,7 @@
   "outputDirectory": "build/web",
   "rewrites": [
     { "source": "/firebase-messaging-sw.js", "destination": "/firebase-messaging-sw.js" },
+    { "source": "/sb/:path*", "destination": "https://jjkijnmrtkkukdboajxu.supabase.co/:path*" },
     { "source": "/(.*)", "destination": "/index.html" }
   ],
   "headers": [

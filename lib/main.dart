@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -17,6 +18,25 @@ import 'services/session_storage.dart';
 import 'utils/secure_local_storage.dart';
 import 'utils/url_strategy.dart';
 import 'widgets/notification_popup_overlay.dart';
+
+/// Where the app reaches the database.
+///
+/// On the web this is the site's own address plus /sb, which vercel.json
+/// forwards to Supabase. Office broadband blocks *.supabase.co (a leftover
+/// of India's February 2026 blocking order), so calling Supabase directly
+/// failed for everyone on the office Wi-Fi while mobile data worked
+/// (25 Nov 2026). Going through hrms.fomrahousing.in avoids the block.
+/// Local development and the native apps still call Supabase directly.
+/// Live updates (one screen, Interview process) need a WebSocket, which the
+/// forwarder does not carry; that screen still loads, it just needs a
+/// refresh to show changes made elsewhere.
+String _supabaseUrl() {
+  const direct = 'https://jjkijnmrtkkukdboajxu.supabase.co';
+  if (!kIsWeb) return direct;
+  final host = Uri.base.host;
+  if (host.isEmpty || host == 'localhost' || host == '127.0.0.1') return direct;
+  return '${Uri.base.origin}/sb';
+}
 
 void main() async {
   configureUrlStrategy();
@@ -37,7 +57,7 @@ void main() async {
   // Initialize Supabase in the background after the first frame.
   try {
     await Supabase.initialize(
-      url: 'https://jjkijnmrtkkukdboajxu.supabase.co',
+      url: _supabaseUrl(),
       anonKey:
           'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9'
           '.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Impqa2lqbm1ydGtrdWtkYm9hanh1'

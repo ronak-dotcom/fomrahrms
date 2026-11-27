@@ -804,8 +804,8 @@ class _LatestPayslipCard extends StatelessWidget {
         Text(formatRupees(p.netPay),
             style: const TextStyle(
                 fontSize: 36, fontWeight: FontWeight.w800, color: Colors.white, letterSpacing: -0.5)),
-        Text('Net pay · Gross ${formatRupees(p.actualGrossPay)} · '
-            'Deductions ${formatRupees(p.totalDeductions)}',
+        Text('Net pay · Gross ${formatRupees(p.showsFullGross ? p.grossPay : p.actualGrossPay)} · '
+            'Deductions ${formatRupees(p.showsFullGross ? p.fullTotalDeductions : p.totalDeductions)}',
             style: white70),
         const SizedBox(height: 14),
         Row(children: [
@@ -998,6 +998,13 @@ class PayslipDetailPage extends StatelessWidget {
                     Text('Earnings',
                         style: TextStyle(fontWeight: FontWeight.w700, color: _purple)),
                     const SizedBox(height: 6),
+                    // Engine payslips: full monthly gross, less LOP / late and
+                    // statutory deductions, equals net pay (HR, 25 Nov 2026).
+                    if (p.showsFullGross) ...[
+                      for (final (l, v) in p.fullEarnings) _amountRow(l, v),
+                      const Divider(),
+                      _amountRow('Gross Salary (Rs)', p.grossPay, bold: true),
+                    ] else ...[
                     _amountRow('Basic', p.basic),
                     if (p.da > 0) _amountRow('Dearness Allowance', p.da),
                     _amountRow('House Rent Allowance', p.hra),
@@ -1009,6 +1016,7 @@ class PayslipDetailPage extends StatelessWidget {
                       _amountRow('Special Allowance', p.specialAllowance),
                     const Divider(),
                     _amountRow('Actual Gross Pay (Rs)', p.actualGrossPay, bold: true),
+                    ],
                   ]),
                 ),
                 const SizedBox(width: 24),
@@ -1017,6 +1025,11 @@ class PayslipDetailPage extends StatelessWidget {
                     Text('Deductions',
                         style: TextStyle(fontWeight: FontWeight.w700, color: _purple)),
                     const SizedBox(height: 6),
+                    if (p.showsFullGross) ...[
+                      for (final (l, v) in p.fullDeductions) _amountRow(l, v),
+                      const Divider(),
+                      _amountRow('Total Deductions', p.fullTotalDeductions, bold: true),
+                    ] else ...[
                     _amountRow('EPF', p.epf),
                     if (p.esi > 0) _amountRow('ESI', p.esi),
                     _amountRow('Professional Tax', p.professionalTax),
@@ -1027,6 +1040,7 @@ class PayslipDetailPage extends StatelessWidget {
                     if (p.cug > 0) _amountRow('CUG', p.cug),
                     const Divider(),
                     _amountRow('Total Deductions', p.totalDeductions, bold: true),
+                    ],
                   ]),
                 ),
               ]),
@@ -1040,7 +1054,8 @@ class PayslipDetailPage extends StatelessWidget {
                 ),
                 child: Column(children: [
                   // Net pay is rounded to the rupee (agreed with HR, Nov 2026).
-                  if (p.roundedOff.abs() >= 0.005) _amountRow('Rounded off', p.roundedOff, paise: true),
+                  if ((p.showsFullGross ? p.fullRoundedOff : p.roundedOff).abs() >= 0.005)
+                    _amountRow('Rounded off', p.showsFullGross ? p.fullRoundedOff : p.roundedOff, paise: true),
                   _amountRow('Net Pay (Rs)', p.netPay, bold: true),
                 ]),
               ),

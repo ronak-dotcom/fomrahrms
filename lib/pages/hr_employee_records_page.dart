@@ -20,6 +20,7 @@ import '../widgets/filter_panel.dart';
 import 'employee_onboarding_page.dart' show OnboardingFormReadOnlyBody;
 import 'candidate_detail_page.dart' show CandidateDetailBody;
 import '../theme/app_theme.dart';
+import '../widgets/exit_widgets.dart' show ExitSection;
 
 enum _SortOrder { newestFirst, oldestFirst, alphabetical, joinOldNew, joinNewOld }
 enum _StatusFilter { all, onroll, probation, eligible, deactivated }
@@ -3541,6 +3542,14 @@ class EmployeeProfileDialogState extends State<EmployeeProfileDialog> {
             ),
             if (canEdit) ...[
               const SizedBox(height: 10),
+              // Staff on payroll leave through a recorded exit (last working
+              // day, Management approval, automatic close that night) rather
+              // than a bare Deactivate. Staff Portal users stay HR-owned.
+              if (!kStaffPortalDepartments.contains(_user.department)) ...[
+                ExitSection(user: _user),
+                const SizedBox(height: 10),
+              ],
+              if (!_user.active || kStaffPortalDepartments.contains(_user.department)) ...[
               SizedBox(
                 width: double.infinity,
                 child: OutlinedButton.icon(
@@ -3578,6 +3587,7 @@ class EmployeeProfileDialogState extends State<EmployeeProfileDialog> {
                 ),
               ),
               const SizedBox(height: 10),
+              ],
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton.icon(

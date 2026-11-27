@@ -38,12 +38,19 @@ class _SetPasswordPageState extends State<SetPasswordPage> {
     super.dispose();
   }
 
+  // True when the server could not be reached at all. This used to show as
+  // an invalid link, which sent people back to HR for a new email that
+  // failed the same way (Johnsi R, 25 Nov 2026).
+  bool _netError = false;
+
   Future<void> _load() async {
+    // Only on a retry: setState is not allowed while initState is running.
+    if (_netError) setState(() { _loading = true; _netError = false; });
     try {
       final row = await SupabaseService.fetchAppUserByActivationToken(widget.token);
       if (mounted) setState(() { _user = row; _loading = false; });
     } catch (_) {
-      if (mounted) setState(() => _loading = false);
+      if (mounted) setState(() { _loading = false; _netError = true; });
     }
   }
 
@@ -109,6 +116,22 @@ class _SetPasswordPageState extends State<SetPasswordPage> {
         padding: EdgeInsets.symmetric(vertical: 40),
         child: Center(child: CircularProgressIndicator()),
       );
+    }
+    if (_netError) {
+      return Column(mainAxisSize: MainAxisSize.min, children: [
+        _message(
+          icon: Icons.wifi_off_rounded,
+          title: 'Could Not Reach the Server',
+          body: 'Your link may be fine, but this phone or computer could not connect to the '
+              'HRMS server. Please switch between Wi-Fi and mobile data (or try another '
+              'network, or open the link in Chrome), then tap Try again.',
+        ),
+        const SizedBox(height: 16),
+        SizedBox(
+          width: double.infinity,
+          child: ElevatedButton(onPressed: _load, child: const Text('Try again')),
+        ),
+      ]);
     }
     if (_user == null) {
       return _message(
