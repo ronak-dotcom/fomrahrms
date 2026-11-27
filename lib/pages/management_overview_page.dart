@@ -377,9 +377,7 @@ class _ManagementOverviewPageState extends State<ManagementOverviewPage> {
   String _range(LeaveApplication a) {
     String d(DateTime x) => '${x.day} ${_short[x.month - 1]}';
     final same = a.from.year == a.to.year && a.from.month == a.to.month && a.from.day == a.to.day;
-    final days = a.leaveType == 'Permission'
-        ? ''
-        : ' · ${LeaveStore.fmtDays(a.effectiveDays)} day${a.effectiveDays == 1 ? '' : 's'}';
+    final days = ' · ${a.durationLabel}';
     return '${same ? d(a.from) : '${d(a.from)} – ${d(a.to)}'}$days';
   }
 

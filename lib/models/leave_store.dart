@@ -61,6 +61,26 @@ class LeaveApplication {
   /// Actual deduction: 0.5 for half day, full days otherwise.
   double get effectiveDays => isHalfDay ? 0.5 : days.toDouble();
 
+  /// How long, for lists: "½ day", "2 days", or for a permission the time
+  /// taken, "2 hrs (10:32–12:32)". A permission is stored as a half-day row,
+  /// so lists showed every permission as "½ day" although pay uses the
+  /// minutes (Ronak, 27 Nov 2026).
+  String get durationLabel {
+    if (leaveType == 'Permission') {
+      final m = permissionMinutes > 0 ? permissionMinutes : LeaveStore.permMinutesFromReason(reason);
+      final h = m ~/ 60, r = m % 60;
+      final time = m == 0
+          ? 'Permission'
+          : [if (h > 0) '$h hr${h == 1 ? '' : 's'}', if (r > 0) '$r min'].join(' ');
+      final window = permissionStartTime.isNotEmpty && permissionEndTime.isNotEmpty
+          ? ' ($permissionStartTime–$permissionEndTime)'
+          : '';
+      return '$time$window${permissionLopHalfDay ? ' · ½ day LOP' : ''}';
+    }
+    if (isHalfDay) return '½ day';
+    return '$days day${days == 1 ? '' : 's'}';
+  }
+
   /// The balance bucket (CL/ML/EL/LOP) this leave draws from — the
   /// employee's explicit choice if set, otherwise inferred from the label.
   String get bucket =>
